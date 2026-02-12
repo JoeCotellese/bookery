@@ -8,9 +8,13 @@ from bookery.metadata.openlibrary_parser import (
     parse_search_results,
     parse_works_metadata,
     parse_works_response,
+    select_best_edition,
 )
 from tests.fixtures.openlibrary_responses import (
     AUTHOR_RESPONSE,
+    EDITIONS_RESPONSE,
+    EDITIONS_RESPONSE_EMPTY,
+    EDITIONS_RESPONSE_NO_ISBN,
     ISBN_RESPONSE,
     SEARCH_RESPONSE,
     SEARCH_RESPONSE_EMPTY,
@@ -146,6 +150,55 @@ class TestParseWorksMetadata:
         """Works response with dict-style description extracts the value."""
         meta = parse_works_metadata(WORKS_RESPONSE_DICT_DESCRIPTION)
         assert meta.description == "A mystery set in a medieval Italian monastery."
+
+
+class TestSelectBestEdition:
+    """Tests for select_best_edition."""
+
+    def test_picks_edition_with_isbn(self) -> None:
+        """Selects an edition that has an ISBN."""
+        result = select_best_edition(EDITIONS_RESPONSE["entries"])
+        assert result is not None
+        assert result["isbn"] is not None
+
+    def test_prefers_physical_over_audio(self) -> None:
+        """Physical format editions are preferred over audio CDs."""
+        result = select_best_edition(EDITIONS_RESPONSE["entries"])
+        assert result is not None
+        # Should not pick the Audio CD edition
+        assert result["isbn"] != "9780739341261"
+
+    def test_prefers_hardcover_over_ebook(self) -> None:
+        """Hardcover editions are preferred over electronic."""
+        result = select_best_edition(EDITIONS_RESPONSE["entries"])
+        assert result is not None
+        assert result["isbn"] != "9780345497123"
+
+    def test_extracts_publisher(self) -> None:
+        """Publisher is extracted from the selected edition."""
+        result = select_best_edition(EDITIONS_RESPONSE["entries"])
+        assert result is not None
+        assert result["publisher"] is not None
+
+    def test_returns_none_for_empty_entries(self) -> None:
+        """Returns None when entries list is empty."""
+        result = select_best_edition(EDITIONS_RESPONSE_EMPTY["entries"])
+        assert result is None
+
+    def test_returns_none_when_no_isbn(self) -> None:
+        """Returns None when no edition has an ISBN."""
+        result = select_best_edition(EDITIONS_RESPONSE_NO_ISBN["entries"])
+        assert result is None
+
+    def test_prefers_isbn13_over_isbn10(self) -> None:
+        """ISBN-13 is preferred over ISBN-10 when both are present."""
+        entries = [
+            {"isbn_10": ["0345485750"], "publishers": ["Publisher"]},
+            {"isbn_13": ["9780345485755"], "publishers": ["Publisher"]},
+        ]
+        result = select_best_edition(entries)
+        assert result is not None
+        assert result["isbn"] == "9780345485755"
 
 
 class TestBuildCoverUrl:

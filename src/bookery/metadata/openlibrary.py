@@ -14,6 +14,7 @@ from bookery.metadata.openlibrary_parser import (
     parse_search_results,
     parse_works_metadata,
     parse_works_response,
+    select_best_edition,
 )
 from bookery.metadata.scoring import score_candidate
 from bookery.metadata.types import BookMetadata
@@ -137,6 +138,7 @@ class OpenLibraryProvider:
 
         candidates.sort(key=lambda c: c.confidence, reverse=True)
         self._enrich_descriptions(candidates)
+        self._enrich_from_editions(candidates)
         return candidates
 
     def lookup_by_url(self, url: str) -> MetadataCandidate | None:
@@ -253,6 +255,31 @@ class OpenLibraryProvider:
             description = parse_works_response(works_data)
             if description:
                 candidate.metadata.description = description
+
+    def _enrich_from_editions(self, candidates: list[MetadataCandidate]) -> None:
+        """Fetch edition-level data (ISBN, publisher) for the top candidates.
+
+        MUTATES candidates in place — fills missing isbn and publisher fields
+        from the best available edition. Only enriches candidates that have a
+        works key and are missing ISBN or publisher.
+        """
+        for candidate in candidates[:_ENRICH_DESCRIPTION_LIMIT]:
+            if candidate.metadata.isbn and candidate.metadata.publisher:
+                continue
+            works_key = candidate.metadata.identifiers.get("openlibrary_work")
+            if not works_key:
+                continue
+            try:
+                editions_data = self._http.get(f"{_OL_BASE}{works_key}/editions.json")
+            except MetadataFetchError:
+                continue
+            best = select_best_edition(editions_data.get("entries", []))
+            if not best:
+                continue
+            if not candidate.metadata.isbn and best["isbn"]:
+                candidate.metadata.isbn = best["isbn"]
+            if not candidate.metadata.publisher and best["publisher"]:
+                candidate.metadata.publisher = best["publisher"]
 
     def _enrich_from_works(
         self, metadata: BookMetadata, isbn_data: dict[str, Any]

@@ -10,6 +10,8 @@ from bookery.metadata.openlibrary import OpenLibraryProvider
 from tests.fixtures.openlibrary_responses import (
     AUTHOR_RESPONSE,
     EDITION_RESPONSE,
+    EDITIONS_RESPONSE,
+    EDITIONS_RESPONSE_EMPTY,
     ISBN_RESPONSE,
     SEARCH_RESPONSE,
     SEARCH_RESPONSE_EMPTY,
@@ -251,6 +253,141 @@ class TestSearchByTitleAuthor:
 
         # 4th candidate should NOT have been enriched
         assert results[3].metadata.description is None
+
+
+class TestEditionEnrichment:
+    """Tests for edition-level enrichment of search candidates."""
+
+    def test_search_enriches_top_candidates_with_edition_data(self) -> None:
+        """Top candidates get ISBN and publisher from editions endpoint."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                return SEARCH_RESPONSE
+            if "/editions.json" in url:
+                return EDITIONS_RESPONSE
+            if "/works/" in url:
+                return {"description": "A description."}
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("The Alexandria Link")
+
+        # At least one candidate should now have ISBN from editions
+        enriched = [r for r in results if r.metadata.isbn is not None]
+        assert len(enriched) > 0
+
+    def test_edition_enrichment_fills_publisher(self) -> None:
+        """Publisher is filled from edition data when missing."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                # Search results without publisher
+                return {
+                    "numFound": 1,
+                    "start": 0,
+                    "docs": [
+                        {
+                            "key": "/works/OL456W",
+                            "title": "Test Book",
+                            "author_name": ["Author"],
+                        },
+                    ],
+                }
+            if "/editions.json" in url:
+                return EDITIONS_RESPONSE
+            if "/works/" in url:
+                return {}
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("Test Book")
+
+        assert len(results) == 1
+        assert results[0].metadata.publisher is not None
+
+    def test_edition_enrichment_does_not_overwrite_existing_isbn(self) -> None:
+        """If candidate already has an ISBN from search, edition data doesn't replace it."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                return SEARCH_RESPONSE  # Has ISBNs already
+            if "/editions.json" in url:
+                return EDITIONS_RESPONSE
+            if "/works/" in url:
+                return {}
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("The Name of the Rose", "Umberto Eco")
+
+        # Original ISBN from search should be preserved
+        assert results[0].metadata.isbn == "9780156001311"
+
+    def test_edition_enrichment_skips_on_fetch_error(self) -> None:
+        """Edition enrichment silently skips candidates on HTTP errors."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                return {
+                    "numFound": 1,
+                    "start": 0,
+                    "docs": [
+                        {
+                            "key": "/works/OL456W",
+                            "title": "Test",
+                        },
+                    ],
+                }
+            if "/editions.json" in url:
+                raise MetadataFetchError("server error")
+            if "/works/" in url:
+                return {}
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("Test")
+
+        assert len(results) == 1
+        # Should still have the candidate, just without edition data
+        assert results[0].metadata.isbn is None
+
+    def test_edition_enrichment_handles_empty_editions(self) -> None:
+        """Candidate is unchanged when editions endpoint returns empty list."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                return {
+                    "numFound": 1,
+                    "start": 0,
+                    "docs": [
+                        {
+                            "key": "/works/OL456W",
+                            "title": "Test",
+                        },
+                    ],
+                }
+            if "/editions.json" in url:
+                return EDITIONS_RESPONSE_EMPTY
+            if "/works/" in url:
+                return {}
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("Test")
+
+        assert len(results) == 1
+        assert results[0].metadata.isbn is None
 
 
 class TestSubtitleRetry:

@@ -125,6 +125,70 @@ EDITION_RESPONSE = {
     "works": [{"key": "/works/OL456W"}],
 }
 
+EDITIONS_RESPONSE = {
+    "entries": [
+        {
+            "key": "/books/OL7914805M",
+            "title": "The Alexandria Link",
+            "isbn_13": ["9780739326978"],
+            "publishers": ["Random House Large Print"],
+            "languages": [{"key": "/languages/eng"}],
+            "physical_format": "Hardcover",
+            "number_of_pages": 720,
+        },
+        {
+            "key": "/books/OL9719416M",
+            "title": "The Alexandria Link",
+            "isbn_13": ["9780345485755"],
+            "isbn_10": ["0345485750"],
+            "publishers": ["Ballantine Books"],
+            "languages": [{"key": "/languages/eng"}],
+            "physical_format": "Hardcover",
+            "number_of_pages": 480,
+        },
+        {
+            "key": "/books/OL9807729M",
+            "title": "The Alexandria Link",
+            "isbn_13": ["9780345485762"],
+            "isbn_10": ["0345485769"],
+            "publishers": ["Ballantine Books"],
+            "languages": [{"key": "/languages/eng"}],
+            "physical_format": "Mass Market Paperback",
+            "number_of_pages": 512,
+        },
+        {
+            "key": "/books/OL24270065M",
+            "title": "The Alexandria Link",
+            "isbn_13": ["9780345497123"],
+            "publishers": ["Random House Publishing Group"],
+            "languages": [{"key": "/languages/eng"}],
+            "physical_format": "Electronic resource",
+        },
+        {
+            "key": "/books/OL7915101M",
+            "title": "The Alexandria Link",
+            "isbn_13": ["9780739341261"],
+            "publishers": ["RH Audio"],
+            "languages": [{"key": "/languages/eng"}],
+            "physical_format": "Audio CD",
+        },
+    ],
+}
+
+EDITIONS_RESPONSE_NO_ISBN = {
+    "entries": [
+        {
+            "key": "/books/OL999M",
+            "title": "Bare Bones Edition",
+            "publishers": ["Some Publisher"],
+        },
+    ],
+}
+
+EDITIONS_RESPONSE_EMPTY = {
+    "entries": [],
+}
+
 SEARCH_RESPONSE_EMPTY = {
     "numFound": 0,
     "start": 0,
