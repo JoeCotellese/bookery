@@ -2,10 +2,19 @@
 # ABOUTME: Matches EPUBs against Open Library and writes corrected copies.
 
 import logging
+import re
 from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 from bookery.cli.review import ReviewSession
 from bookery.core.pipeline import apply_metadata_safely
@@ -30,6 +39,30 @@ def _find_epubs(path: Path) -> list[Path]:
     return sorted(path.rglob("*.epub"))
 
 
+def _is_already_processed(epub_path: Path, output_dir: Path) -> bool:
+    """Check if an EPUB has already been written to the output directory.
+
+    Matches by direct filename or collision-suffixed variants (_1, _2, etc.).
+    """
+    if (output_dir / epub_path.name).exists():
+        return True
+    # Check for collision suffixes: {stem}_1.epub, {stem}_2.epub, ...
+    pattern = re.compile(re.escape(epub_path.stem) + r"_\d+" + re.escape(epub_path.suffix))
+    return any(pattern.fullmatch(child.name) for child in output_dir.iterdir())
+
+
+def _make_progress(console: Console) -> Progress:
+    """Create a Rich progress bar for batch processing."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    )
+
+
 @click.command()
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -46,7 +79,25 @@ def _find_epubs(path: Path) -> list[Path]:
     default=False,
     help="Auto-accept high-confidence matches without prompting.",
 )
-def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
+@click.option(
+    "-t",
+    "--threshold",
+    type=click.FloatRange(0.0, 1.0),
+    default=0.8,
+    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.8).",
+)
+@click.option(
+    "--resume/--no-resume",
+    default=True,
+    help="Skip files already in output-dir (default: --resume).",
+)
+def match(
+    path: Path,
+    output_dir: Path | None,
+    quiet: bool,
+    threshold: float,
+    resume: bool,
+) -> None:
     """Match EPUB metadata against Open Library and write corrected copies."""
     console = Console()
 
@@ -55,7 +106,10 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
 
     provider = _create_provider()
     review = ReviewSession(
-        console=console, quiet=quiet, lookup_fn=provider.lookup_by_url
+        console=console,
+        quiet=quiet,
+        threshold=threshold,
+        lookup_fn=provider.lookup_by_url,
     )
 
     epubs = _find_epubs(path)
@@ -63,24 +117,54 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
         console.print("[yellow]No EPUB files found.[/yellow]")
         return
 
+    # Resume: filter out already-processed files
+    if resume and output_dir.exists():
+        original_count = len(epubs)
+        epubs = [e for e in epubs if not _is_already_processed(e, output_dir)]
+        skipped_count = original_count - len(epubs)
+        if skipped_count:
+            console.print(
+                f"[dim]Skipping {skipped_count} already-processed "
+                f"file{'s' if skipped_count != 1 else ''}.[/dim]"
+            )
+        if not epubs:
+            console.print("[green]All files already processed.[/green]")
+            return
+
     total = len(epubs)
     matched = 0
     skipped = 0
     errors = 0
 
-    for i, epub_path in enumerate(epubs, start=1):
-        console.print(f"\n[bold][{i}/{total}] Processing:[/bold] {epub_path.name}")
+    progress = _make_progress(console)
+    task_id = progress.add_task("Matching", total=total)
+    progress.start()
+
+    for epub_path in epubs:
+        progress.update(task_id, description=epub_path.name)
+
+        # Pause progress bar for interactive output
+        if not quiet:
+            progress.stop()
+            console.print(
+                f"\n[bold][{progress.tasks[task_id].completed + 1}/{total}] "
+                f"Processing:[/bold] {epub_path.name}"
+            )
 
         try:
             extracted = read_epub_metadata(epub_path)
         except EpubReadError as exc:
-            console.print(f"  [red]Error reading:[/red] {exc}")
+            if not quiet:
+                console.print(f"  [red]Error reading:[/red] {exc}")
             errors += 1
+            progress.advance(task_id)
+            if not quiet:
+                progress.start()
             continue
 
         # Normalize mangled metadata for better search queries
         norm_result = normalize_metadata(extracted)
-        if norm_result.was_modified:
+        if not quiet and norm_result.was_modified:
             console.print(f"  [dim]Normalized title:[/dim] {norm_result.normalized.title}")
             if norm_result.normalized.authors != extracted.authors:
                 console.print(
@@ -99,22 +183,44 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
             )
 
         if not candidates:
-            console.print("  [yellow]No candidates found.[/yellow]")
+            if not quiet:
+                console.print("  [yellow]No candidates found.[/yellow]")
             skipped += 1
+            progress.advance(task_id)
+            if not quiet:
+                progress.start()
             continue
 
         selected = review.review(extracted, candidates)
         if selected is None:
             skipped += 1
+            progress.advance(task_id)
+            if not quiet:
+                progress.start()
             continue
 
         try:
-            result_path = apply_metadata_safely(epub_path, selected, output_dir)
-            console.print(f"  [green]Written:[/green] {result_path}")
-            matched += 1
-        except (OSError, EpubReadError) as exc:
-            console.print(f"  [red]Error writing:[/red] {exc}")
+            write_result = apply_metadata_safely(epub_path, selected, output_dir)
+            if write_result.success:
+                if not quiet:
+                    console.print(f"  [green]Written:[/green] {write_result.path}")
+                matched += 1
+            else:
+                if not quiet:
+                    console.print(
+                        f"  [red]Verification failed:[/red] {write_result.error}"
+                    )
+                errors += 1
+        except OSError as exc:
+            if not quiet:
+                console.print(f"  [red]Error writing:[/red] {exc}")
             errors += 1
+
+        progress.advance(task_id)
+        if not quiet:
+            progress.start()
+
+    progress.stop()
 
     # Summary
     parts = []

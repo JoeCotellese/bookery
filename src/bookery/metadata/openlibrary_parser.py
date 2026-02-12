@@ -136,6 +136,52 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
     return results
 
 
+# Format preference for edition selection (lower = better).
+_FORMAT_RANK: dict[str, int] = {
+    "hardcover": 0,
+    "paperback": 1,
+    "trade paperback": 1,
+    "mass market paperback": 1,
+    "electronic resource": 2,
+    "ebook": 2,
+    "audio cd": 3,
+    "audio cassette": 3,
+}
+_FORMAT_RANK_DEFAULT = 2
+
+
+def select_best_edition(entries: list[dict[str, Any]]) -> dict[str, str | None] | None:
+    """Pick the best edition from a list of Open Library edition entries.
+
+    Prefers physical formats with ISBNs. Returns a dict with 'isbn' and
+    'publisher' keys, or None if no usable edition was found.
+    """
+    scored: list[tuple[int, int, dict[str, str | None]]] = []
+
+    for entry in entries:
+        isbn_13 = entry.get("isbn_13", [])
+        isbn_10 = entry.get("isbn_10", [])
+        isbn = isbn_13[0] if isbn_13 else (isbn_10[0] if isbn_10 else None)
+        if not isbn:
+            continue
+
+        publishers = entry.get("publishers", [])
+        publisher = publishers[0] if publishers else None
+
+        fmt = (entry.get("physical_format") or "").lower()
+        format_rank = _FORMAT_RANK.get(fmt, _FORMAT_RANK_DEFAULT)
+        # Prefer ISBN-13 (0) over ISBN-10 only (1)
+        isbn_rank = 0 if isbn_13 else 1
+
+        scored.append((format_rank, isbn_rank, {"isbn": isbn, "publisher": publisher}))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda pair: (pair[0], pair[1]))
+    return scored[0][2]
+
+
 def build_cover_url(isbn: str, size: str = "L") -> str:
     """Build an Open Library cover image URL for a given ISBN.
 

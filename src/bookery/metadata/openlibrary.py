@@ -14,6 +14,7 @@ from bookery.metadata.openlibrary_parser import (
     parse_search_results,
     parse_works_metadata,
     parse_works_response,
+    select_best_edition,
 )
 from bookery.metadata.scoring import score_candidate
 from bookery.metadata.types import BookMetadata
@@ -23,6 +24,21 @@ logger = logging.getLogger(__name__)
 _OL_BASE = "https://openlibrary.org"
 _SEARCH_LIMIT = 5
 _ENRICH_DESCRIPTION_LIMIT = 3
+
+# Matches a colon followed by a space and remaining text (subtitle pattern).
+_SUBTITLE_RE = re.compile(r"\s*:\s+.+$")
+
+
+def _strip_subtitle(title: str) -> str | None:
+    """Remove subtitle from a title string (text after ": ").
+
+    Returns the stripped title, or None if no subtitle was found or
+    stripping would produce an identical or empty string.
+    """
+    stripped = _SUBTITLE_RE.sub("", title).strip()
+    if stripped and stripped != title.strip():
+        return stripped
+    return None
 
 
 class OpenLibraryProvider:
@@ -45,8 +61,9 @@ class OpenLibraryProvider:
         Follows up with works and author endpoints to enrich metadata.
         Returns a single-element list on success, empty list on failure.
         """
+        clean_isbn = re.sub(r"[\s-]", "", isbn)
         try:
-            data = self._http.get(f"{_OL_BASE}/isbn/{isbn}.json")
+            data = self._http.get(f"{_OL_BASE}/isbn/{clean_isbn}.json")
         except MetadataFetchError as exc:
             logger.warning("ISBN lookup failed for %s: %s", isbn, exc)
             return []
@@ -69,7 +86,22 @@ class OpenLibraryProvider:
     ) -> list[MetadataCandidate]:
         """Search Open Library by title and optional author.
 
+        If the initial search returns no results and the title contains a
+        subtitle (text after ": "), retries with the subtitle stripped.
         Returns candidates sorted by confidence descending.
+        """
+        candidates = self._search_ol(title, author)
+        if not candidates:
+            stripped = _strip_subtitle(title)
+            if stripped:
+                candidates = self._search_ol(stripped, author)
+        return candidates
+
+    def _search_ol(self, title: str, author: str | None = None) -> list[MetadataCandidate]:
+        """Execute a single Open Library search query.
+
+        Returns candidates sorted by confidence descending, with top results
+        enriched with descriptions from the works endpoint.
         """
         params: dict[str, str] = {"title": title, "limit": str(_SEARCH_LIMIT)}
         if author:
@@ -106,6 +138,7 @@ class OpenLibraryProvider:
 
         candidates.sort(key=lambda c: c.confidence, reverse=True)
         self._enrich_descriptions(candidates)
+        self._enrich_from_editions(candidates)
         return candidates
 
     def lookup_by_url(self, url: str) -> MetadataCandidate | None:
@@ -162,9 +195,7 @@ class OpenLibraryProvider:
 
         return works_key, edition_key
 
-    def _lookup_by_edition(
-        self, works_key: str, edition_key: str
-    ) -> MetadataCandidate:
+    def _lookup_by_edition(self, works_key: str, edition_key: str) -> MetadataCandidate:
         """Fetch full metadata from edition + works + author endpoints."""
         edition_data = self._http.get(f"{_OL_BASE}{edition_key}.json")
         metadata = parse_isbn_response(edition_data)
@@ -205,9 +236,7 @@ class OpenLibraryProvider:
             source_id=works_key,
         )
 
-    def _enrich_descriptions(
-        self, candidates: list[MetadataCandidate]
-    ) -> None:
+    def _enrich_descriptions(self, candidates: list[MetadataCandidate]) -> None:
         """Fetch descriptions from the works endpoint for the top candidates.
 
         MUTATES candidates in place — sets metadata.description on enriched items.
@@ -226,6 +255,31 @@ class OpenLibraryProvider:
             description = parse_works_response(works_data)
             if description:
                 candidate.metadata.description = description
+
+    def _enrich_from_editions(self, candidates: list[MetadataCandidate]) -> None:
+        """Fetch edition-level data (ISBN, publisher) for the top candidates.
+
+        MUTATES candidates in place — fills missing isbn and publisher fields
+        from the best available edition. Only enriches candidates that have a
+        works key and are missing ISBN or publisher.
+        """
+        for candidate in candidates[:_ENRICH_DESCRIPTION_LIMIT]:
+            if candidate.metadata.isbn and candidate.metadata.publisher:
+                continue
+            works_key = candidate.metadata.identifiers.get("openlibrary_work")
+            if not works_key:
+                continue
+            try:
+                editions_data = self._http.get(f"{_OL_BASE}{works_key}/editions.json")
+            except MetadataFetchError:
+                continue
+            best = select_best_edition(editions_data.get("entries", []))
+            if not best:
+                continue
+            if not candidate.metadata.isbn and best["isbn"]:
+                candidate.metadata.isbn = best["isbn"]
+            if not candidate.metadata.publisher and best["publisher"]:
+                candidate.metadata.publisher = best["publisher"]
 
     def _enrich_from_works(
         self, metadata: BookMetadata, isbn_data: dict[str, Any]
@@ -249,9 +303,7 @@ class OpenLibraryProvider:
             metadata.description = description
         return metadata
 
-    def _enrich_authors(
-        self, metadata: BookMetadata, isbn_data: dict[str, Any]
-    ) -> BookMetadata:
+    def _enrich_authors(self, metadata: BookMetadata, isbn_data: dict[str, Any]) -> BookMetadata:
         """Fetch author names from the authors endpoint."""
         author_entries = isbn_data.get("authors", [])
         if not author_entries:

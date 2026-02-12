@@ -21,10 +21,29 @@ _DIGIT_LETTER_RE = re.compile(r"(\d)([a-zA-Z])")
 _SEPARATOR_RE = re.compile(r"[-_]")
 
 # Common English stop words that appear in titles but not person names.
-_TITLE_STOP_WORDS = frozenset({
-    "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "by",
-    "with", "from", "is", "was", "are", "were", "be", "been",
-})
+_TITLE_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "of",
+        "and",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "by",
+        "with",
+        "from",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+    }
+)
 
 
 def _needs_normalization(text: str) -> bool:
@@ -160,6 +179,75 @@ def _detect_author_in_title(title: str) -> tuple[str, str | None]:
 # Author values that indicate missing/unknown authorship.
 _UNKNOWN_AUTHORS = frozenset({"unknown", "various", "anonymous", ""})
 
+# Structural patterns for titles with embedded author/series info.
+# "Author - Title" or "Author - [Series NN] - Title"
+_AUTHOR_DASH_TITLE_RE = re.compile(
+    r"^(?P<author>.+?)\s+-\s+(?:\[(?P<series>[^\]]+)\]\s+-\s+)?(?P<title>.+)$"
+)
+# "Title by Author" — author must be 2-3 capitalized words
+_TITLE_BY_AUTHOR_RE = re.compile(
+    r"^(?P<title>.+?)\s+by\s+(?P<author>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)$"
+)
+# Series index pattern inside brackets: "Series Name 07" or "Series Name 1"
+_SERIES_INDEX_RE = re.compile(r"^(?P<name>.+?)\s+(?P<index>\d+)$")
+
+
+@dataclass
+class _StructuralMatch:
+    """Result of detecting a structural pattern in a title string."""
+
+    title: str
+    author: str
+    series: str | None = None
+    series_index: float | None = None
+
+
+def _parse_series_bracket(series_text: str) -> tuple[str, float | None]:
+    """Parse a series bracket like 'Cotton Malone 07' into name and index."""
+    m = _SERIES_INDEX_RE.match(series_text.strip())
+    if m:
+        return m.group("name"), float(m.group("index"))
+    return series_text.strip(), None
+
+
+def _detect_structural_pattern(title: str, metadata: BookMetadata) -> _StructuralMatch | None:
+    """Detect 'Author - Title', 'Author - [Series] - Title', or 'Title by Author'.
+
+    Only activates when the metadata has no valid authors — prevents false
+    positives on legitimate titles like "Stand by Me".
+    """
+    if _has_valid_authors(metadata):
+        return None
+
+    # Try "Author - [Series] - Title" or "Author - Title"
+    m = _AUTHOR_DASH_TITLE_RE.match(title)
+    if m:
+        candidate_author = m.group("author").strip()
+        if _is_likely_person_name(candidate_author):
+            series_raw = m.group("series")
+            series_name = None
+            series_index = None
+            if series_raw:
+                series_name, series_index = _parse_series_bracket(series_raw)
+            return _StructuralMatch(
+                title=m.group("title").strip(),
+                author=candidate_author,
+                series=series_name,
+                series_index=series_index,
+            )
+
+    # Try "Title by Author"
+    m = _TITLE_BY_AUTHOR_RE.match(title)
+    if m:
+        candidate_author = m.group("author").strip()
+        if _is_likely_person_name(candidate_author):
+            return _StructuralMatch(
+                title=m.group("title").strip(),
+                author=candidate_author,
+            )
+
+    return None
+
 
 @dataclass
 class NormalizationResult:
@@ -186,27 +274,50 @@ def _has_valid_authors(meta: BookMetadata) -> bool:
 def normalize_metadata(metadata: BookMetadata) -> NormalizationResult:
     """Normalize mangled EPUB metadata for better search queries.
 
-    Applies title splitting (CamelCase, wordninja) and author detection.
+    Strips invalid authors unconditionally, then applies title splitting
+    (CamelCase, wordninja) and author detection.
     Returns a NormalizationResult preserving the original metadata intact.
     """
-    if not _needs_normalization(metadata.title):
-        return NormalizationResult(
-            original=metadata, normalized=metadata, was_modified=False
-        )
-
-    # Split concatenated title
-    split_title = split_concatenated(metadata.title)
-
-    # Try to detect author embedded in title
+    modified = False
+    title = metadata.title
     authors = list(metadata.authors)
-    if not _has_valid_authors(metadata):
-        cleaned_title, detected_author = _detect_author_in_title(split_title)
-        if detected_author:
-            split_title = cleaned_title
-            authors = [detected_author]
 
-    normalized = replace(metadata, title=split_title, authors=authors)
+    series = metadata.series
+    series_index = metadata.series_index
 
-    return NormalizationResult(
-        original=metadata, normalized=normalized, was_modified=True
+    # Strip invalid authors unconditionally — before any title checks
+    if not _has_valid_authors(metadata) and metadata.authors:
+        authors = []
+        modified = True
+
+    # Structural patterns: "Author - Title", "Author - [Series] - Title", "Title by Author"
+    structural = _detect_structural_pattern(title, metadata)
+    if structural:
+        title = structural.title
+        authors = [structural.author]
+        if structural.series:
+            series = structural.series
+        if structural.series_index is not None:
+            series_index = structural.series_index
+        modified = True
+    elif _needs_normalization(title):
+        # CamelCase / concatenated word normalization
+        title = split_concatenated(title)
+        modified = True
+        if not authors:
+            cleaned_title, detected_author = _detect_author_in_title(title)
+            if detected_author:
+                title = cleaned_title
+                authors = [detected_author]
+
+    if not modified:
+        return NormalizationResult(original=metadata, normalized=metadata, was_modified=False)
+
+    normalized = replace(
+        metadata,
+        title=title,
+        authors=authors,
+        series=series,
+        series_index=series_index,
     )
+    return NormalizationResult(original=metadata, normalized=normalized, was_modified=True)

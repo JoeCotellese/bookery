@@ -6,11 +6,23 @@ from difflib import SequenceMatcher
 
 from bookery.metadata.types import BookMetadata
 
-# Scoring weights — must sum to 1.0
+# Match weights — must sum to 1.0
 _WEIGHT_TITLE = 0.4
 _WEIGHT_AUTHOR = 0.3
 _WEIGHT_ISBN = 0.2
 _WEIGHT_LANGUAGE = 0.1
+
+# Completeness bonus — max added on top of the match score.
+_COMPLETENESS_BONUS = 0.10
+
+# Per-field weights within the completeness bonus (must sum to 1.0).
+_COMPLETENESS_FIELDS: dict[str, float] = {
+    "description": 0.40,
+    "isbn": 0.30,
+    "authors": 0.15,
+    "language": 0.10,
+    "publisher": 0.05,
+}
 
 _ISBN_STRIP_RE = re.compile(r"[\s-]")
 
@@ -71,4 +83,20 @@ def score_candidate(extracted: BookMetadata, candidate: BookMetadata) -> float:
     ):
         score += _WEIGHT_LANGUAGE
 
+    score += completeness_bonus(candidate)
+
     return max(0.0, min(1.0, score))
+
+
+def completeness_bonus(candidate: BookMetadata) -> float:
+    """Calculate a small bonus based on how many metadata fields are populated.
+
+    Rewards candidates with richer metadata so they float above sparse stubs
+    when match scores are otherwise tied. Returns a value in [0.0, _COMPLETENESS_BONUS].
+    """
+    filled = 0.0
+    for field_name, weight in _COMPLETENESS_FIELDS.items():
+        value = getattr(candidate, field_name, None)
+        if value:
+            filled += weight
+    return _COMPLETENESS_BONUS * filled

@@ -8,6 +8,7 @@ from tests.fixtures.openlibrary_responses import (
     AUTHOR_RESPONSE,
     ISBN_RESPONSE,
     SEARCH_RESPONSE,
+    SEARCH_RESPONSE_EMPTY,
     WORKS_RESPONSE_STR_DESCRIPTION,
 )
 
@@ -61,6 +62,46 @@ class TestIsbnPipeline:
         provider = OpenLibraryProvider(http_client=client)
         results = provider.search_by_isbn("9780156001311")
         assert results[0].confidence == 1.0
+
+    def test_hyphenated_isbn_resolves_through_pipeline(self) -> None:
+        """Hyphenated ISBN is cleaned and resolves to enriched candidate."""
+        client = FakeHttpClient(
+            {
+                "/isbn/9780156001311": ISBN_RESPONSE,
+                "/works/": WORKS_RESPONSE_STR_DESCRIPTION,
+                "/authors/": AUTHOR_RESPONSE,
+            }
+        )
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_isbn("978-0-156-00131-1")
+
+        assert len(results) == 1
+        meta = results[0].metadata
+        assert meta.title == "The Name of the Rose"
+        assert meta.authors == ["Umberto Eco"]
+
+
+class TestSubtitleRetryPipeline:
+    """Integration tests for subtitle retry in search pipeline."""
+
+    def test_subtitle_retry_finds_book_through_pipeline(self) -> None:
+        """Subtitle retry produces scored candidates through the full pipeline."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> Any:
+            if "/search.json" in url:
+                if params and ":" in params.get("title", ""):
+                    return SEARCH_RESPONSE_EMPTY
+                return SEARCH_RESPONSE
+            return {}
+
+        client = FakeHttpClient({})
+        client.get = fake_get  # type: ignore[assignment]
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("The Name of the Rose: A Novel", "Umberto Eco")
+
+        assert len(results) > 0
+        assert results[0].metadata.title == "The Name of the Rose"
+        assert results[0].confidence > 0.0
 
 
 class TestSearchPipeline:

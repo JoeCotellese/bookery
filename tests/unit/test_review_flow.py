@@ -319,3 +319,87 @@ class TestUrlLookup:
 
         prompt_text = mock_prompt.call_args[0][0]
         assert "[u]" in prompt_text
+
+
+class TestBatchShortcuts:
+    """Tests for batch shortcuts [A] and [S] in review flow."""
+
+    def test_accept_remaining_auto_accepts_above_threshold(self) -> None:
+        """After 'A', next review auto-accepts candidates above threshold."""
+        extracted = BookMetadata(title="Old Title")
+        high_candidate = [_make_candidate("High Match", "Author A", 0.9)]
+        console = Console(file=StringIO())
+        session = ReviewSession(console=console, threshold=0.8)
+
+        # First review: user enters 'A' to set auto-accept mode
+        with patch("bookery.cli.review.click.prompt", return_value="A"):
+            session.review(extracted, [_make_candidate("First", "Author", 0.85)])
+
+        # Second review: should auto-accept without prompting
+        result = session.review(extracted, high_candidate)
+        assert result is not None
+        assert result.title == "High Match"
+
+    def test_accept_remaining_skips_below_threshold(self) -> None:
+        """After 'A', candidates below threshold return None."""
+        extracted = BookMetadata(title="Old Title")
+        low_candidate = [_make_candidate("Low Match", "Author A", 0.5)]
+        console = Console(file=StringIO())
+        session = ReviewSession(console=console, threshold=0.8)
+
+        # Set auto-accept mode
+        with patch("bookery.cli.review.click.prompt", return_value="A"):
+            session.review(extracted, [_make_candidate("First", "Author", 0.85)])
+
+        # Low confidence should be skipped
+        result = session.review(extracted, low_candidate)
+        assert result is None
+
+    def test_skip_remaining_skips_all(self) -> None:
+        """After 'S', next review returns None without prompting."""
+        extracted = BookMetadata(title="Old Title")
+        candidates = [_make_candidate("Match", "Author A", 0.95)]
+        console = Console(file=StringIO())
+        session = ReviewSession(console=console)
+
+        # Set skip-remaining mode
+        with patch("bookery.cli.review.click.prompt", return_value="S"):
+            session.review(extracted, candidates)
+
+        # Next review should skip without prompting
+        result = session.review(extracted, candidates)
+        assert result is None
+
+    def test_batch_shortcuts_shown_in_prompt(self) -> None:
+        """Prompt text includes [A] and [S] options."""
+        extracted = BookMetadata(title="Old Title")
+        candidates = [_make_candidate("First", "Author A", 0.9)]
+        console = Console(file=StringIO())
+        session = ReviewSession(console=console)
+
+        with patch(
+            "bookery.cli.review.click.prompt", return_value="s"
+        ) as mock_prompt:
+            session.review(extracted, candidates)
+
+        prompt_text = mock_prompt.call_args[0][0]
+        assert "[A]" in prompt_text
+        assert "[S]" in prompt_text
+
+    def test_batch_shortcuts_case_sensitive(self) -> None:
+        """Lowercase 'a' does not trigger auto-accept mode."""
+        extracted = BookMetadata(title="Old Title")
+        candidates = [_make_candidate("First", "Author A", 0.9)]
+        console = Console(file=StringIO())
+        session = ReviewSession(console=console)
+
+        # Lowercase 'a' is not a valid prompt option, should reprompt
+        # Eventually user enters 's' to skip
+        with patch(
+            "bookery.cli.review.click.prompt", side_effect=["a", "s"]
+        ):
+            result = session.review(extracted, candidates)
+
+        assert result is None
+        # Verify the auto-accept flag was NOT set
+        assert session._auto_above_threshold is False

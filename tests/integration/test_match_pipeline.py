@@ -55,7 +55,9 @@ class TestFullMatchPipeline:
         result = apply_metadata_safely(sample_epub, best.metadata, output_dir)
 
         # Verify copy has updated metadata
-        updated = read_epub_metadata(result)
+        assert result.success is True
+        assert result.path is not None
+        updated = read_epub_metadata(result.path)
         assert updated.title == best.metadata.title
 
     def test_original_is_byte_identical(self, sample_epub: Path, tmp_path: Path) -> None:
@@ -98,9 +100,56 @@ class TestFullMatchPipeline:
         # Write and verify
         output_dir = tmp_path / "output"
         result = apply_metadata_safely(sample_epub, meta, output_dir)
-        updated = read_epub_metadata(result)
+        assert result.success is True
+        assert result.path is not None
+        updated = read_epub_metadata(result.path)
         assert updated.title == "The Name of the Rose"
         assert "Umberto Eco" in updated.authors
+
+    def test_full_pipeline_returns_verified_result(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """Full pipeline returns WriteResult with success and verified fields."""
+        extracted = read_epub_metadata(sample_epub)
+
+        client = FakeHttpClient({"/search.json": SEARCH_RESPONSE})
+        provider = OpenLibraryProvider(http_client=client)
+        candidates = provider.search_by_title_author(extracted.title, extracted.author)
+        best = candidates[0]
+
+        output_dir = tmp_path / "output"
+        result = apply_metadata_safely(sample_epub, best.metadata, output_dir)
+
+        assert result.success is True
+        assert result.path is not None
+        assert len(result.verified_fields) > 0
+        assert all(v.passed for v in result.verified_fields)
+
+    def test_resume_skips_previously_written_files(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """Previously written files are skipped on resume."""
+        output_dir = tmp_path / "output"
+
+        # First pass: write a copy
+        extracted = read_epub_metadata(sample_epub)
+        client = FakeHttpClient({"/search.json": SEARCH_RESPONSE})
+        provider = OpenLibraryProvider(http_client=client)
+        candidates = provider.search_by_title_author(extracted.title, extracted.author)
+        best = candidates[0]
+
+        result = apply_metadata_safely(sample_epub, best.metadata, output_dir)
+        assert result.success is True
+        first_output = result.path
+
+        # Second pass with resume: should detect existing file
+        from bookery.cli.commands.match_cmd import _is_already_processed
+
+        assert _is_already_processed(sample_epub, output_dir) is True
+
+        # The output dir should still have exactly one file
+        assert len(list(output_dir.glob("*.epub"))) == 1
+        assert first_output.exists()
 
     def test_quiet_review_auto_accepts(self) -> None:
         """ReviewSession in quiet mode auto-accepts high-confidence candidates."""
