@@ -3,7 +3,7 @@
 
 import click
 
-from bookery.cli.commands import import_cmd, inspect_cmd
+from bookery.cli.commands import import_cmd, inspect_cmd, match_cmd
 
 
 @click.group()
@@ -14,3 +14,4 @@ def cli() -> None:
 
 cli.add_command(import_cmd.import_books)
 cli.add_command(inspect_cmd.inspect)
+cli.add_command(match_cmd.match)

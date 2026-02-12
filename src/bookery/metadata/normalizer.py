@@ -1,0 +1,204 @@
+# ABOUTME: Pre-search normalization of mangled EPUB metadata (CamelCase, concatenated words).
+# ABOUTME: Splits garbage titles like "SteveBerry-TheTemplarLegacy" into clean search queries.
+
+import re
+from dataclasses import dataclass, replace
+
+from bookery.metadata.types import BookMetadata
+
+# Minimum length for a spaceless string to be considered "concatenated" and worth splitting.
+# Shorter strings (e.g. "Dune", "1984") are left alone.
+_MIN_CONCAT_LENGTH = 8
+
+# Common English stop words that appear in titles but not person names.
+_TITLE_STOP_WORDS = frozenset({
+    "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "by",
+    "with", "from", "is", "was", "are", "were", "be", "been",
+})
+
+
+def _needs_normalization(text: str) -> bool:
+    """Check whether a title string looks mangled and needs normalization.
+
+    Returns True for CamelCase-joined words, underscore-joined words,
+    or long spaceless strings that are likely concatenated.
+    """
+    text = text.strip()
+    if not text:
+        return False
+
+    # Underscores between words → needs normalization
+    if "_" in text:
+        return True
+
+    # CamelCase pattern: lowercase followed by uppercase
+    if re.search(r"[a-z][A-Z]", text):
+        return True
+
+    # Split on hyphens to check individual segments (hyphens are valid separators)
+    segments = text.split("-") if "-" in text else [text]
+
+    return any(" " not in seg and len(seg) >= _MIN_CONCAT_LENGTH for seg in segments)
+
+
+def _split_camel_case(text: str) -> list[str]:
+    """Split a CamelCase string into individual words.
+
+    Handles boundaries between:
+    - lowercase → uppercase (e.g. "templarL" → "templar", "L")
+    - uppercase sequence → uppercase+lowercase (e.g. "HTMLParser" → "HTML", "Parser")
+    - letter → digit and digit → letter (e.g. "Fahrenheit451" → "Fahrenheit", "451")
+    """
+    # Insert a split marker at each boundary
+    # lowercase or digit followed by uppercase
+    result = re.sub(r"([a-z\d])([A-Z])", r"\1_SPLIT_\2", text)
+    # uppercase sequence followed by uppercase+lowercase (e.g. HTMLParser → HTML_SPLIT_Parser)
+    result = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_SPLIT_\2", result)
+    # letter followed by digit
+    result = re.sub(r"([a-zA-Z])(\d)", r"\1_SPLIT_\2", result)
+    # digit followed by letter
+    result = re.sub(r"(\d)([a-zA-Z])", r"\1_SPLIT_\2", result)
+
+    parts = [p for p in result.split("_SPLIT_") if p]
+    return parts if parts else [text]
+
+
+def _split_with_wordninja(text: str) -> str:
+    """Split an all-lowercase concatenated string using wordninja's unigram model."""
+    import wordninja
+
+    words = wordninja.split(text)
+    return " ".join(words) if words else text
+
+
+def split_concatenated(text: str) -> str:
+    """Split a concatenated/mangled string into space-separated words.
+
+    Pipeline:
+    1. Split on hyphens and underscores into segments
+    2. Apply CamelCase splitting to each segment
+    3. For all-lowercase segments that are still long, use wordninja
+    4. Join everything with spaces
+    """
+    if not _needs_normalization(text):
+        return text
+
+    # Split on structural separators (hyphens and underscores)
+    raw_segments = re.split(r"[-_]", text)
+
+    words: list[str] = []
+    for segment in raw_segments:
+        segment = segment.strip()
+        if not segment:
+            continue
+
+        # Try CamelCase splitting first
+        camel_parts = _split_camel_case(segment)
+
+        for part in camel_parts:
+            # If a part is still all-lowercase and long, use wordninja
+            if part.islower() and len(part) >= _MIN_CONCAT_LENGTH:
+                words.append(_split_with_wordninja(part))
+            else:
+                words.append(part)
+
+    return " ".join(words)
+
+
+def _is_likely_person_name(text: str) -> bool:
+    """Heuristic check whether a string looks like a person's name.
+
+    Recognizes 2-3 capitalized words (including single-letter initials)
+    without common stop words.
+    """
+    words = text.split()
+
+    # Person names are typically 2-3 words
+    if len(words) < 2 or len(words) > 3:
+        return False
+
+    # All words must be capitalized (or single-letter initials)
+    for word in words:
+        if not word[0].isupper():
+            return False
+
+    # No stop words allowed in a person name
+    return not any(w.lower() in _TITLE_STOP_WORDS for w in words)
+
+
+def _detect_author_in_title(title: str) -> tuple[str, str | None]:
+    """Try to detect an author name embedded at the start of a title string.
+
+    Checks if the first 2 or 3 words look like a person name. If so, splits
+    them off as the author and returns the remainder as the title.
+
+    Returns:
+        (cleaned_title, detected_author) — author is None if not detected.
+    """
+    words = title.split()
+
+    # Try 3-word name first, then 2-word
+    for name_len in (3, 2):
+        if len(words) <= name_len:
+            continue
+        candidate = " ".join(words[:name_len])
+        if _is_likely_person_name(candidate):
+            remaining = " ".join(words[name_len:])
+            return remaining, candidate
+
+    return title, None
+
+
+# Author values that indicate missing/unknown authorship.
+_UNKNOWN_AUTHORS = frozenset({"unknown", "various", "anonymous", ""})
+
+
+@dataclass
+class NormalizationResult:
+    """Result of normalizing a BookMetadata instance.
+
+    Attributes:
+        original: The unmodified input metadata.
+        normalized: The cleaned metadata (same object as original if unmodified).
+        was_modified: Whether any fields were changed.
+    """
+
+    original: BookMetadata
+    normalized: BookMetadata
+    was_modified: bool
+
+
+def _has_valid_authors(meta: BookMetadata) -> bool:
+    """Check whether metadata has meaningful author information."""
+    if not meta.authors:
+        return False
+    return not all(a.strip().lower() in _UNKNOWN_AUTHORS for a in meta.authors)
+
+
+def normalize_metadata(metadata: BookMetadata) -> NormalizationResult:
+    """Normalize mangled EPUB metadata for better search queries.
+
+    Applies title splitting (CamelCase, wordninja) and author detection.
+    Returns a NormalizationResult preserving the original metadata intact.
+    """
+    if not _needs_normalization(metadata.title):
+        return NormalizationResult(
+            original=metadata, normalized=metadata, was_modified=False
+        )
+
+    # Split concatenated title
+    split_title = split_concatenated(metadata.title)
+
+    # Try to detect author embedded in title
+    authors = list(metadata.authors)
+    if not _has_valid_authors(metadata):
+        cleaned_title, detected_author = _detect_author_in_title(split_title)
+        if detected_author:
+            split_title = cleaned_title
+            authors = [detected_author]
+
+    normalized = replace(metadata, title=split_title, authors=authors)
+
+    return NormalizationResult(
+        original=metadata, normalized=normalized, was_modified=True
+    )
