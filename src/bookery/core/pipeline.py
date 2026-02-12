@@ -7,17 +7,22 @@ from pathlib import Path
 from bookery.formats.epub import write_epub_metadata
 from bookery.metadata.types import BookMetadata
 
+_MAX_COLLISION_ATTEMPTS = 10_000
+
 
 def _resolve_collision(output_path: Path) -> Path:
     """Find a non-colliding filename by appending _1, _2, etc."""
     stem = output_path.stem
     suffix = output_path.suffix
     parent = output_path.parent
-    counter = 1
-    while output_path.exists():
-        output_path = parent / f"{stem}_{counter}{suffix}"
-        counter += 1
-    return output_path
+    for counter in range(1, _MAX_COLLISION_ATTEMPTS + 1):
+        candidate = parent / f"{stem}_{counter}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise OSError(
+        f"Could not find a non-colliding filename after "
+        f"{_MAX_COLLISION_ATTEMPTS} attempts: {output_path}"
+    )
 
 
 def apply_metadata_safely(

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _OL_BASE = "https://openlibrary.org"
 _SEARCH_LIMIT = 5
+_ENRICH_DESCRIPTION_LIMIT = 3
 
 
 class OpenLibraryProvider:
@@ -184,8 +185,9 @@ class OpenLibraryProvider:
         metadata = parse_works_metadata(works_data)
 
         # Resolve author names from author keys stored by parse_works_metadata
-        author_keys_str = metadata.identifiers.pop("openlibrary_author_keys", "")
+        author_keys_str = metadata.identifiers.get("openlibrary_author_keys", "")
         if author_keys_str:
+            del metadata.identifiers["openlibrary_author_keys"]
             authors: list[str] = []
             for author_key in author_keys_str.split(","):
                 try:
@@ -204,14 +206,14 @@ class OpenLibraryProvider:
         )
 
     def _enrich_descriptions(
-        self, candidates: list[MetadataCandidate], limit: int = 3
+        self, candidates: list[MetadataCandidate]
     ) -> None:
         """Fetch descriptions from the works endpoint for the top candidates.
 
-        Mutates candidates in place to avoid unnecessary copies.
+        MUTATES candidates in place — sets metadata.description on enriched items.
         Only enriches candidates that have a works key and no description yet.
         """
-        for candidate in candidates[:limit]:
+        for candidate in candidates[:_ENRICH_DESCRIPTION_LIMIT]:
             if candidate.metadata.description is not None:
                 continue
             works_key = candidate.metadata.identifiers.get("openlibrary_work")

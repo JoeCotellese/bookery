@@ -179,7 +179,8 @@ class ReviewSession:
         Returns the candidate's metadata if accepted, or None to go back.
         """
         url = click.prompt("Enter Open Library URL", type=str)
-        candidate = self._lookup_fn(url)  # type: ignore[misc]
+        assert self._lookup_fn is not None
+        candidate = self._lookup_fn(url)
         if candidate is None:
             self._console.print("[red]Could not fetch metadata from URL.[/red]")
             return None

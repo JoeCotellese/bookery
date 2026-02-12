@@ -17,9 +17,6 @@ from bookery.metadata.provider import MetadataProvider
 
 logger = logging.getLogger(__name__)
 
-console = Console()
-
-
 def _create_provider() -> MetadataProvider:
     """Create the default metadata provider (Open Library)."""
     http_client = BookeryHttpClient()
@@ -51,6 +48,8 @@ def _find_epubs(path: Path) -> list[Path]:
 )
 def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
     """Match EPUB metadata against Open Library and write corrected copies."""
+    console = Console()
+
     if output_dir is None:
         output_dir = Path("bookery-output")
 
@@ -64,12 +63,13 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
         console.print("[yellow]No EPUB files found.[/yellow]")
         return
 
+    total = len(epubs)
     matched = 0
     skipped = 0
     errors = 0
 
-    for epub_path in epubs:
-        console.print(f"\n[bold]Processing:[/bold] {epub_path.name}")
+    for i, epub_path in enumerate(epubs, start=1):
+        console.print(f"\n[bold][{i}/{total}] Processing:[/bold] {epub_path.name}")
 
         try:
             extracted = read_epub_metadata(epub_path)
@@ -112,7 +112,7 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
             result_path = apply_metadata_safely(epub_path, selected, output_dir)
             console.print(f"  [green]Written:[/green] {result_path}")
             matched += 1
-        except Exception as exc:
+        except (OSError, EpubReadError) as exc:
             console.print(f"  [red]Error writing:[/red] {exc}")
             errors += 1
 

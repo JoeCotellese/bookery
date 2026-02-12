@@ -12,6 +12,8 @@ _WEIGHT_AUTHOR = 0.3
 _WEIGHT_ISBN = 0.2
 _WEIGHT_LANGUAGE = 0.1
 
+_ISBN_STRIP_RE = re.compile(r"[\s-]")
+
 
 def _normalize_author(name: str) -> str:
     """Normalize 'Last, First' to 'First Last' and lowercase."""
@@ -24,7 +26,7 @@ def _normalize_author(name: str) -> str:
 
 def _normalize_isbn(isbn: str) -> str:
     """Strip hyphens and spaces from an ISBN for comparison."""
-    return re.sub(r"[\s-]", "", isbn)
+    return _ISBN_STRIP_RE.sub("", isbn)
 
 
 def _string_similarity(a: str, b: str) -> float:
@@ -48,9 +50,11 @@ def score_candidate(extracted: BookMetadata, candidate: BookMetadata) -> float:
     score += _WEIGHT_TITLE * _string_similarity(extracted.title, candidate.title)
 
     # Author similarity (weight: 0.3)
+    # When both sides lack author info, we can't infer a match — score 0 instead of 1.
     extracted_authors = " ".join(_normalize_author(a) for a in extracted.authors)
     candidate_authors = " ".join(_normalize_author(a) for a in candidate.authors)
-    score += _WEIGHT_AUTHOR * _string_similarity(extracted_authors, candidate_authors)
+    if extracted_authors or candidate_authors:
+        score += _WEIGHT_AUTHOR * _string_similarity(extracted_authors, candidate_authors)
 
     # ISBN exact match (weight: 0.2)
     if extracted.isbn and candidate.isbn:

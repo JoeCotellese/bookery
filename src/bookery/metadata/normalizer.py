@@ -4,11 +4,21 @@
 import re
 from dataclasses import dataclass, replace
 
+import wordninja
+
 from bookery.metadata.types import BookMetadata
 
 # Minimum length for a spaceless string to be considered "concatenated" and worth splitting.
 # Shorter strings (e.g. "Dune", "1984") are left alone.
 _MIN_CONCAT_LENGTH = 8
+
+# Pre-compiled regexes for normalization detection and splitting.
+_CAMEL_CASE_RE = re.compile(r"[a-z][A-Z]")
+_CAMEL_LOWER_UPPER_RE = re.compile(r"([a-z\d])([A-Z])")
+_CAMEL_UPPER_SEQUENCE_RE = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_LETTER_DIGIT_RE = re.compile(r"([a-zA-Z])(\d)")
+_DIGIT_LETTER_RE = re.compile(r"(\d)([a-zA-Z])")
+_SEPARATOR_RE = re.compile(r"[-_]")
 
 # Common English stop words that appear in titles but not person names.
 _TITLE_STOP_WORDS = frozenset({
@@ -32,7 +42,7 @@ def _needs_normalization(text: str) -> bool:
         return True
 
     # CamelCase pattern: lowercase followed by uppercase
-    if re.search(r"[a-z][A-Z]", text):
+    if _CAMEL_CASE_RE.search(text):
         return True
 
     # Split on hyphens to check individual segments (hyphens are valid separators)
@@ -51,13 +61,13 @@ def _split_camel_case(text: str) -> list[str]:
     """
     # Insert a split marker at each boundary
     # lowercase or digit followed by uppercase
-    result = re.sub(r"([a-z\d])([A-Z])", r"\1_SPLIT_\2", text)
+    result = _CAMEL_LOWER_UPPER_RE.sub(r"\1_SPLIT_\2", text)
     # uppercase sequence followed by uppercase+lowercase (e.g. HTMLParser → HTML_SPLIT_Parser)
-    result = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_SPLIT_\2", result)
+    result = _CAMEL_UPPER_SEQUENCE_RE.sub(r"\1_SPLIT_\2", result)
     # letter followed by digit
-    result = re.sub(r"([a-zA-Z])(\d)", r"\1_SPLIT_\2", result)
+    result = _LETTER_DIGIT_RE.sub(r"\1_SPLIT_\2", result)
     # digit followed by letter
-    result = re.sub(r"(\d)([a-zA-Z])", r"\1_SPLIT_\2", result)
+    result = _DIGIT_LETTER_RE.sub(r"\1_SPLIT_\2", result)
 
     parts = [p for p in result.split("_SPLIT_") if p]
     return parts if parts else [text]
@@ -65,8 +75,6 @@ def _split_camel_case(text: str) -> list[str]:
 
 def _split_with_wordninja(text: str) -> str:
     """Split an all-lowercase concatenated string using wordninja's unigram model."""
-    import wordninja
-
     words = wordninja.split(text)
     return " ".join(words) if words else text
 
@@ -84,7 +92,7 @@ def split_concatenated(text: str) -> str:
         return text
 
     # Split on structural separators (hyphens and underscores)
-    raw_segments = re.split(r"[-_]", text)
+    raw_segments = _SEPARATOR_RE.split(text)
 
     words: list[str] = []
     for segment in raw_segments:
