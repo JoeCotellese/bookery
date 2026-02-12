@@ -9,15 +9,15 @@
 - [x] Tests: unit (27), integration (5), e2e (10) — 42 total
 
 ## Phase 2: Metadata Matching (Open Library)
-- [ ] `MetadataProvider` protocol
-- [ ] `MetadataCandidate` dataclass (metadata + confidence + source)
-- [ ] Open Library provider: ISBN lookup
-- [ ] Open Library provider: title+author search fallback
-- [ ] Confidence scoring
-- [ ] Rate limiting / respectful API usage
-- [ ] Interactive review flow (accept/edit/skip per book)
-- [ ] Non-destructive write-back (copy file, then write metadata to copy)
-- [ ] Tests for provider, matching, and review flow
+- [x] `MetadataProvider` protocol
+- [x] `MetadataCandidate` dataclass (metadata + confidence + source)
+- [x] Open Library provider: ISBN lookup
+- [x] Open Library provider: title+author search fallback
+- [x] Confidence scoring
+- [x] Rate limiting / respectful API usage
+- [x] Interactive review flow (accept/edit/skip per book)
+- [x] Non-destructive write-back (copy file, then write metadata to copy)
+- [x] Tests for provider, matching, and review flow
 
 ## Phase 3: Database + Catalog
 - [ ] SQLite wrapper (thin, no ORM)

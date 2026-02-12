@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "CLI-first ebook library manager inspired by beets"
 readme = "README.md"
 authors = [
-    { name = "Joe Cotellese", email = "joe@cotellese.net" }
+    { name = "Joe Cotellese", email = "bookery@cotellese.me" }
 ]
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "click>=8.1",
