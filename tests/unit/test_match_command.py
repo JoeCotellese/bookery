@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from bookery.cli import cli
+from bookery.core.pipeline import WriteResult
 from bookery.metadata import BookMetadata
 from bookery.metadata.candidate import MetadataCandidate
 
@@ -125,7 +126,11 @@ class TestMatchCommand:
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
             mock_provider_fn.return_value = mock_provider
-            mock_apply.return_value = tmp_path / "fake_output.epub"
+            mock_apply.return_value = WriteResult(
+                path=tmp_path / "fake_output.epub",
+                success=True,
+                verified_fields=[],
+            )
 
             runner = CliRunner()
             result = runner.invoke(cli, ["match", str(sample_epub), "-q"])

@@ -109,10 +109,16 @@ def match(path: Path, output_dir: Path | None, quiet: bool) -> None:
             continue
 
         try:
-            result_path = apply_metadata_safely(epub_path, selected, output_dir)
-            console.print(f"  [green]Written:[/green] {result_path}")
-            matched += 1
-        except (OSError, EpubReadError) as exc:
+            write_result = apply_metadata_safely(epub_path, selected, output_dir)
+            if write_result.success:
+                console.print(f"  [green]Written:[/green] {write_result.path}")
+                matched += 1
+            else:
+                console.print(
+                    f"  [red]Verification failed:[/red] {write_result.error}"
+                )
+                errors += 1
+        except OSError as exc:
             console.print(f"  [red]Error writing:[/red] {exc}")
             errors += 1
 
