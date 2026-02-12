@@ -188,9 +188,7 @@ class TestDetectAuthorInTitle:
 
     def test_three_word_author_name(self) -> None:
         """Three-word author name is detected."""
-        title, author = _detect_author_in_title(
-            "Mary Higgins Clark Silent Night"
-        )
+        title, author = _detect_author_in_title("Mary Higgins Clark Silent Night")
         assert author == "Mary Higgins Clark"
         assert title == "Silent Night"
 

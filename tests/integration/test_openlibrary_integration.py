@@ -63,7 +63,6 @@ class TestIsbnPipeline:
         results = provider.search_by_isbn("9780156001311")
         assert results[0].confidence == 1.0
 
-
     def test_hyphenated_isbn_resolves_through_pipeline(self) -> None:
         """Hyphenated ISBN is cleaned and resolves to enriched candidate."""
         client = FakeHttpClient(
@@ -98,9 +97,7 @@ class TestSubtitleRetryPipeline:
         client = FakeHttpClient({})
         client.get = fake_get  # type: ignore[assignment]
         provider = OpenLibraryProvider(http_client=client)
-        results = provider.search_by_title_author(
-            "The Name of the Rose: A Novel", "Umberto Eco"
-        )
+        results = provider.search_by_title_author("The Name of the Rose: A Novel", "Umberto Eco")
 
         assert len(results) > 0
         assert results[0].metadata.title == "The Name of the Rose"

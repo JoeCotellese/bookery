@@ -21,10 +21,29 @@ _DIGIT_LETTER_RE = re.compile(r"(\d)([a-zA-Z])")
 _SEPARATOR_RE = re.compile(r"[-_]")
 
 # Common English stop words that appear in titles but not person names.
-_TITLE_STOP_WORDS = frozenset({
-    "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "by",
-    "with", "from", "is", "was", "are", "were", "be", "been",
-})
+_TITLE_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "of",
+        "and",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "by",
+        "with",
+        "from",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+    }
+)
 
 
 def _needs_normalization(text: str) -> bool:
@@ -191,9 +210,7 @@ def _parse_series_bracket(series_text: str) -> tuple[str, float | None]:
     return series_text.strip(), None
 
 
-def _detect_structural_pattern(
-    title: str, metadata: BookMetadata
-) -> _StructuralMatch | None:
+def _detect_structural_pattern(title: str, metadata: BookMetadata) -> _StructuralMatch | None:
     """Detect 'Author - Title', 'Author - [Series] - Title', or 'Title by Author'.
 
     Only activates when the metadata has no valid authors — prevents false
@@ -294,14 +311,13 @@ def normalize_metadata(metadata: BookMetadata) -> NormalizationResult:
                 authors = [detected_author]
 
     if not modified:
-        return NormalizationResult(
-            original=metadata, normalized=metadata, was_modified=False
-        )
+        return NormalizationResult(original=metadata, normalized=metadata, was_modified=False)
 
     normalized = replace(
-        metadata, title=title, authors=authors,
-        series=series, series_index=series_index,
+        metadata,
+        title=title,
+        authors=authors,
+        series=series,
+        series_index=series_index,
     )
-    return NormalizationResult(
-        original=metadata, normalized=normalized, was_modified=True
-    )
+    return NormalizationResult(original=metadata, normalized=normalized, was_modified=True)

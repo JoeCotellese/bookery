@@ -51,16 +51,12 @@ def mangled_epub(tmp_path: Path) -> Path:
 class TestMatchCliEndToEnd:
     """End-to-end tests for bookery match command."""
 
-    def test_quiet_match_writes_updated_epub(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_quiet_match_writes_updated_epub(self, sample_epub: Path, tmp_path: Path) -> None:
         """Quiet match writes a copy with updated metadata."""
         output_dir = tmp_path / "output"
         candidate = _make_candidate("Il Nome della Rosa", "Umberto Eco", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -84,9 +80,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("Changed", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = [candidate]
             mock_fn.return_value = mock_provider
@@ -110,9 +104,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("Found", "Author", 0.9)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = [candidate]
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -133,9 +125,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("Match", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -154,9 +144,7 @@ class TestMatchCliEndToEnd:
         """Match handles corrupt EPUB files without crashing."""
         output_dir = tmp_path / "output"
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_fn.return_value = MagicMock()
 
             runner = CliRunner()
@@ -168,16 +156,12 @@ class TestMatchCliEndToEnd:
         assert result.exit_code == 0
         assert "1 error" in result.output
 
-    def test_interactive_match_with_input(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_interactive_match_with_input(self, sample_epub: Path, tmp_path: Path) -> None:
         """Interactive match accepts user input to select a candidate."""
         output_dir = tmp_path / "output"
         candidate = _make_candidate("Selected Title", "Author", 0.85)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -194,16 +178,12 @@ class TestMatchCliEndToEnd:
         outputs = list(output_dir.glob("*.epub"))
         assert len(outputs) == 1
 
-    def test_match_normalizes_mangled_title(
-        self, mangled_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_match_normalizes_mangled_title(self, mangled_epub: Path, tmp_path: Path) -> None:
         """Provider receives normalized (not mangled) title for search."""
         output_dir = tmp_path / "output"
         candidate = _make_candidate("The Templar Legacy", "Steve Berry", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -230,9 +210,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("The Templar Legacy", "Steve Berry", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -249,18 +227,14 @@ class TestMatchCliEndToEnd:
         assert "Normalized title" in result.output
         assert "Detected author" in result.output
 
-    def test_interactive_view_detail_and_accept(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_interactive_view_detail_and_accept(self, sample_epub: Path, tmp_path: Path) -> None:
         """Interactive match: view detail then accept writes updated EPUB."""
         output_dir = tmp_path / "output"
         candidate = _make_candidate(
             "Il Nome della Rosa", "Umberto Eco", 0.85, isbn="9780151446476"
         )
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -279,9 +253,7 @@ class TestMatchCliEndToEnd:
         meta = read_epub_metadata(outputs[0])
         assert meta.title == "Il Nome della Rosa"
 
-    def test_interactive_url_lookup_and_accept(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_interactive_url_lookup_and_accept(self, sample_epub: Path, tmp_path: Path) -> None:
         """Interactive match: URL lookup then accept writes updated EPUB."""
         output_dir = tmp_path / "output"
 
@@ -290,9 +262,7 @@ class TestMatchCliEndToEnd:
             "The Templar Legacy", "Steve Berry", 1.0, isbn="9780345504500"
         )
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [search_candidate]
@@ -311,7 +281,6 @@ class TestMatchCliEndToEnd:
         assert len(outputs) == 1
         meta = read_epub_metadata(outputs[0])
         assert meta.title == "The Templar Legacy"
-
 
     def test_match_author_dash_title_epub(self, tmp_path: Path) -> None:
         """Match command parses 'Author - Title' format and finds candidates."""
@@ -335,9 +304,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("The Templar Legacy", "Steve Berry", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -399,9 +366,7 @@ class TestMatchCliEndToEnd:
         fake_client.get.side_effect = fake_get
         real_provider = OpenLibraryProvider(http_client=fake_client)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_fn.return_value = real_provider
 
             runner = CliRunner()
@@ -436,9 +401,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("The King's Deception", "Steve Berry", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -481,9 +444,7 @@ class TestMatchCliEndToEnd:
         output_dir = tmp_path / "output"
         candidate = _make_candidate("The King's Deception", "Steve Berry", 1.0)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = [candidate]
             mock_fn.return_value = mock_provider
@@ -501,9 +462,7 @@ class TestMatchCliEndToEnd:
 class TestBatchModeEndToEnd:
     """End-to-end tests for batch mode features."""
 
-    def test_resume_skips_already_output(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_resume_skips_already_output(self, sample_epub: Path, tmp_path: Path) -> None:
         """Resume mode skips files that already exist in output directory."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -511,9 +470,7 @@ class TestBatchModeEndToEnd:
 
         candidate = _make_candidate("Match", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = [candidate]
             mock_fn.return_value = mock_provider
@@ -522,17 +479,19 @@ class TestBatchModeEndToEnd:
             result = runner.invoke(
                 cli,
                 [
-                    "match", str(sample_epub), "-q",
-                    "--resume", "-o", str(output_dir),
+                    "match",
+                    str(sample_epub),
+                    "-q",
+                    "--resume",
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
         assert result.exit_code == 0
         assert "already processed" in result.output.lower()
 
-    def test_no_resume_reprocesses(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_no_resume_reprocesses(self, sample_epub: Path, tmp_path: Path) -> None:
         """--no-resume processes files even if output already exists."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -540,9 +499,7 @@ class TestBatchModeEndToEnd:
 
         candidate = _make_candidate("Reprocessed", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -552,8 +509,12 @@ class TestBatchModeEndToEnd:
             result = runner.invoke(
                 cli,
                 [
-                    "match", str(sample_epub), "-q",
-                    "--no-resume", "-o", str(output_dir),
+                    "match",
+                    str(sample_epub),
+                    "-q",
+                    "--no-resume",
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -565,17 +526,13 @@ class TestBatchModeEndToEnd:
         # One should have the _1 collision suffix
         assert any("_1" in p.stem for p in epubs)
 
-    def test_threshold_changes_quiet_behavior(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_threshold_changes_quiet_behavior(self, sample_epub: Path, tmp_path: Path) -> None:
         """Lower threshold accepts candidates that default would skip."""
         output_dir = tmp_path / "output"
         # Candidate at 0.65 — below default 0.8 threshold
         candidate = _make_candidate("Low Confidence Match", "Author", 0.65)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -586,8 +543,11 @@ class TestBatchModeEndToEnd:
             result_default = runner.invoke(
                 cli,
                 [
-                    "match", str(sample_epub), "-q",
-                    "-o", str(output_dir),
+                    "match",
+                    str(sample_epub),
+                    "-q",
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -595,9 +555,7 @@ class TestBatchModeEndToEnd:
 
         output_dir2 = tmp_path / "output2"
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -608,8 +566,13 @@ class TestBatchModeEndToEnd:
             result_low = runner.invoke(
                 cli,
                 [
-                    "match", str(sample_epub), "-q",
-                    "-t", "0.5", "-o", str(output_dir2),
+                    "match",
+                    str(sample_epub),
+                    "-q",
+                    "-t",
+                    "0.5",
+                    "-o",
+                    str(output_dir2),
                 ],
             )
 
@@ -627,9 +590,7 @@ class TestBatchModeEndToEnd:
 
         candidate = _make_candidate("Matched Title", "Author", 0.9)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -658,9 +619,7 @@ class TestBatchModeEndToEnd:
 
         candidate = _make_candidate("Matched Title", "Author", 0.9)
 
-        with patch(
-            "bookery.cli.commands.match_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]

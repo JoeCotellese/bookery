@@ -89,9 +89,7 @@ class TestSearchByIsbn:
 
     def test_isbn_lookup_network_error_returns_empty(self, caplog: Any) -> None:
         """Network errors during ISBN lookup return empty list and log warning."""
-        client = FakeHttpClient(
-            {"/isbn/": MetadataFetchError("connection refused")}
-        )
+        client = FakeHttpClient({"/isbn/": MetadataFetchError("connection refused")})
         provider = OpenLibraryProvider(http_client=client)
         with caplog.at_level(logging.WARNING):
             results = provider.search_by_isbn("9780156001311")
@@ -173,9 +171,7 @@ class TestSearchByTitleAuthor:
 
     def test_search_network_error_returns_empty(self, caplog: Any) -> None:
         """Network errors during search return empty list and log warning."""
-        client = FakeHttpClient(
-            {"/search.json": MetadataFetchError("timeout")}
-        )
+        client = FakeHttpClient({"/search.json": MetadataFetchError("timeout")})
         provider = OpenLibraryProvider(http_client=client)
         with caplog.at_level(logging.WARNING):
             results = provider.search_by_title_author("Test")
@@ -421,9 +417,7 @@ class TestLookupByUrl:
 
     def test_lookup_by_url_fetch_error_returns_none(self) -> None:
         """HTTP error during lookup returns None."""
-        client = FakeHttpClient(
-            {"/works/": MetadataFetchError("server error")}
-        )
+        client = FakeHttpClient({"/works/": MetadataFetchError("server error")})
         provider = OpenLibraryProvider(http_client=client)
         url = "https://openlibrary.org/works/OL456W/Title"
         assert provider.lookup_by_url(url) is None

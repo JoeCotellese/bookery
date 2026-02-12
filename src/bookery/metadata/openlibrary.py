@@ -96,9 +96,7 @@ class OpenLibraryProvider:
                 candidates = self._search_ol(stripped, author)
         return candidates
 
-    def _search_ol(
-        self, title: str, author: str | None = None
-    ) -> list[MetadataCandidate]:
+    def _search_ol(self, title: str, author: str | None = None) -> list[MetadataCandidate]:
         """Execute a single Open Library search query.
 
         Returns candidates sorted by confidence descending, with top results
@@ -195,9 +193,7 @@ class OpenLibraryProvider:
 
         return works_key, edition_key
 
-    def _lookup_by_edition(
-        self, works_key: str, edition_key: str
-    ) -> MetadataCandidate:
+    def _lookup_by_edition(self, works_key: str, edition_key: str) -> MetadataCandidate:
         """Fetch full metadata from edition + works + author endpoints."""
         edition_data = self._http.get(f"{_OL_BASE}{edition_key}.json")
         metadata = parse_isbn_response(edition_data)
@@ -238,9 +234,7 @@ class OpenLibraryProvider:
             source_id=works_key,
         )
 
-    def _enrich_descriptions(
-        self, candidates: list[MetadataCandidate]
-    ) -> None:
+    def _enrich_descriptions(self, candidates: list[MetadataCandidate]) -> None:
         """Fetch descriptions from the works endpoint for the top candidates.
 
         MUTATES candidates in place — sets metadata.description on enriched items.
@@ -282,9 +276,7 @@ class OpenLibraryProvider:
             metadata.description = description
         return metadata
 
-    def _enrich_authors(
-        self, metadata: BookMetadata, isbn_data: dict[str, Any]
-    ) -> BookMetadata:
+    def _enrich_authors(self, metadata: BookMetadata, isbn_data: dict[str, Any]) -> BookMetadata:
         """Fetch author names from the authors endpoint."""
         author_entries = isbn_data.get("authors", [])
         if not author_entries:
