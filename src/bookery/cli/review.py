@@ -16,6 +16,10 @@ class ReviewSession:
 
     Displays current metadata and a table of candidates, then prompts
     the user to select one, skip, or keep the original.
+
+    Supports batch shortcuts:
+    - [A] Accept remaining above threshold (sticky)
+    - [S] Skip remaining (sticky)
     """
 
     def __init__(
@@ -30,6 +34,8 @@ class ReviewSession:
         self._quiet = quiet
         self._threshold = threshold
         self._lookup_fn = lookup_fn
+        self._auto_above_threshold: bool = False
+        self._skip_remaining: bool = False
 
     def review(
         self, extracted: BookMetadata, candidates: list[MetadataCandidate]
@@ -41,6 +47,15 @@ class ReviewSession:
         """
         if not candidates:
             return None
+
+        # Skip-remaining mode: return None immediately
+        if self._skip_remaining:
+            return None
+
+        # Auto-accept mode: accept best if above threshold, else skip
+        if self._auto_above_threshold:
+            best = candidates[0]
+            return best.metadata if best.confidence >= self._threshold else None
 
         # Quiet mode: auto-accept best candidate if above threshold
         if self._quiet:
@@ -72,8 +87,8 @@ class ReviewSession:
                 str(i),
                 candidate.metadata.title,
                 candidate.metadata.author,
-                candidate.metadata.isbn or "—",
-                candidate.metadata.language or "—",
+                candidate.metadata.isbn or "\u2014",
+                candidate.metadata.language or "\u2014",
                 ol_id,
                 conf_pct,
                 candidate.source,
@@ -81,14 +96,24 @@ class ReviewSession:
 
         self._console.print(table)
 
-        # Prompt loop — supports direct selection and detail view
+        # Prompt loop — supports direct selection, detail view, and batch shortcuts
         prompt_parts = "[1-N] Accept  [v1-vN] View details"
         if self._lookup_fn is not None:
             prompt_parts += "  [u] URL lookup"
         prompt_parts += "  [s] Skip  [k] Keep original"
+        prompt_parts += "  [A] Accept remaining  [S] Skip remaining"
 
         while True:
             choice = click.prompt(prompt_parts, type=str, default="s")
+
+            # Batch shortcuts — case-sensitive (uppercase only)
+            if choice == "A":
+                self._auto_above_threshold = True
+                best = candidates[0]
+                return best.metadata if best.confidence >= self._threshold else None
+            if choice == "S":
+                self._skip_remaining = True
+                return None
 
             if choice.lower() == "s":
                 return None
@@ -134,7 +159,7 @@ class ReviewSession:
         """Render a side-by-side comparison of current vs candidate metadata."""
         detail = Table(title="Detail Comparison")
         detail.add_column("Field", style="bold")
-        detail.add_column("Current → Candidate")
+        detail.add_column("Current \u2192 Candidate")
 
         fields = [
             ("Title", extracted.title, candidate.metadata.title),
@@ -146,9 +171,9 @@ class ReviewSession:
         ]
 
         for label, current, proposed in fields:
-            cur = current or "—"
-            prop = proposed or "—"
-            detail.add_row(label, f"{cur} → {prop}")
+            cur = current or "\u2014"
+            prop = proposed or "\u2014"
+            detail.add_row(label, f"{cur} \u2192 {prop}")
 
         self._console.print(detail)
 

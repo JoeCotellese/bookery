@@ -4,7 +4,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from bookery.core.pipeline import WriteResult, apply_metadata_safely
+from bookery.core.pipeline import apply_metadata_safely
 from bookery.formats.epub import EpubReadError, read_epub_metadata
 from bookery.metadata import BookMetadata
 
