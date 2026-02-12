@@ -51,29 +51,34 @@ class TestCliInspect:
 class TestCliImport:
     """E2e tests for `bookery import`."""
 
-    def test_import_scans_directory(self, sample_epub: Path) -> None:
-        """Import command finds and displays EPUBs in a directory."""
+    def test_import_scans_directory(
+        self, sample_epub: Path, tmp_path: Path,
+    ) -> None:
+        """Import command finds and catalogs EPUBs in a directory."""
+        db_path = tmp_path / "test.db"
         runner = CliRunner()
-        result = runner.invoke(cli, ["import", str(sample_epub.parent)])
+        result = runner.invoke(
+            cli, ["import", str(sample_epub.parent), "--db", str(db_path)],
+        )
         assert result.exit_code == 0
-        assert "The Name of the Rose" in result.output
-        assert "1" in result.output  # At least 1 file found
+        assert "1 added" in result.output
 
     def test_import_shows_multiple_files(
-        self, sample_epub: Path, minimal_epub: Path
+        self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
     ) -> None:
-        """Import command shows all EPUBs found in directory."""
-        scan_dir = sample_epub.parent / "scan"
+        """Import command catalogs all EPUBs found in directory."""
+        scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         shutil.copy(sample_epub, scan_dir / "rose.epub")
         shutil.copy(minimal_epub, scan_dir / "minimal.epub")
 
+        db_path = tmp_path / "test.db"
         runner = CliRunner()
-        result = runner.invoke(cli, ["import", str(scan_dir)])
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--db", str(db_path)],
+        )
         assert result.exit_code == 0
-        assert "The Name of the Rose" in result.output
-        assert "Untitled Book" in result.output
-        assert "2" in result.output  # 2 files found
+        assert "2 added" in result.output
 
     def test_import_empty_directory(self, tmp_path: Path) -> None:
         """Import command reports when no EPUBs are found."""
@@ -83,19 +88,21 @@ class TestCliImport:
         assert "No EPUB files found" in result.output
 
     def test_import_handles_corrupt_files(
-        self, sample_epub: Path, corrupt_epub: Path
+        self, sample_epub: Path, corrupt_epub: Path, tmp_path: Path,
     ) -> None:
         """Import command handles corrupt files without crashing."""
-        scan_dir = sample_epub.parent / "scan"
+        scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         shutil.copy(sample_epub, scan_dir / "rose.epub")
         shutil.copy(corrupt_epub, scan_dir / "bad.epub")
 
+        db_path = tmp_path / "test.db"
         runner = CliRunner()
-        result = runner.invoke(cli, ["import", str(scan_dir)])
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--db", str(db_path)],
+        )
         assert result.exit_code == 0
         assert "could not be read" in result.output
-        assert "The Name of the Rose" in result.output
 
 
 class TestCliVersion:
