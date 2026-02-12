@@ -120,11 +120,9 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed checklists.
 
 ## Contributing
 
-Bookery is open to contributions. If you're interested:
+Bookery is AI-friendly and developed with the help of [Claude Code](https://docs.anthropic.com/en/docs/claude-code). AI-assisted contributions are welcome alongside traditional ones.
 
-1. Check the [roadmap](docs/roadmap.md) for what's planned
-2. Open an issue to discuss before starting work
-3. Fork, branch, and submit a PR
+See [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards, testing requirements, and how to get started.
 
 ## License
 
