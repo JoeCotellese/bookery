@@ -1,0 +1,49 @@
+[project]
+name = "bookery"
+version = "0.1.0"
+description = "CLI-first ebook library manager inspired by beets"
+readme = "README.md"
+authors = [
+    { name = "Joe Cotellese", email = "joe@cotellese.net" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1",
+    "ebooklib>=0.18",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+bookery = "bookery.cli:cli"
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
