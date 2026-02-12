@@ -313,6 +313,191 @@ class TestMatchCliEndToEnd:
         assert meta.title == "The Templar Legacy"
 
 
+    def test_match_author_dash_title_epub(self, tmp_path: Path) -> None:
+        """Match command parses 'Author - Title' format and finds candidates."""
+        book = epub.EpubBook()
+        book.set_identifier("author-dash-title-test")
+        book.set_title("Steve Berry - The Templar Legacy")
+        book.set_language("en")
+        book.add_author("Unknown")
+
+        chapter = epub.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>Content.</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [epub.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = ["nav", chapter]
+
+        epub_path = tmp_path / "author_dash_title.epub"
+        epub.write_epub(str(epub_path), book)
+
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("The Templar Legacy", "Steve Berry", 0.95)
+
+        with patch(
+            "bookery.cli.commands.match_cmd._create_provider"
+        ) as mock_fn:
+            mock_provider = MagicMock()
+            mock_provider.search_by_isbn.return_value = []
+            mock_provider.search_by_title_author.return_value = [candidate]
+            mock_fn.return_value = mock_provider
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["match", str(epub_path), "-q", "-o", str(output_dir)],
+            )
+
+        assert result.exit_code == 0
+        assert "1 matched" in result.output
+
+        # Verify provider was called with clean title and detected author
+        call_args = mock_provider.search_by_title_author.call_args
+        assert call_args[0][0] == "The Templar Legacy"
+        assert call_args[0][1] == "Steve Berry"
+
+    def test_match_epub_with_subtitle(self, tmp_path: Path) -> None:
+        """Match finds candidates for EPUB with subtitle in title via retry."""
+        from typing import Any
+
+        from bookery.metadata.openlibrary import OpenLibraryProvider
+        from tests.fixtures.openlibrary_responses import (
+            SEARCH_RESPONSE,
+            SEARCH_RESPONSE_EMPTY,
+        )
+
+        book = epub.EpubBook()
+        book.set_identifier("subtitle-test")
+        book.set_title("The King's Deception: A Novel")
+        book.set_language("en")
+        book.add_author("Steve Berry")
+
+        chapter = epub.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>Content.</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [epub.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = ["nav", chapter]
+
+        epub_path = tmp_path / "subtitle_title.epub"
+        epub.write_epub(str(epub_path), book)
+
+        output_dir = tmp_path / "output"
+
+        # Use a real provider with a fake HTTP client that returns empty
+        # for subtitle search and results for stripped title
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url and params:
+                if ":" in params.get("title", ""):
+                    return SEARCH_RESPONSE_EMPTY
+                return SEARCH_RESPONSE
+            return {}
+
+        fake_client = MagicMock()
+        fake_client.get.side_effect = fake_get
+        real_provider = OpenLibraryProvider(http_client=fake_client)
+
+        with patch(
+            "bookery.cli.commands.match_cmd._create_provider"
+        ) as mock_fn:
+            mock_fn.return_value = real_provider
+
+            runner = CliRunner()
+            # Low threshold since fixture data titles won't exactly match
+            result = runner.invoke(
+                cli,
+                ["match", str(epub_path), "-q", "-t", "0.1", "-o", str(output_dir)],
+            )
+
+        assert result.exit_code == 0
+        assert "1 matched" in result.output
+
+    def test_match_unknown_author_epub(self, tmp_path: Path) -> None:
+        """Match command finds candidates for EPUB with 'Unknown' author."""
+        book = epub.EpubBook()
+        book.set_identifier("unknown-author-test")
+        book.set_title("The King's Deception")
+        book.set_language("en")
+        book.add_author("Unknown")
+
+        chapter = epub.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>Content.</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [epub.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = ["nav", chapter]
+
+        epub_path = tmp_path / "unknown_author.epub"
+        epub.write_epub(str(epub_path), book)
+
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("The King's Deception", "Steve Berry", 0.95)
+
+        with patch(
+            "bookery.cli.commands.match_cmd._create_provider"
+        ) as mock_fn:
+            mock_provider = MagicMock()
+            mock_provider.search_by_isbn.return_value = []
+            mock_provider.search_by_title_author.return_value = [candidate]
+            mock_fn.return_value = mock_provider
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["match", str(epub_path), "-q", "-o", str(output_dir)],
+            )
+
+        assert result.exit_code == 0
+        assert "1 matched" in result.output
+
+        # Verify provider was NOT called with "Unknown" as author
+        call_args = mock_provider.search_by_title_author.call_args
+        author_arg = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("author")
+        assert author_arg is None
+
+    def test_match_hyphenated_isbn_epub(self, tmp_path: Path) -> None:
+        """Match command resolves an EPUB with a hyphenated ISBN."""
+        book = epub.EpubBook()
+        book.set_identifier("isbn:978-0-345-52971-8")
+        book.set_title("The King's Deception")
+        book.set_language("en")
+        book.add_author("Steve Berry")
+        book.add_metadata("DC", "identifier", "978-0-345-52971-8")
+
+        chapter = epub.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>Content.</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [epub.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = ["nav", chapter]
+
+        epub_path = tmp_path / "hyphenated_isbn.epub"
+        epub.write_epub(str(epub_path), book)
+
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("The King's Deception", "Steve Berry", 1.0)
+
+        with patch(
+            "bookery.cli.commands.match_cmd._create_provider"
+        ) as mock_fn:
+            mock_provider = MagicMock()
+            mock_provider.search_by_isbn.return_value = [candidate]
+            mock_fn.return_value = mock_provider
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["match", str(epub_path), "-q", "-o", str(output_dir)],
+            )
+
+        assert result.exit_code == 0
+        assert "1 matched" in result.output
+
+
 class TestBatchModeEndToEnd:
     """End-to-end tests for batch mode features."""
 

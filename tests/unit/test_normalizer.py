@@ -195,6 +195,87 @@ class TestDetectAuthorInTitle:
         assert title == "Silent Night"
 
 
+class TestDetectStructuralPattern:
+    """Tests for _detect_structural_pattern."""
+
+    def test_author_dash_title(self) -> None:
+        """'Steve Berry - The Templar Legacy' is parsed correctly."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(title="Steve Berry - The Templar Legacy", authors=["Unknown"])
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is not None
+        assert result.author == "Steve Berry"
+        assert result.title == "The Templar Legacy"
+        assert result.series is None
+
+    def test_author_dash_series_dash_title(self) -> None:
+        """'Steve Berry - [Cotton Malone 07] - The King's Deception' is parsed."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(
+            title="Steve Berry - [Cotton Malone 07] - The King's Deception",
+            authors=["Unknown"],
+        )
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is not None
+        assert result.author == "Steve Berry"
+        assert result.title == "The King's Deception"
+        assert result.series == "Cotton Malone"
+        assert result.series_index == 7.0
+
+    def test_title_by_author(self) -> None:
+        """'The Templar Legacy by Steve Berry' is parsed correctly."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(title="The Templar Legacy by Steve Berry")
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is not None
+        assert result.author == "Steve Berry"
+        assert result.title == "The Templar Legacy"
+
+    def test_no_match_with_valid_author(self) -> None:
+        """Structural pattern is not detected when author is already valid."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(
+            title="Steve Berry - The Templar Legacy",
+            authors=["Steve Berry"],
+        )
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is None
+
+    def test_no_match_non_author_pre_dash(self) -> None:
+        """Non-name text before dash is not matched as author."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        # "The Classics" contains stop word "The" → fails person name check
+        meta = BookMetadata(title="The Classics - Best of 2024")
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is None
+
+    def test_stand_by_me_not_matched(self) -> None:
+        """'Stand by Me' is not parsed as 'Title by Author'."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(title="Stand by Me")
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is None
+
+    def test_author_dash_series_no_index(self) -> None:
+        """Series bracket without a number still extracts series name."""
+        from bookery.metadata.normalizer import _detect_structural_pattern
+
+        meta = BookMetadata(
+            title="Steve Berry - [Cotton Malone] - The Paris Vendetta",
+            authors=["Unknown"],
+        )
+        result = _detect_structural_pattern(meta.title, meta)
+        assert result is not None
+        assert result.series == "Cotton Malone"
+        assert result.series_index is None
+
+
 class TestNormalizeMetadata:
     """Tests for normalize_metadata full pipeline."""
 
@@ -264,6 +345,78 @@ class TestNormalizeMetadata:
         assert meta.title == "SteveBerry-TheTemplarLegacy"
         assert meta.authors == []
         assert result.original is meta
+
+    def test_unknown_author_stripped_with_clean_title(self) -> None:
+        """'Unknown' author is stripped even when the title needs no normalization."""
+        meta = BookMetadata(
+            title="The King's Deception",
+            authors=["Unknown"],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == []
+
+    def test_various_author_stripped_with_clean_title(self) -> None:
+        """'Various' author is stripped even when the title needs no normalization."""
+        meta = BookMetadata(
+            title="Short Stories Collection",
+            authors=["Various"],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == []
+
+    def test_empty_string_author_stripped_with_clean_title(self) -> None:
+        """Empty string author is stripped even when the title needs no normalization."""
+        meta = BookMetadata(
+            title="The Paris Vendetta",
+            authors=[""],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == []
+
+    def test_valid_author_preserved_with_clean_title(self) -> None:
+        """Valid author is kept when title is clean."""
+        meta = BookMetadata(
+            title="The King's Deception",
+            authors=["Steve Berry"],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is False
+        assert result.normalized.authors == ["Steve Berry"]
+
+    def test_structural_author_dash_title(self) -> None:
+        """'Author - Title' pattern extracts author and title."""
+        meta = BookMetadata(
+            title="Steve Berry - The Templar Legacy",
+            authors=["Unknown"],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == ["Steve Berry"]
+        assert result.normalized.title == "The Templar Legacy"
+
+    def test_structural_author_dash_series_dash_title(self) -> None:
+        """'Author - [Series NN] - Title' extracts all fields."""
+        meta = BookMetadata(
+            title="Steve Berry - [Cotton Malone 07] - The King's Deception",
+            authors=["Unknown"],
+        )
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == ["Steve Berry"]
+        assert result.normalized.title == "The King's Deception"
+        assert result.normalized.series == "Cotton Malone"
+        assert result.normalized.series_index == 7.0
+
+    def test_structural_title_by_author(self) -> None:
+        """'Title by Author' pattern extracts author and title."""
+        meta = BookMetadata(title="The Templar Legacy by Steve Berry")
+        result = normalize_metadata(meta)
+        assert result.was_modified is True
+        assert result.normalized.authors == ["Steve Berry"]
+        assert result.normalized.title == "The Templar Legacy"
 
     def test_result_dataclass_fields(self) -> None:
         """NormalizationResult has the expected fields."""

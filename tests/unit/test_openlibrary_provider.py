@@ -121,6 +121,36 @@ class TestSearchByIsbn:
         assert len(results) == 1
         assert results[0].metadata.authors == []
 
+    def test_isbn_lookup_strips_hyphens(self) -> None:
+        """Hyphenated ISBN is cleaned before sending to API."""
+        client = FakeHttpClient(
+            {
+                "/isbn/9780345529718": ISBN_RESPONSE,
+                "/works/": WORKS_RESPONSE_STR_DESCRIPTION,
+                "/authors/": AUTHOR_RESPONSE,
+            }
+        )
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_isbn("978-0-345-52971-8")
+        assert len(results) == 1
+        # Verify the URL sent to the client had the clean ISBN
+        assert any("9780345529718" in url for url in client.request_log)
+        assert not any("978-0-345-52971-8" in url for url in client.request_log)
+
+    def test_isbn_lookup_strips_spaces(self) -> None:
+        """ISBN with spaces is cleaned before sending to API."""
+        client = FakeHttpClient(
+            {
+                "/isbn/9780345529718": ISBN_RESPONSE,
+                "/works/": WORKS_RESPONSE_STR_DESCRIPTION,
+                "/authors/": AUTHOR_RESPONSE,
+            }
+        )
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_isbn("978 0 345 52971 8")
+        assert len(results) == 1
+        assert any("9780345529718" in url for url in client.request_log)
+
 
 class TestSearchByTitleAuthor:
     """Tests for title/author search."""
@@ -225,6 +255,106 @@ class TestSearchByTitleAuthor:
 
         # 4th candidate should NOT have been enriched
         assert results[3].metadata.description is None
+
+
+class TestSubtitleRetry:
+    """Tests for subtitle-stripping retry logic in title/author search."""
+
+    def test_retry_fires_on_empty_results_with_subtitle(self) -> None:
+        """When initial search returns empty and title has subtitle, retry without it."""
+        call_log: list[dict[str, str] | None] = []
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/search.json" in url:
+                call_log.append(params)
+                # First call (with subtitle) returns empty, second returns results
+                if params and ":" in params.get("title", ""):
+                    return SEARCH_RESPONSE_EMPTY
+                return SEARCH_RESPONSE
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("The King's Deception: A Novel")
+
+        assert len(results) == 2
+        assert len(call_log) == 2
+        assert call_log[0]["title"] == "The King's Deception: A Novel"
+        assert call_log[1]["title"] == "The King's Deception"
+
+    def test_no_retry_when_results_found(self) -> None:
+        """No retry when initial search returns results."""
+        call_count = 0
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            nonlocal call_count
+            if "/search.json" in url:
+                call_count += 1
+                return SEARCH_RESPONSE
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("The Name of the Rose: including Postscript")
+
+        assert len(results) > 0
+        assert call_count == 1
+
+    def test_no_retry_without_subtitle_pattern(self) -> None:
+        """No retry when title doesn't have a subtitle pattern."""
+        call_count = 0
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            nonlocal call_count
+            if "/search.json" in url:
+                call_count += 1
+                return SEARCH_RESPONSE_EMPTY
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+        results = provider.search_by_title_author("Nonexistent Book")
+
+        assert results == []
+        assert call_count == 1
+
+
+class TestStripSubtitle:
+    """Tests for _strip_subtitle helper."""
+
+    def test_strips_colon_subtitle(self) -> None:
+        """Strips 'A Novel' subtitle after colon."""
+        from bookery.metadata.openlibrary import _strip_subtitle
+
+        assert _strip_subtitle("The King's Deception: A Novel") == "The King's Deception"
+
+    def test_strips_long_subtitle(self) -> None:
+        """Strips longer subtitle after colon."""
+        from bookery.metadata.openlibrary import _strip_subtitle
+
+        assert _strip_subtitle("The Paris Vendetta: A Cotton Malone Novel") == "The Paris Vendetta"
+
+    def test_returns_none_without_colon(self) -> None:
+        """Returns None when no subtitle pattern present."""
+        from bookery.metadata.openlibrary import _strip_subtitle
+
+        assert _strip_subtitle("The Templar Legacy") is None
+
+    def test_returns_none_for_colon_without_space(self) -> None:
+        """Colon not followed by space is not a subtitle separator."""
+        from bookery.metadata.openlibrary import _strip_subtitle
+
+        assert _strip_subtitle("Title:NoSpace") is None
+
+    def test_returns_none_when_result_same_as_input(self) -> None:
+        """Returns None if stripping produces the same string."""
+        from bookery.metadata.openlibrary import _strip_subtitle
+
+        # Edge case: only whitespace after would result in same after strip
+        assert _strip_subtitle("Just a title") is None
 
 
 class TestLookupByUrl:

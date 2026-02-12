@@ -24,6 +24,21 @@ _OL_BASE = "https://openlibrary.org"
 _SEARCH_LIMIT = 5
 _ENRICH_DESCRIPTION_LIMIT = 3
 
+# Matches a colon followed by a space and remaining text (subtitle pattern).
+_SUBTITLE_RE = re.compile(r"\s*:\s+.+$")
+
+
+def _strip_subtitle(title: str) -> str | None:
+    """Remove subtitle from a title string (text after ": ").
+
+    Returns the stripped title, or None if no subtitle was found or
+    stripping would produce an identical or empty string.
+    """
+    stripped = _SUBTITLE_RE.sub("", title).strip()
+    if stripped and stripped != title.strip():
+        return stripped
+    return None
+
 
 class OpenLibraryProvider:
     """Metadata provider backed by the Open Library API.
@@ -45,8 +60,9 @@ class OpenLibraryProvider:
         Follows up with works and author endpoints to enrich metadata.
         Returns a single-element list on success, empty list on failure.
         """
+        clean_isbn = re.sub(r"[\s-]", "", isbn)
         try:
-            data = self._http.get(f"{_OL_BASE}/isbn/{isbn}.json")
+            data = self._http.get(f"{_OL_BASE}/isbn/{clean_isbn}.json")
         except MetadataFetchError as exc:
             logger.warning("ISBN lookup failed for %s: %s", isbn, exc)
             return []
@@ -69,7 +85,24 @@ class OpenLibraryProvider:
     ) -> list[MetadataCandidate]:
         """Search Open Library by title and optional author.
 
+        If the initial search returns no results and the title contains a
+        subtitle (text after ": "), retries with the subtitle stripped.
         Returns candidates sorted by confidence descending.
+        """
+        candidates = self._search_ol(title, author)
+        if not candidates:
+            stripped = _strip_subtitle(title)
+            if stripped:
+                candidates = self._search_ol(stripped, author)
+        return candidates
+
+    def _search_ol(
+        self, title: str, author: str | None = None
+    ) -> list[MetadataCandidate]:
+        """Execute a single Open Library search query.
+
+        Returns candidates sorted by confidence descending, with top results
+        enriched with descriptions from the works endpoint.
         """
         params: dict[str, str] = {"title": title, "limit": str(_SEARCH_LIMIT)}
         if author:

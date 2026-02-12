@@ -92,3 +92,62 @@ class TestNormalizerPipeline:
         assert params is not None
         # The title query should contain spaces, not CamelCase
         assert "TheTemplarLegacy" not in params.get("title", "")
+
+    def test_structural_pattern_produces_clean_query(self) -> None:
+        """'Author - Title' pattern produces clean title and author in provider query."""
+        meta = BookMetadata(
+            title="Steve Berry - The Templar Legacy",
+            authors=["Unknown"],
+        )
+        result = normalize_metadata(meta)
+
+        client = FakeHttpClient({"/search.json": SEARCH_RESPONSE})
+        provider = OpenLibraryProvider(http_client=client)
+        provider.search_by_title_author(
+            result.normalized.title,
+            result.normalized.author or None,
+        )
+
+        assert len(client.requests) > 0
+        _url, params = client.requests[0]
+        assert params is not None
+        assert params["title"] == "The Templar Legacy"
+        assert params["author"] == "Steve Berry"
+
+    def test_title_by_author_produces_clean_query(self) -> None:
+        """'Title by Author' pattern produces clean title and author in provider query."""
+        meta = BookMetadata(title="The Paris Vendetta by Steve Berry")
+        result = normalize_metadata(meta)
+
+        client = FakeHttpClient({"/search.json": SEARCH_RESPONSE})
+        provider = OpenLibraryProvider(http_client=client)
+        provider.search_by_title_author(
+            result.normalized.title,
+            result.normalized.author or None,
+        )
+
+        assert len(client.requests) > 0
+        _url, params = client.requests[0]
+        assert params is not None
+        assert params["title"] == "The Paris Vendetta"
+        assert params["author"] == "Steve Berry"
+
+    def test_unknown_author_excluded_from_provider_query(self) -> None:
+        """Provider params don't contain 'author' key for unknown-author books."""
+        meta = BookMetadata(
+            title="The King's Deception",
+            authors=["Unknown"],
+        )
+        result = normalize_metadata(meta)
+
+        client = FakeHttpClient({"/search.json": SEARCH_RESPONSE})
+        provider = OpenLibraryProvider(http_client=client)
+        provider.search_by_title_author(
+            result.normalized.title,
+            result.normalized.author or None,
+        )
+
+        assert len(client.requests) > 0
+        _url, params = client.requests[0]
+        assert params is not None
+        assert "author" not in params
