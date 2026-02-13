@@ -12,7 +12,7 @@ from bookery.core.verifier import verify_library
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 
-console = Console()
+console = Console()  # TODO: move Console() inside command for testability
 
 
 @click.command("verify")
@@ -25,6 +25,7 @@ console = Console()
 )
 def verify(db_path: Path | None, check_hash: bool) -> None:
     """Verify library integrity: check for missing or changed files."""
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 

@@ -64,6 +64,7 @@ def import_books(
     """
     result = ImportResult()
 
+    # TODO: add progress counters [i/N] for batch import feedback
     for epub_path in paths:
         try:
             file_hash = compute_file_hash(epub_path)

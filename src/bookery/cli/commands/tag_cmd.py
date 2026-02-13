@@ -11,7 +11,7 @@ from bookery.cli.options import db_option
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 
-console = Console()
+console = Console()  # TODO: move Console() inside command for testability
 
 
 @click.group("tag")
@@ -25,6 +25,7 @@ def tag() -> None:
 @db_option
 def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
     """Add a tag to a book."""
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
@@ -51,6 +52,7 @@ def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
 @db_option
 def tag_rm(book_id: int, tag_name: str, db_path: Path | None) -> None:
     """Remove a tag from a book."""
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
@@ -69,6 +71,7 @@ def tag_rm(book_id: int, tag_name: str, db_path: Path | None) -> None:
 @db_option
 def tag_ls(db_path: Path | None) -> None:
     """List all tags with book counts."""
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 

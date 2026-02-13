@@ -11,7 +11,7 @@ from bookery.cli.options import db_option
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 
-console = Console()
+console = Console()  # TODO: move Console() inside command for testability
 
 
 @click.command("info")
@@ -19,6 +19,7 @@ console = Console()
 @db_option
 def info(book_id: int, db_path: Path | None) -> None:
     """Show detailed metadata for a book by ID."""
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 

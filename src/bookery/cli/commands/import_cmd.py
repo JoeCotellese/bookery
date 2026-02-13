@@ -12,7 +12,7 @@ from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 from bookery.metadata.types import BookMetadata
 
-console = Console()
+console = Console()  # TODO: move Console() inside command for testability
 
 
 def _find_epubs(directory: Path) -> list[Path]:
@@ -136,6 +136,7 @@ def import_command(
 
     console.print(f"Found [bold]{len(epub_files)}[/bold] EPUB file(s)\n")
 
+    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
