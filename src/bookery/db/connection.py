@@ -4,7 +4,7 @@
 import sqlite3
 from pathlib import Path
 
-from bookery.db.schema import SCHEMA_V1
+from bookery.db.schema import MIGRATIONS, SCHEMA_V1
 
 DEFAULT_DB_PATH = Path.home() / ".bookery" / "library.db"
 
@@ -24,11 +24,21 @@ def _apply_schema(conn: sqlite3.Connection) -> None:
 
 def _get_schema_version(conn: sqlite3.Connection) -> int:
     """Read the current schema version from the database."""
-    cursor = conn.execute(
-        "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
-    )
+    cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
     row = cursor.fetchone()
     return row[0] if row else 0
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """Apply pending schema migrations sequentially.
+
+    Reads the current schema version and applies any migrations with a higher
+    version number. No-op if the database is already at the latest version.
+    """
+    current = _get_schema_version(conn)
+    for version, sql in MIGRATIONS:
+        if version > current:
+            conn.executescript(sql)
 
 
 def open_library(path: Path | None = None) -> sqlite3.Connection:
@@ -54,5 +64,7 @@ def open_library(path: Path | None = None) -> sqlite3.Connection:
 
     if not _schema_exists(conn):
         _apply_schema(conn)
+
+    _apply_migrations(conn)
 
     return conn

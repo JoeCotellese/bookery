@@ -60,3 +60,22 @@ CREATE TABLE schema_version (
 
 INSERT INTO schema_version (version) VALUES (1);
 """
+
+SCHEMA_V2 = """
+CREATE TABLE tags (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE INDEX idx_tags_name ON tags(name);
+
+CREATE TABLE book_tags (
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (book_id, tag_id)
+);
+CREATE INDEX idx_book_tags_tag_id ON book_tags(tag_id);
+
+INSERT INTO schema_version (version) VALUES (2);
+"""
+
+MIGRATIONS = [(2, SCHEMA_V2)]

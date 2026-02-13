@@ -32,19 +32,21 @@ class TestDatabaseLifecycle:
         assert row["authors"] == '["Umberto Eco"]'
 
     def test_schema_version_persists(self, tmp_path: Path) -> None:
-        """Schema version is written once and persists across reopens."""
+        """Schema version rows are written once and not duplicated on reopen."""
         db_path = tmp_path / "version.db"
 
         conn = open_library(db_path)
+        cursor = conn.execute("SELECT COUNT(*) FROM schema_version")
+        count_first = cursor.fetchone()[0]
         conn.close()
 
         conn2 = open_library(db_path)
         cursor = conn2.execute("SELECT COUNT(*) FROM schema_version")
-        count = cursor.fetchone()[0]
+        count_second = cursor.fetchone()[0]
         conn2.close()
 
-        # Should still be 1 — not re-inserted on reopen
-        assert count == 1
+        # Count should not grow on reopen — migrations are idempotent
+        assert count_first == count_second
 
     def test_fts_sync_on_insert(self, tmp_path: Path) -> None:
         """FTS5 table is updated when a row is inserted into books."""

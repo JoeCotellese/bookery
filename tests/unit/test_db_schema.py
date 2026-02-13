@@ -39,10 +39,22 @@ class TestOpenLibrary:
         conn.close()
 
         expected = {
-            "id", "title", "authors", "author_sort", "language",
-            "publisher", "isbn", "description", "series", "series_index",
-            "identifiers", "source_path", "output_path", "file_hash",
-            "date_added", "date_modified",
+            "id",
+            "title",
+            "authors",
+            "author_sort",
+            "language",
+            "publisher",
+            "isbn",
+            "description",
+            "series",
+            "series_index",
+            "identifiers",
+            "source_path",
+            "output_path",
+            "file_hash",
+            "date_added",
+            "date_modified",
         }
         assert expected == columns
 
@@ -56,13 +68,13 @@ class TestOpenLibrary:
         conn.close()
 
     def test_creates_schema_version_table(self, db_path: Path) -> None:
-        """schema_version table exists with version 1."""
+        """schema_version table exists with latest version after migrations."""
         conn = open_library(db_path)
         cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 1
+        assert row[0] == 2
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""
