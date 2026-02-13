@@ -31,3 +31,21 @@ class BookEntry:
         """Check if this book has a given format. Normalizes dot prefix and case."""
         normalized = ext.lower() if ext.startswith(".") else f".{ext.lower()}"
         return normalized in self.formats
+
+
+@dataclass
+class ScanResult:
+    """Aggregated results from scanning a directory tree for ebooks."""
+
+    books: list[BookEntry]
+    format_counts: dict[str, int]
+    scan_root: Path
+
+    @property
+    def total_books(self) -> int:
+        """Total number of book directories found."""
+        return len(self.books)
+
+    def missing_format(self, ext: str) -> list[BookEntry]:
+        """Return books that do not have the given format."""
+        return [book for book in self.books if not book.has_format(ext)]

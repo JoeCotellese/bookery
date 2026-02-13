@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from bookery.core.scanner import EBOOK_EXTENSIONS, BookEntry
+from bookery.core.scanner import EBOOK_EXTENSIONS, BookEntry, ScanResult
 
 
 class TestEbookExtensions:
@@ -88,3 +88,66 @@ class TestBookEntry:
         assert entry.has_format("EPUB") is True
         assert entry.has_format(".EPUB") is True
         assert entry.has_format("Epub") is True
+
+
+class TestScanResult:
+    """ScanResult should aggregate BookEntry results with computed properties."""
+
+    def _make_entry(self, formats: set[str], title: str = "Book") -> BookEntry:
+        return BookEntry(
+            directory=Path(f"/books/{title}"),
+            author="Author",
+            title=title,
+            formats=formats,
+        )
+
+    def test_total_books(self):
+        result = ScanResult(
+            books=[self._make_entry({".epub"}), self._make_entry({".mobi"})],
+            format_counts={".epub": 1, ".mobi": 1},
+            scan_root=Path("/books"),
+        )
+        assert result.total_books == 2
+
+    def test_total_books_empty(self):
+        result = ScanResult(
+            books=[],
+            format_counts={},
+            scan_root=Path("/books"),
+        )
+        assert result.total_books == 0
+
+    def test_missing_format_filters_correctly(self):
+        epub_book = self._make_entry({".epub"}, title="Has EPUB")
+        mobi_book = self._make_entry({".mobi"}, title="Only MOBI")
+        both_book = self._make_entry({".epub", ".mobi"}, title="Has Both")
+
+        result = ScanResult(
+            books=[epub_book, mobi_book, both_book],
+            format_counts={".epub": 2, ".mobi": 2},
+            scan_root=Path("/books"),
+        )
+
+        missing = result.missing_format(".epub")
+        assert len(missing) == 1
+        assert missing[0].title == "Only MOBI"
+
+    def test_missing_format_none_missing(self):
+        result = ScanResult(
+            books=[self._make_entry({".epub"})],
+            format_counts={".epub": 1},
+            scan_root=Path("/books"),
+        )
+        assert result.missing_format(".epub") == []
+
+    def test_missing_format_all_missing(self):
+        result = ScanResult(
+            books=[
+                self._make_entry({".mobi"}, title="A"),
+                self._make_entry({".pdf"}, title="B"),
+            ],
+            format_counts={".mobi": 1, ".pdf": 1},
+            scan_root=Path("/books"),
+        )
+        missing = result.missing_format(".epub")
+        assert len(missing) == 2
