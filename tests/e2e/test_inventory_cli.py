@@ -105,3 +105,70 @@ class TestInventoryCliJsonOutput:
         assert data["total_books"] == 0
         assert data["format_counts"] == {}
         assert data["missing"]["count"] == 0
+
+
+class TestInventoryCliDbCrossRef:
+    """E2E tests for inventory --db cross-reference."""
+
+    def _import_epub(self, runner, epub_path: Path, db_path: Path) -> None:
+        """Import an EPUB into the catalog via CLI."""
+        result = runner.invoke(
+            cli, ["import", str(epub_path.parent), "--db", str(db_path)]
+        )
+        assert result.exit_code == 0
+
+    def test_db_shows_catalog_status_rich(
+        self, calibre_tree: Path, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """--db with Rich output shows catalog status section."""
+        db_path = tmp_path / "inventory.db"
+        runner = CliRunner()
+
+        # Import the sample epub so the catalog has one entry
+        self._import_epub(runner, sample_epub, db_path)
+
+        result = runner.invoke(
+            cli,
+            ["inventory", str(calibre_tree), "--db", str(db_path)],
+        )
+        assert result.exit_code == 0
+        assert "Catalog Status" in result.output
+        assert "In catalog" in result.output
+        assert "Not in catalog" in result.output
+
+    def test_db_json_includes_cross_reference(
+        self, calibre_tree: Path, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """--db with --json includes cross-reference counts."""
+        db_path = tmp_path / "inventory.db"
+        runner = CliRunner()
+
+        self._import_epub(runner, sample_epub, db_path)
+
+        result = runner.invoke(
+            cli,
+            ["inventory", str(calibre_tree), "--db", str(db_path), "--json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        xref = data["db_cross_reference"]
+        assert xref is not None
+        assert "in_catalog" in xref
+        assert "not_in_catalog" in xref
+
+    def test_db_empty_catalog_all_not_in_catalog(
+        self, calibre_tree: Path, tmp_path: Path
+    ) -> None:
+        """Empty catalog → all scanned books are not in catalog."""
+        db_path = tmp_path / "empty.db"
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            ["inventory", str(calibre_tree), "--db", str(db_path), "--json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        xref = data["db_cross_reference"]
+        assert xref["in_catalog"] == 0
+        assert xref["not_in_catalog"] == 3

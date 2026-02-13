@@ -5,12 +5,7 @@ from pathlib import Path
 
 from ebooklib import epub
 
-from bookery.core.scanner import (
-    BookEntry,
-    DbCrossReference,
-    cross_reference_db,
-    scan_directory,
-)
+from bookery.core.scanner import cross_reference_db, scan_directory
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 

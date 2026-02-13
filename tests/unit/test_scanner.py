@@ -3,8 +3,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from bookery.core.scanner import (
     EBOOK_EXTENSIONS,
     BookEntry,
@@ -19,7 +17,7 @@ class TestEbookExtensions:
 
     def test_contains_all_expected_formats(self):
         expected = {".epub", ".mobi", ".azw3", ".azw", ".pdf", ".txt", ".cbz", ".cbr"}
-        assert EBOOK_EXTENSIONS == expected
+        assert expected == EBOOK_EXTENSIONS
 
     def test_is_frozenset(self):
         assert isinstance(EBOOK_EXTENSIONS, frozenset)

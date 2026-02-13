@@ -8,7 +8,10 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from bookery.core.scanner import scan_directory
+from bookery.cli.options import db_option
+from bookery.core.scanner import cross_reference_db, scan_directory
+from bookery.db.catalog import LibraryCatalog
+from bookery.db.connection import open_library
 
 console = Console()
 
@@ -31,24 +34,36 @@ console = Console()
     default=False,
     help="Output results as JSON.",
 )
-def inventory(path: Path, target_format: str, json_output: bool) -> None:
+@db_option
+def inventory(
+    path: Path, target_format: str, json_output: bool, db_path: Path | None
+) -> None:
     """Scan a directory tree and report ebook format coverage."""
     result = scan_directory(path)
 
     # Normalize target format for display and matching
-    target_ext = target_format.lower() if target_format.startswith(".") else f".{target_format.lower()}"
+    fmt = target_format.lower()
+    target_ext = fmt if fmt.startswith(".") else f".{fmt}"
     target_label = target_format.upper().lstrip(".")
 
     missing = result.missing_format(target_ext)
 
+    # DB cross-reference if requested
+    xref = None
+    if db_path is not None:
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        xref = cross_reference_db(result, catalog)
+        conn.close()
+
     if json_output:
-        _print_json(result, missing, target_ext, path)
+        _print_json(result, missing, target_ext, path, xref)
         return
 
-    _print_rich(result, missing, target_label, path)
+    _print_rich(result, missing, target_label, path, xref)
 
 
-def _print_json(result, missing, target_ext, path):
+def _print_json(result, missing, target_ext, path, xref):
     """Print scan results as JSON."""
     data = {
         "scan_root": str(path),
@@ -68,12 +83,19 @@ def _print_json(result, missing, target_ext, path):
                 for book in missing
             ],
         },
-        "db_cross_reference": None,
+        "db_cross_reference": (
+            {
+                "in_catalog": len(xref.in_catalog),
+                "not_in_catalog": len(xref.not_in_catalog),
+            }
+            if xref is not None
+            else None
+        ),
     }
     click.echo(json_lib.dumps(data, indent=2))
 
 
-def _print_rich(result, missing, target_label, path):
+def _print_rich(result, missing, target_label, path, xref):
     """Print scan results with Rich formatting."""
     if result.total_books == 0:
         console.print(f"[dim]0 book(s) scanned in {path}[/dim]")
@@ -100,3 +122,9 @@ def _print_rich(result, missing, target_label, path):
         for book in missing:
             formats_str = ", ".join(sorted(book.formats))
             console.print(f"  {book.name} [{formats_str}]")
+
+    # Catalog cross-reference
+    if xref is not None:
+        console.print("\n[bold]Catalog Status[/bold]")
+        console.print(f"  In catalog: {len(xref.in_catalog)}")
+        console.print(f"  Not in catalog: {len(xref.not_in_catalog)}")
