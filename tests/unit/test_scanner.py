@@ -10,6 +10,7 @@ from bookery.core.scanner import (
     BookEntry,
     ScanResult,
     _parse_calibre_dir,
+    scan_directory,
 )
 
 
@@ -207,3 +208,80 @@ class TestParseCalibreDir:
         author, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
         assert author is None
         assert title == "Some Book"
+
+
+class TestScanDirectory:
+    """scan_directory walks a tree and groups ebook files by leaf directory."""
+
+    def test_empty_directory(self, tmp_path):
+        result = scan_directory(tmp_path)
+        assert result.total_books == 0
+        assert result.format_counts == {}
+
+    def test_single_book_single_format(self, tmp_path):
+        book_dir = tmp_path / "Author" / "My Book (1)"
+        book_dir.mkdir(parents=True)
+        (book_dir / "My Book.epub").write_bytes(b"fake")
+
+        result = scan_directory(tmp_path)
+        assert result.total_books == 1
+        assert result.books[0].formats == {".epub"}
+
+    def test_multi_format_book(self, tmp_path):
+        book_dir = tmp_path / "Author" / "My Book (1)"
+        book_dir.mkdir(parents=True)
+        (book_dir / "My Book.epub").write_bytes(b"fake")
+        (book_dir / "My Book.mobi").write_bytes(b"fake")
+
+        result = scan_directory(tmp_path)
+        assert result.total_books == 1
+        assert result.books[0].formats == {".epub", ".mobi"}
+
+    def test_multiple_books(self, calibre_tree):
+        result = scan_directory(calibre_tree)
+        assert result.total_books == 3
+
+    def test_ignores_non_ebook_files(self, tmp_path):
+        book_dir = tmp_path / "Author" / "Book (1)"
+        book_dir.mkdir(parents=True)
+        (book_dir / "cover.jpg").write_bytes(b"image")
+        (book_dir / "metadata.opf").write_text("<opf/>")
+
+        result = scan_directory(tmp_path)
+        # Directory with no ebook files should not be counted as a book
+        assert result.total_books == 0
+
+    def test_format_counts(self, calibre_tree):
+        result = scan_directory(calibre_tree)
+        assert result.format_counts[".epub"] == 1
+        assert result.format_counts[".mobi"] == 2
+        assert result.format_counts[".pdf"] == 1
+
+    def test_calibre_layout_extracts_author_title(self, calibre_tree):
+        result = scan_directory(calibre_tree)
+        by_title = {b.title: b for b in result.books}
+
+        assert "The Name of the Rose" in by_title
+        rose = by_title["The Name of the Rose"]
+        assert rose.author == "Umberto Eco"
+        assert rose.formats == {".epub", ".mobi"}
+
+        assert "Dune" in by_title
+        dune = by_title["Dune"]
+        assert dune.author == "Frank Herbert"
+
+    def test_scan_root_is_set(self, calibre_tree):
+        result = scan_directory(calibre_tree)
+        assert result.scan_root == calibre_tree
+
+    def test_directory_without_ebooks_ignored(self, tmp_path):
+        """Directories containing only non-ebook files should be excluded."""
+        (tmp_path / "just-images").mkdir()
+        (tmp_path / "just-images" / "photo.jpg").write_bytes(b"img")
+
+        book_dir = tmp_path / "Author" / "Real Book (1)"
+        book_dir.mkdir(parents=True)
+        (book_dir / "book.epub").write_bytes(b"fake")
+
+        result = scan_directory(tmp_path)
+        assert result.total_books == 1

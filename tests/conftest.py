@@ -70,3 +70,47 @@ def minimal_epub(tmp_path: Path) -> Path:
     filepath = tmp_path / "minimal.epub"
     epub.write_epub(str(filepath), book)
     return filepath
+
+
+@pytest.fixture
+def calibre_tree(tmp_path: Path) -> Path:
+    """Create a Calibre-style directory tree with mixed ebook formats.
+
+    Layout:
+        Calibre Library/
+            Umberto Eco/
+                The Name of the Rose (2739)/
+                    The Name of the Rose - Umberto Eco.epub
+                    The Name of the Rose - Umberto Eco.mobi
+                    cover.jpg
+                    metadata.opf
+            Frank Herbert/
+                Dune (42)/
+                    Dune - Frank Herbert.mobi
+                    metadata.opf
+            Unknown/
+                Mystery Book (99)/
+                    Mystery Book - Unknown.pdf
+    """
+    root = tmp_path / "Calibre Library"
+
+    # Book 1: has both EPUB and MOBI
+    book1 = root / "Umberto Eco" / "The Name of the Rose (2739)"
+    book1.mkdir(parents=True)
+    (book1 / "The Name of the Rose - Umberto Eco.epub").write_bytes(b"fake epub")
+    (book1 / "The Name of the Rose - Umberto Eco.mobi").write_bytes(b"fake mobi")
+    (book1 / "cover.jpg").write_bytes(b"fake jpg")
+    (book1 / "metadata.opf").write_text("<metadata/>")
+
+    # Book 2: MOBI only (missing EPUB)
+    book2 = root / "Frank Herbert" / "Dune (42)"
+    book2.mkdir(parents=True)
+    (book2 / "Dune - Frank Herbert.mobi").write_bytes(b"fake mobi")
+    (book2 / "metadata.opf").write_text("<metadata/>")
+
+    # Book 3: PDF only
+    book3 = root / "Unknown" / "Mystery Book (99)"
+    book3.mkdir(parents=True)
+    (book3 / "Mystery Book - Unknown.pdf").write_bytes(b"fake pdf")
+
+    return root

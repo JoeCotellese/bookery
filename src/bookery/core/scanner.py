@@ -2,6 +2,7 @@
 # ABOUTME: Walks a directory tree, identifies ebook files, and reports format coverage.
 
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -82,3 +83,50 @@ def _parse_calibre_dir(
         author = parent.name if grandparent != parent else None
 
     return author, title
+
+
+def scan_directory(root: Path) -> ScanResult:
+    """Walk a directory tree and group ebook files by leaf directory.
+
+    Each directory containing at least one ebook file is treated as a single
+    book. Author and title are inferred from the Calibre-style directory
+    layout when possible.
+
+    Args:
+        root: The top-level directory to scan.
+
+    Returns:
+        A ScanResult with all discovered books and format counts.
+    """
+    # Collect ebook files grouped by their parent directory
+    dir_formats: dict[Path, set[str]] = defaultdict(set)
+
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in EBOOK_EXTENSIONS:
+            dir_formats[path.parent].add(path.suffix.lower())
+
+    # Build BookEntry for each directory that had ebook files
+    books: list[BookEntry] = []
+    format_counts: dict[str, int] = defaultdict(int)
+
+    for book_dir in sorted(dir_formats):
+        formats = dir_formats[book_dir]
+        author, title = _parse_calibre_dir(book_dir, scan_root=root)
+
+        books.append(
+            BookEntry(
+                directory=book_dir,
+                author=author,
+                title=title,
+                formats=formats,
+            )
+        )
+
+        for fmt in formats:
+            format_counts[fmt] += 1
+
+    return ScanResult(
+        books=books,
+        format_counts=dict(format_counts),
+        scan_root=root,
+    )
