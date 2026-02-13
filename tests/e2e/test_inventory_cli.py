@@ -1,6 +1,7 @@
 # ABOUTME: End-to-end tests for the `bookery inventory` CLI command.
 # ABOUTME: Tests inventory workflow via Click's CliRunner with temp directory trees.
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -55,3 +56,52 @@ class TestInventoryCliRichOutput:
         runner = CliRunner()
         result = runner.invoke(cli, ["inventory", "/nonexistent/path"])
         assert result.exit_code != 0
+
+
+class TestInventoryCliJsonOutput:
+    """E2E tests for inventory command --json output."""
+
+    def test_valid_json(self, calibre_tree: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(calibre_tree), "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+
+    def test_contains_format_counts(self, calibre_tree: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(calibre_tree), "--json"])
+        data = json.loads(result.output)
+        assert ".epub" in data["format_counts"]
+        assert ".mobi" in data["format_counts"]
+        assert data["format_counts"][".mobi"] == 2
+
+    def test_contains_missing_books(self, calibre_tree: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(calibre_tree), "--json"])
+        data = json.loads(result.output)
+        assert data["missing"]["target_format"] == ".epub"
+        assert data["missing"]["count"] == 2
+        assert len(data["missing"]["books"]) == 2
+
+    def test_contains_total_books(self, calibre_tree: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(calibre_tree), "--json"])
+        data = json.loads(result.output)
+        assert data["total_books"] == 3
+        assert "scan_root" in data
+
+    def test_db_cross_reference_null_without_db(self, calibre_tree: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(calibre_tree), "--json"])
+        data = json.loads(result.output)
+        assert data["db_cross_reference"] is None
+
+    def test_empty_directory_json(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["inventory", str(tmp_path), "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["total_books"] == 0
+        assert data["format_counts"] == {}
+        assert data["missing"]["count"] == 0
