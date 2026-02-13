@@ -1,10 +1,16 @@
 # ABOUTME: Directory scanner for ebook format inventory.
 # ABOUTME: Walks a directory tree, identifies ebook files, and reports format coverage.
 
+from __future__ import annotations
+
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bookery.db.catalog import LibraryCatalog
 
 EBOOK_EXTENSIONS: frozenset[str] = frozenset(
     {".epub", ".mobi", ".azw3", ".azw", ".pdf", ".txt", ".cbz", ".cbr"}
@@ -130,3 +136,48 @@ def scan_directory(root: Path) -> ScanResult:
         format_counts=dict(format_counts),
         scan_root=root,
     )
+
+
+@dataclass
+class DbCrossReference:
+    """Result of matching scan entries against the library catalog."""
+
+    in_catalog: list[BookEntry]
+    not_in_catalog: list[BookEntry]
+
+
+def cross_reference_db(
+    scan_result: ScanResult, catalog: LibraryCatalog
+) -> DbCrossReference:
+    """Match scanned books against the catalog by source_path.
+
+    A book is considered "in catalog" if any file in its directory matches
+    a cataloged source_path.
+
+    Args:
+        scan_result: The scan result to cross-reference.
+        catalog: The library catalog to match against.
+
+    Returns:
+        A DbCrossReference with books split into cataloged and uncataloged.
+    """
+    cataloged_paths: set[Path] = {
+        record.source_path for record in catalog.list_all()
+    }
+
+    in_catalog: list[BookEntry] = []
+    not_in_catalog: list[BookEntry] = []
+
+    for book in scan_result.books:
+        # Check if any ebook file in this directory is cataloged
+        book_files = {
+            f
+            for f in book.directory.iterdir()
+            if f.is_file() and f.suffix.lower() in EBOOK_EXTENSIONS
+        }
+        if book_files & cataloged_paths:
+            in_catalog.append(book)
+        else:
+            not_in_catalog.append(book)
+
+    return DbCrossReference(in_catalog=in_catalog, not_in_catalog=not_in_catalog)
