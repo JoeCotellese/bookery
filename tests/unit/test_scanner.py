@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from bookery.core.scanner import EBOOK_EXTENSIONS, BookEntry, ScanResult
+from bookery.core.scanner import (
+    EBOOK_EXTENSIONS,
+    BookEntry,
+    ScanResult,
+    _parse_calibre_dir,
+)
 
 
 class TestEbookExtensions:
@@ -151,3 +156,54 @@ class TestScanResult:
         )
         missing = result.missing_format(".epub")
         assert len(missing) == 2
+
+
+class TestParseCalibreDir:
+    """_parse_calibre_dir extracts author and title from Calibre directory paths."""
+
+    def test_standard_calibre_layout(self, tmp_path):
+        """Author/Book Title (2739)/ → author='Author', title='Book Title'"""
+        author_dir = tmp_path / "Umberto Eco"
+        book_dir = author_dir / "The Name of the Rose (2739)"
+        book_dir.mkdir(parents=True)
+
+        author, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
+        assert author == "Umberto Eco"
+        assert title == "The Name of the Rose"
+
+    def test_strips_trailing_calibre_id(self, tmp_path):
+        """Trailing (digits) from Calibre should be stripped."""
+        author_dir = tmp_path / "Author"
+        book_dir = author_dir / "My Book (42)"
+        book_dir.mkdir(parents=True)
+
+        _, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
+        assert title == "My Book"
+
+    def test_preserves_parens_in_title(self, tmp_path):
+        """Parenthetical text that isn't a bare Calibre ID should be preserved."""
+        author_dir = tmp_path / "Author"
+        book_dir = author_dir / "A Book (Vol 2) (99)"
+        book_dir.mkdir(parents=True)
+
+        _, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
+        assert title == "A Book (Vol 2)"
+
+    def test_no_calibre_id(self, tmp_path):
+        """Directory without trailing (digits) returns dirname as title."""
+        author_dir = tmp_path / "Author"
+        book_dir = author_dir / "Just A Book"
+        book_dir.mkdir(parents=True)
+
+        author, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
+        assert author == "Author"
+        assert title == "Just A Book"
+
+    def test_single_depth_returns_none_author(self, tmp_path):
+        """Book dir directly under scan root → author is None."""
+        book_dir = tmp_path / "Some Book (1)"
+        book_dir.mkdir()
+
+        author, title = _parse_calibre_dir(book_dir, scan_root=tmp_path)
+        assert author is None
+        assert title == "Some Book"
