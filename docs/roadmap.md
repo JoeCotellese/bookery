@@ -20,13 +20,15 @@
 - [x] Tests for provider, matching, and review flow
 
 ## Phase 3: Database + Catalog
-- [ ] SQLite wrapper (thin, no ORM)
-- [ ] Schema: books, book_attributes, tags, book_tags, device_syncs
-- [ ] Version-stamped forward migrations
-- [ ] FTS5 (full-text search on title, author, series, description)
-- [ ] Import pipeline: extract → match → confirm → write to DB
-- [ ] Idempotent import (file_hash dedup)
-- [ ] `bookery verify` command (detect moved/missing files)
+- [x] SQLite wrapper (thin, no ORM)
+- [x] Schema: books, tags, book_tags (book_attributes deferred to Phase 4, device_syncs to Phase 6)
+- [x] Version-stamped forward migrations (V1 → V2 runner in connection.py)
+- [x] FTS5 (full-text search on title, author, series, description)
+- [x] Import pipeline: extract → match → confirm → write to DB
+- [x] Idempotent import (file_hash dedup)
+- [x] `bookery verify` command (detect moved/missing files, --check-hash)
+- [x] `bookery tag` command group (add, rm, ls)
+- [x] `bookery info` shows tags, `bookery ls --tag` filter
 
 ## Phase 4: Query DSL + Search + Browse
 - [ ] Hand-rolled recursive descent parser
