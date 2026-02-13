@@ -22,15 +22,28 @@ console = Console()
     default=None,
     help="Filter by series name.",
 )
-def ls(db_path: Path | None, series_filter: str | None) -> None:
+@click.option(
+    "--tag",
+    "tag_filter",
+    default=None,
+    help="Filter by tag name.",
+)
+def ls(db_path: Path | None, series_filter: str | None, tag_filter: str | None) -> None:
     """List all books in the library catalog."""
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
-    records = (
-        catalog.list_by_series(series_filter) if series_filter
-        else catalog.list_all()
-    )
+    if tag_filter:
+        try:
+            records = catalog.get_books_by_tag(tag_filter)
+        except ValueError as exc:
+            console.print(f"[red]Tag '{tag_filter}' not found.[/red]")
+            conn.close()
+            raise SystemExit(1) from exc
+    elif series_filter:
+        records = catalog.list_by_series(series_filter)
+    else:
+        records = catalog.list_all()
 
     if not records:
         console.print("[yellow]No books in the library.[/yellow]")

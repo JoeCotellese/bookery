@@ -50,6 +50,9 @@ def info(book_id: int, db_path: Path | None) -> None:
         idx = meta.series_index
         series_str = f"{meta.series} #{idx:g}" if idx is not None else meta.series
         table.add_row("Series", series_str)
+    tags = catalog.get_tags_for_book(book_id)
+    if tags:
+        table.add_row("Tags", ", ".join(tags))
     table.add_row("Source", str(record.source_path))
     if record.output_path:
         table.add_row("Output", str(record.output_path))
