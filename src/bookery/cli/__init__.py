@@ -7,6 +7,7 @@ from bookery.cli.commands import (
     import_cmd,
     info_cmd,
     inspect_cmd,
+    inventory_cmd,
     ls_cmd,
     match_cmd,
     search_cmd,
@@ -24,6 +25,7 @@ def cli() -> None:
 cli.add_command(import_cmd.import_command)
 cli.add_command(info_cmd.info)
 cli.add_command(inspect_cmd.inspect)
+cli.add_command(inventory_cmd.inventory)
 cli.add_command(ls_cmd.ls)
 cli.add_command(match_cmd.match)
 cli.add_command(search_cmd.search)
