@@ -52,9 +52,11 @@ def inventory(
     xref = None
     if db_path is not None:
         conn = open_library(db_path)
-        catalog = LibraryCatalog(conn)
-        xref = cross_reference_db(result, catalog)
-        conn.close()
+        try:
+            catalog = LibraryCatalog(conn)
+            xref = cross_reference_db(result, catalog)
+        finally:
+            conn.close()
 
     if json_output:
         _print_json(result, missing, target_ext, path, xref)
