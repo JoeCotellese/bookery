@@ -119,7 +119,7 @@ class TestMatchCommand:
                 "bookery.cli.commands.match_cmd._create_provider"
             ) as mock_provider_fn,
             patch(
-                "bookery.cli.commands.match_cmd.apply_metadata_safely"
+                "bookery.core.pipeline.apply_metadata_safely"
             ) as mock_apply,
         ):
             mock_provider = MagicMock()
