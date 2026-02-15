@@ -142,91 +142,89 @@ def rematch(
         output_dir = Path("bookery-output")
 
     conn = open_library(db_path or DEFAULT_DB_PATH)
-    catalog = LibraryCatalog(conn)
-
     try:
-        books = _select_books(catalog, book_id, match_all, tag_name)
-    except ValueError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        conn.close()
-        return
+        catalog = LibraryCatalog(conn)
 
-    if not books:
-        if book_id is not None:
-            console.print(f"[red]Error:[/red] Book with id {book_id} not found.")
-        else:
-            console.print("[yellow]No books to rematch.[/yellow]")
-        conn.close()
-        return
-
-    # Resume: filter out books that already have output_path
-    if resume:
-        original_count = len(books)
-        books = [b for b in books if b.output_path is None]
-        skipped_resume = original_count - len(books)
-        if skipped_resume:
-            console.print(
-                f"[dim]Skipping {skipped_resume} already-matched "
-                f"book{'s' if skipped_resume != 1 else ''} "
-                f"(use --no-resume to reprocess).[/dim]"
-            )
-        if not books:
-            console.print("[green]All books already matched.[/green]")
-            conn.close()
+        try:
+            books = _select_books(catalog, book_id, match_all, tag_name)
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
             return
 
-    # Set up match pipeline
-    provider = _create_provider()
-    review = ReviewSession(
-        console=console,
-        quiet=quiet,
-        threshold=threshold,
-        lookup_fn=provider.lookup_by_url,
-    )
+        if not books:
+            if book_id is not None:
+                console.print(f"[red]Error:[/red] Book with id {book_id} not found.")
+            else:
+                console.print("[yellow]No books to rematch.[/yellow]")
+            return
 
-    matched = 0
-    skipped = 0
-    errors = 0
-    total = len(books)
+        # Resume: filter out books that already have output_path
+        if resume:
+            original_count = len(books)
+            books = [b for b in books if b.output_path is None]
+            skipped_resume = original_count - len(books)
+            if skipped_resume:
+                console.print(
+                    f"[dim]Skipping {skipped_resume} already-matched "
+                    f"book{'s' if skipped_resume != 1 else ''} "
+                    f"(use --no-resume to reprocess).[/dim]"
+                )
+            if not books:
+                console.print("[green]All books already matched.[/green]")
+                return
 
-    for i, record in enumerate(books, start=1):
-        if not quiet:
-            console.print(
-                f"\n[bold][{i}/{total}] Rematching:[/bold] "
-                f"{record.metadata.title} (id={record.id})"
-            )
+        # Set up match pipeline
+        provider = _create_provider()
+        review = ReviewSession(
+            console=console,
+            quiet=quiet,
+            threshold=threshold,
+            lookup_fn=provider.lookup_by_url,
+        )
 
-        if not record.source_path.exists():
-            console.print(
-                f"  [red]Source file missing:[/red] {record.source_path}"
-            )
-            errors += 1
-            continue
+        matched = 0
+        skipped = 0
+        errors = 0
+        total = len(books)
 
-        result = match_one(record.source_path, provider, review, output_dir)
-
-        if not quiet and result.normalization and result.normalization.was_modified:
-            console.print(
-                f"  [dim]Normalized:[/dim] "
-                f"{result.normalization.normalized.title}"
-            )
-
-        if result.status == "matched":
-            fields = _metadata_to_update_fields(result.metadata)
-            catalog.update_book(record.id, **fields)
-            if result.output_path:
-                catalog.set_output_path(record.id, result.output_path)
+        for i, record in enumerate(books, start=1):
             if not quiet:
-                console.print(f"  [green]Updated:[/green] {result.output_path}")
-            matched += 1
-        elif result.status == "skipped":
-            skipped += 1
-        elif result.status == "error":
-            if not quiet:
-                console.print(f"  [red]Error:[/red] {result.error}")
-            errors += 1
+                console.print(
+                    f"\n[bold][{i}/{total}] Rematching:[/bold] "
+                    f"{record.metadata.title} (id={record.id})"
+                )
 
-    conn.close()
+            if not record.source_path.exists():
+                console.print(
+                    f"  [red]Source file missing:[/red] {record.source_path}"
+                )
+                errors += 1
+                continue
+
+            result = match_one(record.source_path, provider, review, output_dir)
+
+            if not quiet and result.normalization and result.normalization.was_modified:
+                console.print(
+                    f"  [dim]Normalized:[/dim] "
+                    f"{result.normalization.normalized.title}"
+                )
+
+            if result.status == "matched":
+                fields = _metadata_to_update_fields(result.metadata)
+                catalog.update_book(record.id, **fields)
+                if result.output_path:
+                    catalog.set_output_path(record.id, result.output_path)
+                if not quiet:
+                    console.print(f"  [green]Updated:[/green] {result.output_path}")
+                matched += 1
+            elif result.status == "skipped":
+                skipped += 1
+            elif result.status == "error":
+                if not quiet:
+                    console.print(f"  [red]Error:[/red] {result.error}")
+                errors += 1
+    finally:
+        conn.close()
 
     # Summary
     parts = []
