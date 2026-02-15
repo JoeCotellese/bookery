@@ -10,6 +10,7 @@ from bookery.cli.commands import (
     inventory_cmd,
     ls_cmd,
     match_cmd,
+    rematch_cmd,
     search_cmd,
     tag_cmd,
     verify_cmd,
@@ -28,6 +29,7 @@ cli.add_command(inspect_cmd.inspect)
 cli.add_command(inventory_cmd.inventory)
 cli.add_command(ls_cmd.ls)
 cli.add_command(match_cmd.match)
+cli.add_command(rematch_cmd.rematch)
 cli.add_command(search_cmd.search)
 cli.add_command(tag_cmd.tag)
 cli.add_command(verify_cmd.verify)

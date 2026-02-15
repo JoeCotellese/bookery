@@ -29,9 +29,8 @@ def _build_match_fn(
     doesn't pay for them when --match is not used.
     """
     from bookery.cli.review import ReviewSession
-    from bookery.core.pipeline import apply_metadata_safely
+    from bookery.core.pipeline import match_one
     from bookery.metadata.http import BookeryHttpClient
-    from bookery.metadata.normalizer import normalize_metadata
     from bookery.metadata.openlibrary import OpenLibraryProvider
 
     http_client = BookeryHttpClient()
@@ -46,44 +45,27 @@ def _build_match_fn(
     def match_fn(
         extracted: BookMetadata, epub_path: Path,
     ) -> MatchResult | None:
-        norm_result = normalize_metadata(extracted)
-        if not quiet and norm_result.was_modified:
+        result = match_one(epub_path, provider, review, output_dir)
+
+        if not quiet and result.normalization and result.normalization.was_modified:
             console.print(
-                f"  [dim]Normalized:[/dim] {norm_result.normalized.title}"
-            )
-        search_meta = norm_result.normalized
-
-        candidates = []
-        if search_meta.isbn:
-            candidates = provider.search_by_isbn(search_meta.isbn)
-        if not candidates:
-            candidates = provider.search_by_title_author(
-                search_meta.title, search_meta.author or None,
+                f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}"
             )
 
-        if not candidates:
-            if not quiet:
-                console.print("  [yellow]No candidates found.[/yellow]")
-            return None
-
-        selected = review.review(extracted, candidates)
-        if selected is None:
-            return None
-
-        write_result = apply_metadata_safely(epub_path, selected, output_dir)
-        if write_result.success:
+        if result.status == "matched":
             if not quiet:
                 console.print(
-                    f"  [green]Written:[/green] {write_result.path}"
+                    f"  [green]Written:[/green] {result.output_path}"
                 )
             return MatchResult(
-                metadata=selected, output_path=write_result.path,
+                metadata=result.metadata, output_path=result.output_path,
             )
 
-        if not quiet:
+        if result.status == "error" and not quiet:
             console.print(
-                f"  [red]Write failed:[/red] {write_result.error}"
+                f"  [red]Write failed:[/red] {result.error}"
             )
+
         return None
 
     return match_fn

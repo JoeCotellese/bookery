@@ -17,10 +17,8 @@ from rich.progress import (
 )
 
 from bookery.cli.review import ReviewSession
-from bookery.core.pipeline import apply_metadata_safely
-from bookery.formats.epub import EpubReadError, read_epub_metadata
+from bookery.core.pipeline import match_one
 from bookery.metadata.http import BookeryHttpClient
-from bookery.metadata.normalizer import normalize_metadata
 from bookery.metadata.openlibrary import OpenLibraryProvider
 from bookery.metadata.provider import MetadataProvider
 
@@ -151,69 +149,30 @@ def match(
                 f"Processing:[/bold] {epub_path.name}"
             )
 
-        try:
-            extracted = read_epub_metadata(epub_path)
-        except EpubReadError as exc:
-            if not quiet:
-                console.print(f"  [red]Error reading:[/red] {exc}")
-            errors += 1
-            progress.advance(task_id)
-            if not quiet:
-                progress.start()
-            continue
+        result = match_one(epub_path, provider, review, output_dir)
 
-        # Normalize mangled metadata for better search queries
-        norm_result = normalize_metadata(extracted)
-        if not quiet and norm_result.was_modified:
-            console.print(f"  [dim]Normalized title:[/dim] {norm_result.normalized.title}")
-            if norm_result.normalized.authors != extracted.authors:
-                console.print(
-                    f"  [dim]Detected author:[/dim] {norm_result.normalized.author}"
-                )
-        search_meta = norm_result.normalized
-
-        # Try ISBN lookup first, then fall back to title/author search
-        candidates = []
-        if search_meta.isbn:
-            candidates = provider.search_by_isbn(search_meta.isbn)
-
-        if not candidates:
-            candidates = provider.search_by_title_author(
-                search_meta.title, search_meta.author or None
+        # Display normalization info in interactive mode
+        if not quiet and result.normalization and result.normalization.was_modified:
+            console.print(
+                f"  [dim]Normalized title:[/dim] {result.normalization.normalized.title}"
             )
+            if result.normalization.normalized.authors != result.normalization.original.authors:
+                console.print(
+                    f"  [dim]Detected author:[/dim] {result.normalization.normalized.author}"
+                )
 
-        if not candidates:
+        if result.status == "matched":
             if not quiet:
-                console.print("  [yellow]No candidates found.[/yellow]")
+                console.print(f"  [green]Written:[/green] {result.output_path}")
+            matched += 1
+        elif result.status == "skipped":
+            if not quiet and result.error is None:
+                # Only show "No candidates" if it wasn't a user skip (review returns None)
+                pass
             skipped += 1
-            progress.advance(task_id)
+        elif result.status == "error":
             if not quiet:
-                progress.start()
-            continue
-
-        selected = review.review(extracted, candidates)
-        if selected is None:
-            skipped += 1
-            progress.advance(task_id)
-            if not quiet:
-                progress.start()
-            continue
-
-        try:
-            write_result = apply_metadata_safely(epub_path, selected, output_dir)
-            if write_result.success:
-                if not quiet:
-                    console.print(f"  [green]Written:[/green] {write_result.path}")
-                matched += 1
-            else:
-                if not quiet:
-                    console.print(
-                        f"  [red]Verification failed:[/red] {write_result.error}"
-                    )
-                errors += 1
-        except OSError as exc:
-            if not quiet:
-                console.print(f"  [red]Error writing:[/red] {exc}")
+                console.print(f"  [red]Error:[/red] {result.error}")
             errors += 1
 
         progress.advance(task_id)

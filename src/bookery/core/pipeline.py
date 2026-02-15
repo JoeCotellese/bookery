@@ -1,12 +1,17 @@
 # ABOUTME: Non-destructive metadata write pipeline.
 # ABOUTME: Copies EPUB to output directory then writes updated metadata to the copy.
 
+import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
+from bookery.metadata.normalizer import NormalizationResult, normalize_metadata
+from bookery.metadata.provider import MetadataProvider
 from bookery.metadata.types import BookMetadata
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -168,3 +173,81 @@ def apply_metadata_safely(
         )
 
     return WriteResult(path=dest, success=True, verified_fields=verifications)
+
+
+@dataclass
+class MatchOneResult:
+    """Result of running the full match pipeline on a single EPUB.
+
+    status is one of:
+    - "matched": candidate selected and written successfully
+    - "skipped": no candidates found or user skipped
+    - "error": EPUB read or write failure
+    """
+
+    status: str
+    metadata: BookMetadata | None = None
+    output_path: Path | None = None
+    error: str | None = None
+    normalization: NormalizationResult | None = None
+
+
+def match_one(
+    epub_path: Path,
+    provider: MetadataProvider,
+    review_session: object,
+    output_dir: Path,
+) -> MatchOneResult:
+    """Run the full match pipeline on a single EPUB.
+
+    Pipeline: read -> normalize -> search (ISBN first, then title/author)
+    -> review -> write -> verify.
+
+    Args:
+        epub_path: Path to the EPUB file.
+        provider: MetadataProvider for candidate search.
+        review_session: ReviewSession (or mock) with a .review(extracted, candidates) method.
+        output_dir: Directory for modified copies.
+
+    Returns:
+        MatchOneResult with status, metadata, output_path, and error details.
+    """
+    # Read metadata from EPUB
+    try:
+        extracted = read_epub_metadata(epub_path)
+    except EpubReadError as exc:
+        return MatchOneResult(status="error", error=str(exc))
+
+    # Normalize mangled metadata for better search queries
+    norm_result = normalize_metadata(extracted)
+    search_meta = norm_result.normalized
+
+    # Try ISBN lookup first, then fall back to title/author search
+    candidates = []
+    if search_meta.isbn:
+        candidates = provider.search_by_isbn(search_meta.isbn)
+
+    if not candidates:
+        candidates = provider.search_by_title_author(
+            search_meta.title, search_meta.author or None,
+        )
+
+    if not candidates:
+        return MatchOneResult(status="skipped", normalization=norm_result)
+
+    # Review: let the user (or auto-accept logic) pick a candidate
+    selected = review_session.review(extracted, candidates)
+    if selected is None:
+        return MatchOneResult(status="skipped", normalization=norm_result)
+
+    # Write the selected metadata to a copy
+    write_result = apply_metadata_safely(epub_path, selected, output_dir)
+    if write_result.success:
+        return MatchOneResult(
+            status="matched",
+            metadata=selected,
+            output_path=write_result.path,
+            normalization=norm_result,
+        )
+
+    return MatchOneResult(status="error", error=write_result.error, normalization=norm_result)
