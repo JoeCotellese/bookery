@@ -552,6 +552,46 @@ class TestLookupByUrl:
         assert provider.lookup_by_url("https://google.com") is None
         assert provider.lookup_by_url("https://openlibrary.org/search") is None
 
+    def test_lookup_by_url_books_edition_url(self) -> None:
+        """A /books/ edition URL fetches edition data and resolves works key."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            if "/books/OL7575930M.json" in url:
+                return EDITION_RESPONSE
+            if "/works/OL456W" in url:
+                return WORKS_RESPONSE_STR_DESCRIPTION
+            if "/authors/OL123A" in url:
+                return AUTHOR_RESPONSE
+            return {}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+
+        url = "https://openlibrary.org/books/OL7575930M/2001"
+        result = provider.lookup_by_url(url)
+
+        assert result is not None
+        assert result.metadata.title == "The Name of the Rose"
+        assert result.metadata.authors == ["Umberto Eco"]
+        assert result.confidence == 1.0
+
+    def test_lookup_by_url_books_edition_no_works_key(self) -> None:
+        """A /books/ URL with no works key in response returns None."""
+
+        def fake_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+            # Edition without a works key
+            return {"title": "Orphan Edition", "authors": []}
+
+        client = MagicMock(spec=HttpClient)
+        client.get.side_effect = fake_get
+        provider = OpenLibraryProvider(http_client=client)
+
+        url = "https://openlibrary.org/books/OL999M/Orphan"
+        result = provider.lookup_by_url(url)
+
+        assert result is None
+
     def test_lookup_by_url_fetch_error_returns_none(self) -> None:
         """HTTP error during lookup returns None."""
         client = FakeHttpClient({"/works/": MetadataFetchError("server error")})
