@@ -4,6 +4,7 @@
 import logging
 from pathlib import Path
 
+import ebooklib
 from ebooklib import epub
 
 from bookery.metadata.types import BookMetadata
@@ -77,8 +78,7 @@ def _extract_cover_image(book: epub.EpubBook) -> bytes | None:
         item_name = item.get_name() or ""
         if "cover" in item_id.lower() or "cover" in item_name.lower():
             content_type = item.get_type()
-            # ebooklib image type constant
-            if content_type == 3:  # ITEM_IMAGE
+            if content_type in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
                 return item.get_content()
 
     return None

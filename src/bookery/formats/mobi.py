@@ -370,13 +370,26 @@ def assemble_epub_from_html(
 
     # Add images from the extraction directory
     if images_dir and images_dir.is_dir():
+        cover_file = None
         for image_file in sorted(images_dir.iterdir()):
-            if image_file.is_file():
+            if not image_file.is_file():
+                continue
+            if "cover" in image_file.stem.lower() and cover_file is None:
+                cover_file = image_file
+            else:
                 image = epub.EpubImage()
+                image.id = f"image_{image_file.stem}"
                 image.file_name = f"Images/{image_file.name}"
                 image.media_type = _guess_media_type(image_file)
                 image.content = image_file.read_bytes()
                 book.add_item(image)
+
+        # Designate cover image with proper OPF metadata and cover page
+        if cover_file is not None:
+            book.set_cover(
+                f"Images/{cover_file.name}",
+                cover_file.read_bytes(),
+            )
 
     if chapters:
         # Multi-chapter: one EpubHtml per chapter

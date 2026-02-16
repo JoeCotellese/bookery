@@ -558,12 +558,12 @@ class TestAssembleEpubFromHtml:
 
         html_file = tmp_path / "book.html"
         html_file.write_text(
-            '<html><body><img src="Images/cover.jpg"/></body></html>'
+            '<html><body><img src="Images/photo.jpg"/></body></html>'
         )
         images_dir = tmp_path / "Images"
         images_dir.mkdir()
-        # Minimal JPEG header
-        (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
+        # Minimal JPEG header (non-cover filename to test regular image path)
+        (images_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
 
         output = tmp_path / "output.epub"
         assemble_epub_from_html(html_file, output, images_dir=images_dir)
@@ -575,7 +575,7 @@ class TestAssembleEpubFromHtml:
             if item.get_type() == ebooklib.ITEM_IMAGE
         ]
         assert len(image_items) == 1
-        assert image_items[0].get_name() == "Images/cover.jpg"
+        assert image_items[0].get_name() == "Images/photo.jpg"
         assert image_items[0].get_content() == b"\xff\xd8\xff\xe0fake-jpeg"
 
     def test_no_images_dir_produces_valid_epub(self, tmp_path: Path) -> None:
@@ -739,6 +739,51 @@ class TestAssembleEpubFromHtml:
 
         read_back = read_epub_metadata(output)
         assert read_back.title == "My Great Book"
+
+    def test_cover_image_designated_in_metadata(self, tmp_path: Path) -> None:
+        """Image with 'cover' in filename is designated as the EPUB cover."""
+        import zipfile
+
+        from bookery.formats.mobi import assemble_epub_from_html
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text("<html><body><p>Test</p></body></html>")
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        cover_data = b"\xff\xd8\xff\xe0fake-cover-jpeg"
+        (images_dir / "cover00183.jpeg").write_bytes(cover_data)
+        (images_dir / "image00184.jpeg").write_bytes(b"\xff\xd8\xff\xe0other")
+
+        output = tmp_path / "output.epub"
+        assemble_epub_from_html(html_file, output, images_dir=images_dir)
+
+        # Check raw OPF for cover metadata (ebooklib doesn't round-trip this)
+        with zipfile.ZipFile(output) as z:
+            opf = z.read("EPUB/content.opf").decode()
+
+        assert 'name="cover"' in opf, "Expected OPF cover metadata"
+        assert 'properties="cover-image"' in opf, "Expected cover-image property"
+        assert "cover00183.jpeg" in opf, "Expected cover filename in OPF"
+
+    def test_cover_image_not_set_when_no_cover_filename(self, tmp_path: Path) -> None:
+        """No cover metadata when no image has 'cover' in the filename."""
+        import zipfile
+
+        from bookery.formats.mobi import assemble_epub_from_html
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text("<html><body><p>Test</p></body></html>")
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        (images_dir / "image001.jpeg").write_bytes(b"\xff\xd8\xff\xe0data")
+
+        output = tmp_path / "output.epub"
+        assemble_epub_from_html(html_file, output, images_dir=images_dir)
+
+        with zipfile.ZipFile(output) as z:
+            opf = z.read("EPUB/content.opf").decode()
+
+        assert 'name="cover"' not in opf, "Should not set cover metadata"
 
 
 # Helper: minimal valid OPF content for tests

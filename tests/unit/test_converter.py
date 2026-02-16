@@ -201,12 +201,12 @@ class TestConvertOneHtmlPath:
         from ebooklib import epub
 
         book = epub.read_epub(str(result.epub_path), options={"ignore_ncx": True})
-        image_items = [
+        cover_items = [
             item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
+            if item.get_type() == ebooklib.ITEM_COVER
         ]
-        assert len(image_items) == 1
-        assert image_items[0].get_name() == "Images/cover.jpg"
+        assert len(cover_items) == 1
+        assert cover_items[0].get_name() == "Images/cover.jpg"
 
     def test_ncx_chapters_passed_to_assembly(self, tmp_path: Path) -> None:
         """Parses NCX and splits HTML into chapters when NCX is available."""

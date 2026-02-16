@@ -296,12 +296,12 @@ class TestConvertCliMobi7Metadata:
 
         epub_path = output_dir / "book.epub"
         book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
-        image_items = [
+        cover_items = [
             item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
+            if item.get_type() == ebooklib.ITEM_COVER
         ]
-        assert len(image_items) == 1
-        assert image_items[0].get_name() == "Images/cover.jpg"
+        assert len(cover_items) == 1
+        assert cover_items[0].get_name() == "Images/cover.jpg"
 
 
 def _mock_extract_to_html_with_ncx(tmp_path: Path):
