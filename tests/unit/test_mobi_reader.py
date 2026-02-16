@@ -765,6 +765,46 @@ class TestAssembleEpubFromHtml:
         assert 'properties="cover-image"' in opf, "Expected cover-image property"
         assert "cover00183.jpeg" in opf, "Expected cover filename in OPF"
 
+        # Cover page should be in the spine as the first item
+        import xml.etree.ElementTree as ET
+
+        root = ET.fromstring(opf)
+        ns = {"opf": "http://www.idpf.org/2007/opf"}
+        spine = root.find("opf:spine", ns)
+        itemrefs = spine.findall("opf:itemref", ns)
+        assert itemrefs[0].get("idref") == "cover", (
+            "Expected cover as first spine item"
+        )
+
+    def test_cover_page_has_fullscreen_styling(self, tmp_path: Path) -> None:
+        """Cover page XHTML uses viewport-filling CSS for e-reader compatibility."""
+        import zipfile
+
+        from bookery.formats.mobi import assemble_epub_from_html
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text("<html><body><p>Test</p></body></html>")
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-cover")
+
+        output = tmp_path / "output.epub"
+        assemble_epub_from_html(html_file, output, images_dir=images_dir)
+
+        with zipfile.ZipFile(output) as z:
+            cover_xhtml = z.read("EPUB/cover.xhtml").decode()
+            cover_css = z.read("EPUB/style/cover.css").decode()
+
+        # Inline styles on the img tag (preserved by lxml)
+        assert "width:100%" in cover_xhtml, "Cover img should have width:100%"
+        assert "height:100%" in cover_xhtml, "Cover img should have height:100%"
+        assert "object-fit:contain" in cover_xhtml, (
+            "Cover img should use object-fit:contain"
+        )
+        # Linked external CSS for belt-and-suspenders e-reader support
+        assert "cover.css" in cover_xhtml, "Cover should link to cover.css"
+        assert "object-fit" in cover_css, "Cover CSS should contain object-fit"
+
     def test_cover_image_not_set_when_no_cover_filename(self, tmp_path: Path) -> None:
         """No cover metadata when no image has 'cover' in the filename."""
         import zipfile
@@ -784,6 +824,28 @@ class TestAssembleEpubFromHtml:
             opf = z.read("EPUB/content.opf").decode()
 
         assert 'name="cover"' not in opf, "Should not set cover metadata"
+
+    def test_no_cover_not_in_spine(self, tmp_path: Path) -> None:
+        """Cover page is NOT in the spine when no cover image exists."""
+        import xml.etree.ElementTree as ET
+        import zipfile
+
+        from bookery.formats.mobi import assemble_epub_from_html
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text("<html><body><p>Test</p></body></html>")
+
+        output = tmp_path / "output.epub"
+        assemble_epub_from_html(html_file, output, images_dir=None)
+
+        with zipfile.ZipFile(output) as z:
+            opf = z.read("EPUB/content.opf").decode()
+
+        root = ET.fromstring(opf)
+        ns = {"opf": "http://www.idpf.org/2007/opf"}
+        spine = root.find("opf:spine", ns)
+        idrefs = [ref.get("idref") for ref in spine.findall("opf:itemref", ns)]
+        assert "cover" not in idrefs, "Cover should not be in spine without cover image"
 
 
 # Helper: minimal valid OPF content for tests

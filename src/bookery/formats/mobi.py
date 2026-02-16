@@ -103,6 +103,15 @@ class Chapter:
     content: bytes
 
 
+# CSS for the cover page, linked as an external stylesheet because
+# ebooklib's lxml processing strips <style> tags from <head>.
+# Ensures the cover image fills the e-reader viewport (Kobo, etc.)
+# instead of rendering at natural size in the top-left corner.
+_COVER_CSS = b"""\
+body { margin: 0; padding: 0; }
+img { display: block; width: 100%; height: 100%; object-fit: contain; }
+"""
+
 _XHTML_TEMPLATE = """\
 <?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -369,8 +378,8 @@ def assemble_epub_from_html(
         book.add_metadata("DC", "identifier", metadata.isbn, {"id": "isbn"})
 
     # Add images from the extraction directory
+    cover_file = None
     if images_dir and images_dir.is_dir():
-        cover_file = None
         for image_file in sorted(images_dir.iterdir()):
             if not image_file.is_file():
                 continue
@@ -384,12 +393,50 @@ def assemble_epub_from_html(
                 image.content = image_file.read_bytes()
                 book.add_item(image)
 
-        # Designate cover image with proper OPF metadata and cover page
+        # Designate cover image with proper OPF metadata and cover page.
+        # We build the cover manually instead of using set_cover() because
+        # ebooklib's lxml processing strips <style> tags, preventing us from
+        # styling the cover image to fill the viewport on e-readers.
         if cover_file is not None:
-            book.set_cover(
-                f"Images/{cover_file.name}",
-                cover_file.read_bytes(),
+            cover_img = epub.EpubCover(
+                file_name=f"Images/{cover_file.name}",
             )
+            cover_img.content = cover_file.read_bytes()
+            book.add_item(cover_img)
+            book.add_metadata(
+                None, "meta", "",
+                {"name": "cover", "content": "cover-img"},
+            )
+
+            cover_css = epub.EpubItem(
+                uid="cover-style",
+                file_name="style/cover.css",
+                media_type="text/css",
+                content=_COVER_CSS,
+            )
+            book.add_item(cover_css)
+
+            img_path = f"Images/{cover_file.name}"
+            cover_page = epub.EpubHtml(
+                uid="cover", file_name="cover.xhtml", title="Cover",
+            )
+            cover_page.add_link(
+                href="style/cover.css", rel="stylesheet", type="text/css",
+            )
+            cover_page.content = (
+                b'<html xmlns="http://www.w3.org/1999/xhtml">'
+                b"<head><title>Cover</title></head>"
+                b'<body style="margin:0;padding:0">'
+                b'<img src="' + img_path.encode() + b'"'
+                b' alt="Cover"'
+                b' style="display:block;width:100%;height:100%;'
+                b'object-fit:contain" />'
+                b"</body></html>"
+            )
+            book.add_item(cover_page)
+
+    # Track whether a cover page was created by set_cover()
+    has_cover = cover_file is not None
 
     if chapters:
         # Multi-chapter: one EpubHtml per chapter
@@ -407,7 +454,7 @@ def assemble_epub_from_html(
         book.toc = toc_entries
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
-        book.spine = ["nav", *epub_chapters]
+        book.spine = [*(["cover"] if has_cover else []), "nav", *epub_chapters]
     else:
         # Single-chapter fallback
         html_content = html_path.read_bytes()
@@ -420,7 +467,7 @@ def assemble_epub_from_html(
         book.toc = [epub.Link("content.xhtml", title, "content")]
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
-        book.spine = ["nav", chapter]
+        book.spine = [*(["cover"] if has_cover else []), "nav", chapter]
 
     epub.write_epub(str(output_path), book)
     return output_path

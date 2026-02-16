@@ -263,6 +263,64 @@ class TestNcxSplitRoundTrip:
         assert read_back.title == "The Martian"
         assert read_back.authors == ["Andy Weir"]
 
+    def test_cover_page_is_first_spine_item(self, tmp_path: Path) -> None:
+        """Converted EPUB with cover image has cover page as first spine item."""
+        import xml.etree.ElementTree as ET
+        import zipfile
+
+        from bookery.formats.mobi import (
+            assemble_epub_from_html,
+            parse_ncx_toc,
+            split_html_by_anchors,
+        )
+
+        ncx_file = tmp_path / "toc.ncx"
+        ncx_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>Chapter 1</text></navLabel>
+      <content src="book.html#filepos000100"/>
+    </navPoint>
+  </navMap>
+</ncx>
+""")
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text(
+            '<html><body>'
+            '<a id="filepos000100"></a><h1>Chapter 1</h1>'
+            '<p>Content here.</p>'
+            '</body></html>'
+        )
+
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-cover")
+
+        nav_points = parse_ncx_toc(ncx_file)
+        chapters = split_html_by_anchors(html_file.read_text(), nav_points)
+
+        output = tmp_path / "output.epub"
+        metadata = BookMetadata(title="Cover Test", authors=["Author"], language="en")
+        assemble_epub_from_html(
+            html_file, output, metadata=metadata, chapters=chapters,
+            images_dir=images_dir,
+        )
+
+        # Parse the OPF spine and verify cover is first
+        with zipfile.ZipFile(output) as z:
+            opf = z.read("EPUB/content.opf").decode()
+
+        root = ET.fromstring(opf)
+        ns = {"opf": "http://www.idpf.org/2007/opf"}
+        spine = root.find("opf:spine", ns)
+        itemrefs = spine.findall("opf:itemref", ns)
+        assert itemrefs[0].get("idref") == "cover", (
+            "Expected cover as first spine item for Kobo rendering"
+        )
+
     def test_ncx_split_with_images(self, tmp_path: Path) -> None:
         """NCX split EPUB includes images alongside chapters."""
         import ebooklib
