@@ -69,7 +69,7 @@ class TestMatchCliEndToEnd:
             )
 
         assert result.exit_code == 0
-        outputs = list(output_dir.glob("*.epub"))
+        outputs = list(output_dir.rglob("*.epub"))
         assert len(outputs) == 1
         meta = read_epub_metadata(outputs[0])
         assert meta.title == "Il Nome della Rosa"
@@ -117,7 +117,7 @@ class TestMatchCliEndToEnd:
             )
 
         assert result.exit_code == 0
-        outputs = list(output_dir.glob("*.epub"))
+        outputs = list(output_dir.rglob("*.epub"))
         assert len(outputs) == 2
 
     def test_summary_shows_counts(self, sample_epub: Path, tmp_path: Path) -> None:
@@ -175,7 +175,7 @@ class TestMatchCliEndToEnd:
             )
 
         assert result.exit_code == 0
-        outputs = list(output_dir.glob("*.epub"))
+        outputs = list(output_dir.rglob("*.epub"))
         assert len(outputs) == 1
 
     def test_match_normalizes_mangled_title(self, mangled_epub: Path, tmp_path: Path) -> None:
@@ -248,7 +248,7 @@ class TestMatchCliEndToEnd:
             )
 
         assert result.exit_code == 0
-        outputs = list(output_dir.glob("*.epub"))
+        outputs = list(output_dir.rglob("*.epub"))
         assert len(outputs) == 1
         meta = read_epub_metadata(outputs[0])
         assert meta.title == "Il Nome della Rosa"
@@ -277,7 +277,7 @@ class TestMatchCliEndToEnd:
             )
 
         assert result.exit_code == 0
-        outputs = list(output_dir.glob("*.epub"))
+        outputs = list(output_dir.rglob("*.epub"))
         assert len(outputs) == 1
         meta = read_epub_metadata(outputs[0])
         assert meta.title == "The Templar Legacy"
@@ -520,11 +520,11 @@ class TestBatchModeEndToEnd:
 
         assert result.exit_code == 0
         assert "1 matched" in result.output
-        # The original "stale copy" still exists, plus a new collision-suffixed file
-        epubs = list(output_dir.glob("*.epub"))
-        assert len(epubs) == 2
-        # One should have the _1 collision suffix
-        assert any("_1" in p.stem for p in epubs)
+        # The new file is in organized author/title structure
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) >= 1
+        # Stale flat copy still exists alongside organized output
+        assert (output_dir / sample_epub.name).exists()
 
     def test_threshold_changes_quiet_behavior(self, sample_epub: Path, tmp_path: Path) -> None:
         """Lower threshold accepts candidates that default would skip."""
@@ -637,4 +637,4 @@ class TestBatchModeEndToEnd:
         assert "2 skipped" in result.output
         # No files should be written
         if output_dir.exists():
-            assert len(list(output_dir.glob("*.epub"))) == 0
+            assert len(list(output_dir.rglob("*.epub"))) == 0

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from bookery.cli import cli
+from bookery.core.pathformat import record_processed
 from bookery.core.pipeline import WriteResult
 from bookery.metadata import BookMetadata
 from bookery.metadata.candidate import MetadataCandidate
@@ -297,6 +298,32 @@ class TestResumeOption:
 
         assert result.exit_code == 0
         assert "kipping" in result.output
+
+    def test_resume_finds_files_via_manifest(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """Resume finds files recorded in the .bookery-processed manifest."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        # Record as processed via manifest (simulating a prior successful write)
+        record_processed(output_dir, sample_epub.name)
+
+        with patch(
+            "bookery.cli.commands.match_cmd._create_provider"
+        ) as mock_provider_fn:
+            mock_provider_fn.return_value = MagicMock()
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "match", str(sample_epub), "-q",
+                    "--resume", "-o", str(output_dir),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "kipping" in result.output and "1" in result.output
 
     def test_all_processed_shows_message(
         self, sample_epub: Path, tmp_path: Path

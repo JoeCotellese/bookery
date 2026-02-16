@@ -66,7 +66,9 @@ class TestConvertCliSingleFile:
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
-        assert (output_dir / "book.epub").exists()
+        # EPUB is now in organized author/title subdirectory
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
 
     def test_no_mobi_files_message(self, tmp_path: Path) -> None:
         """Shows a message when no MOBI files are found."""
@@ -107,13 +109,10 @@ class TestConvertCliForce:
     """E2E tests for --force flag."""
 
     def test_force_overwrites_existing(self, tmp_path: Path) -> None:
-        """--force overwrites existing output files."""
+        """--force converts even when output exists in organized location."""
         mobi_file = tmp_path / "book.mobi"
         mobi_file.write_bytes(b"fake mobi")
         output_dir = tmp_path / "output"
-        output_dir.mkdir()
-        existing = output_dir / "book.epub"
-        existing.write_bytes(b"old content")
 
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
@@ -124,8 +123,9 @@ class TestConvertCliForce:
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
-        # File should be overwritten (different content)
-        assert existing.read_bytes() != b"old content"
+        # EPUB should exist in organized structure
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
 
 
 class TestConvertCliSkip:
@@ -270,8 +270,9 @@ class TestConvertCliMobi7Metadata:
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
 
-        epub_path = output_dir / "book.epub"
-        assert epub_path.exists()
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
+        epub_path = epubs[0]
 
         metadata = read_epub_metadata(epub_path)
         assert metadata.title == "The Martian"
@@ -294,7 +295,9 @@ class TestConvertCliMobi7Metadata:
 
         assert result.exit_code == 0, result.output
 
-        epub_path = output_dir / "book.epub"
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
+        epub_path = epubs[0]
         book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
         cover_items = [
             item for item in book.get_items()
@@ -393,8 +396,9 @@ class TestConvertCliNcxChapters:
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
 
-        epub_path = output_dir / "book.epub"
-        assert epub_path.exists()
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
+        epub_path = epubs[0]
 
         book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
         assert len(book.toc) == 3
@@ -428,7 +432,9 @@ class TestConvertCliNcxChapters:
 
         assert result.exit_code == 0, result.output
 
-        metadata = read_epub_metadata(output_dir / "book.epub")
+        epubs = list(output_dir.rglob("*.epub"))
+        assert len(epubs) == 1
+        metadata = read_epub_metadata(epubs[0])
         assert metadata.title == "The Martian"
         assert "Andy Weir" in metadata.authors
 

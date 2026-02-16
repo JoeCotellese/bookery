@@ -17,6 +17,7 @@ from rich.progress import (
 )
 
 from bookery.cli.review import ReviewSession
+from bookery.core.pathformat import is_processed
 from bookery.core.pipeline import match_one
 from bookery.metadata.http import BookeryHttpClient
 from bookery.metadata.openlibrary import OpenLibraryProvider
@@ -40,13 +41,17 @@ def _find_epubs(path: Path) -> list[Path]:
 def _is_already_processed(epub_path: Path, output_dir: Path) -> bool:
     """Check if an EPUB has already been written to the output directory.
 
-    Matches by direct filename or collision-suffixed variants (_1, _2, etc.).
+    Checks the .bookery-processed manifest first (for organized output),
+    then falls back to searching recursively for the original filename
+    or collision-suffixed variants.
     """
-    if (output_dir / epub_path.name).exists():
+    if is_processed(output_dir, epub_path.name):
         return True
-    # Check for collision suffixes: {stem}_1.epub, {stem}_2.epub, ...
-    pattern = re.compile(re.escape(epub_path.stem) + r"_\d+" + re.escape(epub_path.suffix))
-    return any(pattern.fullmatch(child.name) for child in output_dir.iterdir())
+    # Fallback: search for the original filename in case of pre-manifest output
+    stem = epub_path.stem
+    suffix = epub_path.suffix
+    pattern = re.compile(re.escape(stem) + r"(_\d+)?" + re.escape(suffix))
+    return any(pattern.fullmatch(child.name) for child in output_dir.rglob(f"*{suffix}"))
 
 
 def _make_progress(console: Console) -> Progress:
@@ -163,7 +168,8 @@ def match(
 
         if result.status == "matched":
             if not quiet:
-                console.print(f"  [green]Written:[/green] {result.output_path}")
+                rel_path = result.output_path.relative_to(output_dir) if result.output_path else ""
+                console.print(f"  [green]Written:[/green] {rel_path}")
             matched += 1
         elif result.status == "skipped":
             if not quiet and result.error is None:

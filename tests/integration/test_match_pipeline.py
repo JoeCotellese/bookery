@@ -142,13 +142,13 @@ class TestFullMatchPipeline:
         assert result.success is True
         first_output = result.path
 
-        # Second pass with resume: should detect existing file
+        # Second pass with resume: should detect existing file via manifest
         from bookery.cli.commands.match_cmd import _is_already_processed
 
         assert _is_already_processed(sample_epub, output_dir) is True
 
-        # The output dir should still have exactly one file
-        assert len(list(output_dir.glob("*.epub"))) == 1
+        # The output dir should still have exactly one epub (in a subdirectory)
+        assert len(list(output_dir.rglob("*.epub"))) == 1
         assert first_output.exists()
 
     def test_quiet_review_auto_accepts(self) -> None:
