@@ -1,0 +1,473 @@
+# ABOUTME: MOBI extraction wrapper using the mobi (KindleUnpack) library.
+# ABOUTME: Extracts MOBI files to EPUB or HTML and can assemble HTML into EPUB via ebooklib.
+
+import logging
+import mimetypes
+import re
+import uuid
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from pathlib import Path
+
+from ebooklib import epub
+from mobi import extract as mobi_extract
+
+from bookery.metadata.types import BookMetadata
+
+logger = logging.getLogger(__name__)
+
+
+class MobiReadError(Exception):
+    """Raised when a MOBI file cannot be read or extracted."""
+
+
+@dataclass
+class MobiExtractResult:
+    """Result of extracting a MOBI file via KindleUnpack.
+
+    Either epub_path or html_path will be set depending on the source format.
+    The caller is responsible for cleaning up tempdir when done.
+    """
+
+    tempdir: Path
+    format: str  # "epub" or "html"
+    epub_path: Path | None = None
+    html_path: Path | None = None
+    opf_path: Path | None = None
+    images_dir: Path | None = None
+    ncx_path: Path | None = None
+
+
+@dataclass
+class NcxNavPoint:
+    """A single navigation point from a DAISY NCX table of contents."""
+
+    label: str
+    anchor_id: str
+
+
+def parse_ncx_toc(ncx_path: Path | None) -> list[NcxNavPoint]:
+    """Parse a DAISY NCX file for chapter labels and anchor IDs.
+
+    Args:
+        ncx_path: Path to the toc.ncx file, or None.
+
+    Returns:
+        List of NcxNavPoint with labels and anchor IDs (fragment part only).
+        Returns empty list on missing file, None path, or parse errors.
+    """
+    if ncx_path is None or not ncx_path.exists():
+        return []
+
+    try:
+        tree = ET.parse(ncx_path)
+    except ET.ParseError:
+        logger.warning("Malformed NCX XML: %s", ncx_path)
+        return []
+
+    root = tree.getroot()
+    ns = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
+
+    nav_points = root.findall(".//ncx:navPoint", ns)
+    results = []
+
+    for nav_point in nav_points:
+        label_el = nav_point.find("ncx:navLabel/ncx:text", ns)
+        content_el = nav_point.find("ncx:content", ns)
+
+        if label_el is None or content_el is None:
+            continue
+
+        label = label_el.text.strip() if label_el.text else ""
+        src = content_el.get("src", "")
+
+        # Extract the fragment identifier (anchor) from the src
+        if "#" not in src:
+            continue
+
+        anchor_id = src.split("#", 1)[1]
+        if not anchor_id or not label:
+            continue
+
+        results.append(NcxNavPoint(label=label, anchor_id=anchor_id))
+
+    return results
+
+
+@dataclass
+class Chapter:
+    """A single chapter split from monolithic HTML."""
+
+    title: str
+    file_name: str
+    content: bytes
+
+
+# CSS for the cover page, linked as an external stylesheet because
+# ebooklib's lxml processing strips <style> tags from <head>.
+# Ensures the cover image fills the e-reader viewport (Kobo, etc.)
+# instead of rendering at natural size in the top-left corner.
+_COVER_CSS = b"""\
+body { margin: 0; padding: 0; }
+img { display: block; width: 100%; height: 100%; object-fit: contain; }
+"""
+
+_XHTML_TEMPLATE = """\
+<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>{title}</title></head>
+<body>
+{body}
+</body>
+</html>"""
+
+# Pattern to match <mbp:pagebreak/> and variants
+_MBP_PAGEBREAK_RE = re.compile(r"<mbp:pagebreak\s*/?>", re.IGNORECASE)
+
+
+def split_html_by_anchors(
+    html_content: str, nav_points: list[NcxNavPoint]
+) -> list[Chapter]:
+    """Split monolithic HTML at anchor points into separate chapters.
+
+    Args:
+        html_content: The full HTML string from MOBI extraction.
+        nav_points: Navigation points with anchor IDs to split at.
+
+    Returns:
+        List of Chapter objects, one per nav point. Returns empty list if
+        nav_points is empty or no anchors are found in the HTML.
+    """
+    if not nav_points:
+        return []
+
+    # Find positions of each anchor in the HTML
+    anchor_positions = []
+    for nav_point in nav_points:
+        # Match <a id="fileposNNN"> or <a id="fileposNNN"/>
+        pattern = re.compile(
+            rf'<a\s+id="{re.escape(nav_point.anchor_id)}"[^>]*>',
+            re.IGNORECASE,
+        )
+        match = pattern.search(html_content)
+        if match:
+            anchor_positions.append((match.start(), nav_point))
+
+    if not anchor_positions:
+        return []
+
+    # Sort by position in the HTML
+    anchor_positions.sort(key=lambda x: x[0])
+
+    # Find the body tag boundaries for preamble extraction
+    body_match = re.search(r"<body[^>]*>(.*)</body>", html_content, re.DOTALL)
+
+    # Slice HTML at anchor positions into chapters
+    chapters = []
+    for i, (pos, nav_point) in enumerate(anchor_positions):
+        # End of this chapter is the start of the next anchor, or end of body
+        if i + 1 < len(anchor_positions):
+            end_pos = anchor_positions[i + 1][0]
+        else:
+            # Last chapter: take everything up to </body>
+            body_end = html_content.find("</body>")
+            end_pos = body_end if body_end != -1 else len(html_content)
+
+        fragment = html_content[pos:end_pos]
+
+        # Prepend content before first anchor to the first chapter
+        if i == 0 and body_match:
+            body_start = body_match.start(1)
+            preamble = html_content[body_start:pos]
+            if preamble.strip():
+                fragment = preamble + fragment
+
+        # Strip <mbp:pagebreak/> tags
+        fragment = _MBP_PAGEBREAK_RE.sub("", fragment)
+
+        # Wrap in XHTML boilerplate
+        xhtml = _XHTML_TEMPLATE.format(
+            title=nav_point.label,
+            body=fragment,
+        )
+
+        file_name = f"ch{i + 1:03d}.xhtml"
+        chapters.append(
+            Chapter(
+                title=nav_point.label,
+                file_name=file_name,
+                content=xhtml.encode("utf-8"),
+            )
+        )
+
+    return chapters
+
+
+def extract_mobi(path: Path) -> MobiExtractResult:
+    """Extract a MOBI file using the mobi library.
+
+    Args:
+        path: Path to the MOBI file.
+
+    Returns:
+        MobiExtractResult with the extracted file path and format.
+
+    Raises:
+        MobiReadError: If the file cannot be found or extracted.
+    """
+    if not path.exists():
+        raise MobiReadError(f"File not found: {path}")
+
+    try:
+        tempdir_str, filepath_str = mobi_extract(str(path))
+    except Exception as exc:
+        raise MobiReadError(f"Failed to extract MOBI: {path}: {exc}") from exc
+
+    tempdir = Path(tempdir_str)
+    filepath = Path(filepath_str)
+
+    if filepath.suffix.lower() == ".epub":
+        return MobiExtractResult(
+            tempdir=tempdir,
+            format="epub",
+            epub_path=filepath,
+        )
+
+    # Anything else (HTML, etc.) is treated as HTML output
+    # Look for OPF metadata, Images directory, and NCX TOC alongside the HTML file
+    parent_dir = filepath.parent
+    opf_path = parent_dir / "content.opf"
+    images_dir = parent_dir / "Images"
+    ncx_path = parent_dir / "toc.ncx"
+
+    return MobiExtractResult(
+        tempdir=tempdir,
+        format="html",
+        html_path=filepath,
+        opf_path=opf_path if opf_path.exists() else None,
+        images_dir=images_dir if images_dir.is_dir() else None,
+        ncx_path=ncx_path if ncx_path.exists() else None,
+    )
+
+
+def parse_opf_metadata(opf_path: Path | None) -> BookMetadata | None:
+    """Parse Dublin Core metadata from an OPF file.
+
+    Args:
+        opf_path: Path to the OPF file, or None.
+
+    Returns:
+        BookMetadata populated from OPF, or None on parse failure or missing title.
+    """
+    if opf_path is None or not opf_path.exists():
+        return None
+
+    try:
+        tree = ET.parse(opf_path)
+    except ET.ParseError:
+        logger.warning("Malformed OPF XML: %s", opf_path)
+        return None
+
+    root = tree.getroot()
+
+    # Namespace map for Dublin Core and OPF
+    ns = {
+        "opf": "http://www.idpf.org/2007/opf",
+        "dc": "http://purl.org/dc/elements/1.1/",
+    }
+
+    # Find the metadata element (may be namespaced or not)
+    metadata_el = root.find("opf:metadata", ns)
+    if metadata_el is None:
+        metadata_el = root.find("metadata")
+    if metadata_el is None:
+        return None
+
+    # Title is required
+    title_el = metadata_el.find("dc:title", ns)
+    if title_el is None or not (title_el.text and title_el.text.strip()):
+        return None
+
+    title = title_el.text.strip()
+
+    # Authors (multiple dc:creator elements)
+    authors = []
+    for creator_el in metadata_el.findall("dc:creator", ns):
+        if creator_el.text and creator_el.text.strip():
+            authors.append(creator_el.text.strip())
+
+    # Language
+    lang_el = metadata_el.find("dc:language", ns)
+    language = lang_el.text.strip() if lang_el is not None and lang_el.text else None
+
+    # Publisher
+    pub_el = metadata_el.find("dc:publisher", ns)
+    publisher = pub_el.text.strip() if pub_el is not None and pub_el.text else None
+
+    # Description
+    desc_el = metadata_el.find("dc:description", ns)
+    description = desc_el.text.strip() if desc_el is not None and desc_el.text else None
+
+    # ISBN from dc:identifier with opf:scheme="ISBN"
+    isbn = None
+    for ident_el in metadata_el.findall("dc:identifier", ns):
+        scheme = ident_el.get("scheme") or ident_el.get(
+            "{http://www.idpf.org/2007/opf}scheme"
+        )
+        if scheme and scheme.upper() == "ISBN" and ident_el.text:
+            isbn = ident_el.text.strip()
+            break
+
+    return BookMetadata(
+        title=title,
+        authors=authors,
+        language=language,
+        publisher=publisher,
+        description=description,
+        isbn=isbn,
+    )
+
+
+def _guess_media_type(path: Path) -> str:
+    """Guess MIME type for a file, falling back to application/octet-stream."""
+    mime, _ = mimetypes.guess_type(str(path))
+    return mime or "application/octet-stream"
+
+
+def assemble_epub_from_html(
+    html_path: Path,
+    output_path: Path,
+    metadata: BookMetadata | None = None,
+    images_dir: Path | None = None,
+    chapters: list[Chapter] | None = None,
+) -> Path:
+    """Wrap an extracted HTML file into a valid EPUB using ebooklib.
+
+    Args:
+        html_path: Path to the HTML file from MOBI extraction.
+        output_path: Where to write the assembled EPUB.
+        metadata: Optional metadata to embed in the EPUB.
+        images_dir: Optional directory containing images referenced by the HTML.
+        chapters: Optional list of chapters from NCX splitting. When provided,
+            creates one EpubHtml per chapter with a multi-entry TOC.
+            When None, falls back to single-chapter behavior.
+
+    Returns:
+        The output_path where the EPUB was written.
+    """
+    book = epub.EpubBook()
+    book.set_identifier(str(uuid.uuid4()))
+
+    title = metadata.title if metadata else html_path.stem
+    book.set_title(title)
+
+    language = (metadata.language if metadata and metadata.language else "en")
+    book.set_language(language)
+
+    if metadata and metadata.authors:
+        for author in metadata.authors:
+            book.add_author(author)
+
+    if metadata and metadata.publisher:
+        book.add_metadata("DC", "publisher", metadata.publisher)
+
+    if metadata and metadata.description:
+        book.add_metadata("DC", "description", metadata.description)
+
+    if metadata and metadata.isbn:
+        book.add_metadata("DC", "identifier", metadata.isbn, {"id": "isbn"})
+
+    # Add images from the extraction directory
+    cover_file = None
+    if images_dir and images_dir.is_dir():
+        for image_file in sorted(images_dir.iterdir()):
+            if not image_file.is_file():
+                continue
+            if "cover" in image_file.stem.lower() and cover_file is None:
+                cover_file = image_file
+            else:
+                image = epub.EpubImage()
+                image.id = f"image_{image_file.stem}"
+                image.file_name = f"Images/{image_file.name}"
+                image.media_type = _guess_media_type(image_file)
+                image.content = image_file.read_bytes()
+                book.add_item(image)
+
+        # Designate cover image with proper OPF metadata and cover page.
+        # We build the cover manually instead of using set_cover() because
+        # ebooklib's lxml processing strips <style> tags, preventing us from
+        # styling the cover image to fill the viewport on e-readers.
+        if cover_file is not None:
+            cover_img = epub.EpubCover(
+                file_name=f"Images/{cover_file.name}",
+            )
+            cover_img.content = cover_file.read_bytes()
+            book.add_item(cover_img)
+            book.add_metadata(
+                None, "meta", "",
+                {"name": "cover", "content": "cover-img"},
+            )
+
+            cover_css = epub.EpubItem(
+                uid="cover-style",
+                file_name="style/cover.css",
+                media_type="text/css",
+                content=_COVER_CSS,
+            )
+            book.add_item(cover_css)
+
+            img_path = f"Images/{cover_file.name}"
+            cover_page = epub.EpubHtml(
+                uid="cover", file_name="cover.xhtml", title="Cover",
+            )
+            cover_page.add_link(
+                href="style/cover.css", rel="stylesheet", type="text/css",
+            )
+            cover_page.content = (
+                b'<html xmlns="http://www.w3.org/1999/xhtml">'
+                b"<head><title>Cover</title></head>"
+                b'<body style="margin:0;padding:0">'
+                b'<img src="' + img_path.encode() + b'"'
+                b' alt="Cover"'
+                b' style="display:block;width:100%;height:100%;'
+                b'object-fit:contain" />'
+                b"</body></html>"
+            )
+            book.add_item(cover_page)
+
+    # Track whether a cover page was created by set_cover()
+    has_cover = cover_file is not None
+
+    if chapters:
+        # Multi-chapter: one EpubHtml per chapter
+        epub_chapters = []
+        toc_entries = []
+        for ch in chapters:
+            epub_ch = epub.EpubHtml(
+                title=ch.title, file_name=ch.file_name, lang=language,
+            )
+            epub_ch.content = ch.content
+            book.add_item(epub_ch)
+            epub_chapters.append(epub_ch)
+            toc_entries.append(epub.Link(ch.file_name, ch.title, ch.file_name))
+
+        book.toc = toc_entries
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = [*(["cover"] if has_cover else []), "nav", *epub_chapters]
+    else:
+        # Single-chapter fallback
+        html_content = html_path.read_bytes()
+        chapter = epub.EpubHtml(
+            title=title, file_name="content.xhtml", lang=language,
+        )
+        chapter.content = html_content
+        book.add_item(chapter)
+
+        book.toc = [epub.Link("content.xhtml", title, "content")]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = [*(["cover"] if has_cover else []), "nav", chapter]
+
+    epub.write_epub(str(output_path), book)
+    return output_path

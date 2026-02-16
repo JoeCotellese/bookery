@@ -30,3 +30,7 @@ uv.lock
 
 # Ruff
 .ruff_cache/
+
+# Bookery runtime
+*.db
+bookery-output/

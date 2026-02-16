@@ -4,6 +4,7 @@
 import click
 
 from bookery.cli.commands import (
+    convert_cmd,
     import_cmd,
     info_cmd,
     inspect_cmd,
@@ -23,6 +24,7 @@ def cli() -> None:
     """Bookery - a CLI-first ebook library manager."""
 
 
+cli.add_command(convert_cmd.convert)
 cli.add_command(import_cmd.import_command)
 cli.add_command(info_cmd.info)
 cli.add_command(inspect_cmd.inspect)
