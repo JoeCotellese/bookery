@@ -130,19 +130,55 @@ def _fix_toc_uids(book: epub.EpubBook) -> None:
     """Assign uids to TOC Link items that are missing them.
 
     ebooklib sometimes reads TOC entries without preserving the uid attribute,
-    which causes lxml to fail when writing the NCX. This assigns a stable uid
-    based on the link's href.
+    which causes lxml to fail when writing the NCX. This walks the TOC tree
+    at arbitrary depth and assigns stable uids to any Link missing one.
     """
-    for i, item in enumerate(book.toc):
+    _fix_toc_items(book.toc, prefix="navpoint")
+
+
+def _fix_toc_items(items: list, prefix: str) -> None:
+    """Recursively fix uids on TOC items at any nesting depth."""
+    for i, item in enumerate(items):
         if isinstance(item, epub.Link) and not item.uid:
-            item.uid = f"navpoint-{i}"
+            item.uid = f"{prefix}-{i}"
         elif isinstance(item, tuple) and len(item) == 2:
             section, children = item
             if isinstance(section, epub.Link) and not section.uid:
-                section.uid = f"navpoint-section-{i}"
-            for j, child in enumerate(children):
-                if isinstance(child, epub.Link) and not child.uid:
-                    child.uid = f"navpoint-{i}-{j}"
+                section.uid = f"{prefix}-section-{i}"
+            _fix_toc_items(children, prefix=f"{prefix}-{i}")
+
+
+def _scrub_none_metadata(book: epub.EpubBook) -> None:
+    """Remove metadata entries with None values that would crash lxml.
+
+    ebooklib preserves OPF meta tags like <meta name="cover" content="..."/>
+    as (None, {attrs}) tuples. lxml rejects None when serializing to XML.
+    """
+    for ns in book.metadata:
+        for name in list(book.metadata[ns]):
+            entries = book.metadata[ns][name]
+            cleaned = [(v, a) for v, a in entries if v is not None]
+            if len(cleaned) < len(entries):
+                logger.debug(
+                    "Scrubbed %d None metadata entries from %s/%s",
+                    len(entries) - len(cleaned), ns, name,
+                )
+                book.metadata[ns][name] = cleaned
+
+
+def _scrub_none_guide(book: epub.EpubBook) -> None:
+    """Remove guide entries with None href/type that would crash lxml.
+
+    Some EPUBs contain empty guide references with all-None fields.
+    """
+    original_len = len(book.guide)
+    book.guide = [
+        entry for entry in book.guide
+        if entry.get("href") is not None and entry.get("type") is not None
+    ]
+    removed = original_len - len(book.guide)
+    if removed:
+        logger.debug("Scrubbed %d empty guide entries", removed)
 
 
 def _clear_dc_metadata(book: epub.EpubBook, name: str) -> None:
@@ -196,6 +232,8 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
         _set_dc_metadata(book, "description", metadata.description)
 
     _fix_toc_uids(book)
+    _scrub_none_metadata(book)
+    _scrub_none_guide(book)
 
     try:
         epub.write_epub(str(path), book)
