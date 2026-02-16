@@ -134,7 +134,9 @@ def convert(
 
         result = convert_one(mobi_path, output_dir, force=force)
 
-        if result.success and result.epub_path and result.epub_path.exists():
+        if result.skipped:
+            skipped += 1
+        elif result.success and result.epub_path and result.epub_path.exists():
             converted += 1
 
             # Chain into match pipeline if requested

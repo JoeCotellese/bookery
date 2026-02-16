@@ -142,9 +142,25 @@ class TestConvertOneSkipAndForce:
         result = convert_one(mobi_file, output_dir, force=False)
 
         assert result.success is True
+        assert result.skipped is True
         assert result.epub_path == existing
         # Content should be unchanged (not overwritten)
         assert existing.read_bytes() == b"already here"
+
+    def test_normal_conversion_not_skipped(
+        self, tmp_path: Path, _mock_epub_extraction,
+    ) -> None:
+        """Normal conversion sets skipped=False."""
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.return_value = _mock_epub_extraction
+            result = convert_one(mobi_file, output_dir)
+
+        assert result.success is True
+        assert result.skipped is False
 
     def test_overwrites_with_force(self, tmp_path: Path, _mock_epub_extraction) -> None:
         """Overwrites existing output when force=True."""

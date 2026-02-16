@@ -128,6 +128,34 @@ class TestConvertCliForce:
         assert existing.read_bytes() != b"old content"
 
 
+class TestConvertCliSkip:
+    """E2E tests for skip counting when output already exists."""
+
+    def test_skip_without_force_reports_skipped(self, tmp_path: Path) -> None:
+        """Running convert twice without --force reports '1 skipped', not '1 converted'."""
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        # First run: actually converts
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.side_effect = _mock_extract_to_epub(tmp_path)
+            first = runner.invoke(cli, [
+                "convert", str(mobi_file), "-o", str(output_dir),
+            ])
+        assert first.exit_code == 0, first.output
+        assert "1 converted" in first.output
+
+        # Second run: should skip (output already exists, no --force)
+        second = runner.invoke(cli, [
+            "convert", str(mobi_file), "-o", str(output_dir),
+        ])
+        assert second.exit_code == 0, second.output
+        assert "1 skipped" in second.output
+        assert "converted" not in second.output
+
+
 class TestConvertCliErrors:
     """E2E tests for error handling."""
 

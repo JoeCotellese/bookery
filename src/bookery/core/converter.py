@@ -24,6 +24,7 @@ class ConvertResult:
     source: Path
     epub_path: Path | None
     success: bool
+    skipped: bool = False
     metadata: BookMetadata | None = None
     error: str | None = None
 
@@ -55,6 +56,7 @@ def convert_one(
             source=mobi_path,
             epub_path=output_path,
             success=True,
+            skipped=True,
         )
 
     # Extract MOBI
