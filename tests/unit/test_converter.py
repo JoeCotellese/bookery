@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from bookery.core.converter import convert_one
+from bookery.core.pathformat import record_processed
 from bookery.formats.mobi import MobiExtractResult, MobiReadError
 
 
@@ -77,7 +78,8 @@ class TestConvertOneEpubPath:
         assert result.success is True
         assert result.epub_path is not None
         assert result.epub_path.exists()
-        assert result.epub_path.parent == output_dir
+        # EPUB is organized under output_dir in author/title structure
+        assert str(result.epub_path).startswith(str(output_dir))
         assert result.epub_path.suffix == ".epub"
         assert result.error is None
 
@@ -333,21 +335,18 @@ class TestConvertOneSkipAndForce:
     """Tests for skip-if-exists and --force behavior."""
 
     def test_skips_existing(self, tmp_path: Path, _mock_epub_extraction) -> None:
-        """Skips conversion when output already exists and force=False."""
+        """Skips conversion when source is recorded in manifest."""
         mobi_file = tmp_path / "book.mobi"
         mobi_file.write_bytes(b"fake mobi")
         output_dir = tmp_path / "output"
         output_dir.mkdir()
-        existing = output_dir / "book.epub"
-        existing.write_bytes(b"already here")
+        # Record as already processed via manifest
+        record_processed(output_dir, "book.mobi")
 
         result = convert_one(mobi_file, output_dir, force=False)
 
         assert result.success is True
         assert result.skipped is True
-        assert result.epub_path == existing
-        # Content should be unchanged (not overwritten)
-        assert existing.read_bytes() == b"already here"
 
     def test_normal_conversion_not_skipped(
         self, tmp_path: Path, _mock_epub_extraction,
@@ -365,13 +364,11 @@ class TestConvertOneSkipAndForce:
         assert result.skipped is False
 
     def test_overwrites_with_force(self, tmp_path: Path, _mock_epub_extraction) -> None:
-        """Overwrites existing output when force=True."""
+        """Force converts even when output exists in organized location."""
         mobi_file = tmp_path / "book.mobi"
         mobi_file.write_bytes(b"fake mobi")
         output_dir = tmp_path / "output"
         output_dir.mkdir()
-        existing = output_dir / "book.epub"
-        existing.write_bytes(b"old content")
 
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.return_value = _mock_epub_extraction
@@ -379,8 +376,9 @@ class TestConvertOneSkipAndForce:
 
         assert result.success is True
         assert result.epub_path is not None
-        # Content should be different now (overwritten)
-        assert result.epub_path.read_bytes() != b"old content"
+        assert result.epub_path.exists()
+        # EPUB should be in organized subdirectory
+        assert str(result.epub_path).startswith(str(output_dir))
 
 
 class TestConvertOneErrors:

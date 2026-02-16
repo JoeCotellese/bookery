@@ -6,6 +6,12 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from bookery.core.pathformat import (
+    build_output_path,
+    is_processed,
+    record_processed,
+    resolve_collision,
+)
 from bookery.formats.epub import EpubReadError, read_epub_metadata
 from bookery.formats.mobi import (
     MobiReadError,
@@ -51,16 +57,27 @@ def convert_one(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     epub_name = mobi_path.stem + ".epub"
-    output_path = output_dir / epub_name
 
-    # Skip if output already exists and force is off
-    if output_path.exists() and not force:
-        return ConvertResult(
-            source=mobi_path,
-            epub_path=output_path,
-            success=True,
-            skipped=True,
-        )
+    # Skip if already processed (check manifest first, then rglob fallback)
+    if not force:
+        if is_processed(output_dir, mobi_path.name):
+            return ConvertResult(
+                source=mobi_path,
+                epub_path=None,
+                success=True,
+                skipped=True,
+            )
+        existing = list(output_dir.rglob(epub_name))
+        if existing:
+            return ConvertResult(
+                source=mobi_path,
+                epub_path=existing[0],
+                success=True,
+                skipped=True,
+            )
+
+    # Use a flat temp path for initial write, then move to organized location
+    output_path = output_dir / epub_name
 
     # Extract MOBI
     try:
@@ -114,9 +131,23 @@ def convert_one(
         except EpubReadError as exc:
             logger.warning("Could not read metadata from converted EPUB: %s", exc)
 
+        # Move to organized author/title directory structure
+        if metadata is not None:
+            organized_path = build_output_path(metadata, output_dir)
+        else:
+            # Fallback: use filename as title under Unknown author
+            fallback_meta = BookMetadata(title=mobi_path.stem, authors=[])
+            organized_path = build_output_path(fallback_meta, output_dir)
+
+        organized_path = resolve_collision(organized_path)
+        organized_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(output_path), organized_path)
+
+        record_processed(output_dir, mobi_path.name)
+
         return ConvertResult(
             source=mobi_path,
-            epub_path=output_path,
+            epub_path=organized_path,
             success=True,
             metadata=metadata,
         )

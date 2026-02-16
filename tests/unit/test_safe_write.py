@@ -13,7 +13,7 @@ class TestApplyMetadataSafely:
     """Tests for apply_metadata_safely function."""
 
     def test_creates_copy_in_output_dir(self, sample_epub: Path, tmp_path: Path) -> None:
-        """Modified copy is created in the output directory."""
+        """Modified copy is created under the output directory in author/title structure."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         metadata = BookMetadata(title="Updated Title", authors=["New Author"])
@@ -21,9 +21,11 @@ class TestApplyMetadataSafely:
         result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
         assert result.path is not None
-        assert result.path.parent == output_dir
+        assert str(result.path).startswith(str(output_dir))
         assert result.path.exists()
         assert result.path.suffix == ".epub"
+        # Should be in author subdirectory
+        assert result.path.parent.name != "output"
 
     def test_original_file_unchanged(self, sample_epub: Path, tmp_path: Path) -> None:
         """Original EPUB file is byte-identical after pipeline runs."""
@@ -57,27 +59,31 @@ class TestApplyMetadataSafely:
         """When output file already exists, a numeric suffix is added."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
-        metadata = BookMetadata(title="Test")
+        metadata = BookMetadata(title="Test", authors=["Author"])
 
-        # Create a file that would collide
-        (output_dir / sample_epub.name).write_text("occupying the name")
+        # Create the organized path that would collide
+        collision_dir = output_dir / "Author" / "Test.epub"
+        collision_dir.parent.mkdir(parents=True)
+        collision_dir.write_text("occupying the name")
 
         result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
         assert result.path is not None
         assert result.path.exists()
-        assert result.path.name != sample_epub.name
+        assert result.path.name != "Test.epub"
         assert "_1" in result.path.stem
 
     def test_multiple_collisions_increment(self, sample_epub: Path, tmp_path: Path) -> None:
         """Multiple collisions increment the suffix counter."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
-        metadata = BookMetadata(title="Test")
+        metadata = BookMetadata(title="Test", authors=["Author"])
 
-        stem = sample_epub.stem
-        (output_dir / sample_epub.name).write_text("collision 0")
-        (output_dir / f"{stem}_1.epub").write_text("collision 1")
+        # Create the organized path collisions
+        collision_dir = output_dir / "Author"
+        collision_dir.mkdir(parents=True)
+        (collision_dir / "Test.epub").write_text("collision 0")
+        (collision_dir / "Test_1.epub").write_text("collision 1")
 
         result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
@@ -161,7 +167,7 @@ class TestWriteBackVerification:
         assert result.success is False
         assert result.error is not None
         # The failed copy should be cleaned up
-        assert not list(output_dir.glob("*.epub"))
+        assert not list(output_dir.rglob("*.epub"))
 
     def test_verification_failure_cleans_up_copy(
         self, sample_epub: Path, tmp_path: Path
@@ -178,7 +184,7 @@ class TestWriteBackVerification:
             result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
         assert result.success is False
-        assert not list(output_dir.glob("*.epub"))
+        assert not list(output_dir.rglob("*.epub"))
 
     def test_verification_readback_failure_cleans_up(
         self, sample_epub: Path, tmp_path: Path
@@ -196,7 +202,7 @@ class TestWriteBackVerification:
 
         assert result.success is False
         assert result.error is not None
-        assert not list(output_dir.glob("*.epub"))
+        assert not list(output_dir.rglob("*.epub"))
 
     def test_only_written_fields_are_verified(
         self, sample_epub: Path, tmp_path: Path

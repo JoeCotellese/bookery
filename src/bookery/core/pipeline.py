@@ -6,6 +6,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bookery.core.pathformat import build_output_path, record_processed, resolve_collision
 from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
 from bookery.metadata.normalizer import NormalizationResult, normalize_metadata
 from bookery.metadata.provider import MetadataProvider
@@ -32,24 +33,6 @@ class WriteResult:
     success: bool
     verified_fields: list[FieldVerification] = field(default_factory=list)
     error: str | None = None
-
-
-_MAX_COLLISION_ATTEMPTS = 10_000
-
-
-def _resolve_collision(output_path: Path) -> Path:
-    """Find a non-colliding filename by appending _1, _2, etc."""
-    stem = output_path.stem
-    suffix = output_path.suffix
-    parent = output_path.parent
-    for counter in range(1, _MAX_COLLISION_ATTEMPTS + 1):
-        candidate = parent / f"{stem}_{counter}{suffix}"
-        if not candidate.exists():
-            return candidate
-    raise OSError(
-        f"Could not find a non-colliding filename after "
-        f"{_MAX_COLLISION_ATTEMPTS} attempts: {output_path}"
-    )
 
 
 def _verify_write(dest: Path, metadata: BookMetadata) -> list[FieldVerification]:
@@ -139,11 +122,9 @@ def apply_metadata_safely(
     Returns:
         WriteResult with path, success flag, and verification details.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = output_dir / source.name
-    if dest.exists():
-        dest = _resolve_collision(dest)
+    dest = build_output_path(metadata, output_dir)
+    dest = resolve_collision(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(source, dest)
 
@@ -172,6 +153,7 @@ def apply_metadata_safely(
             error=f"Verification failed for: {', '.join(failed)}",
         )
 
+    record_processed(output_dir, source.name)
     return WriteResult(path=dest, success=True, verified_fields=verifications)
 
 
