@@ -126,12 +126,14 @@ def apply_metadata_safely(
     dest = resolve_collision(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    logger.debug("apply_metadata_safely: copying %s -> %s", source.name, dest)
     shutil.copy2(source, dest)
 
     # Write metadata to the copy
     try:
         write_epub_metadata(dest, metadata)
     except (OSError, EpubReadError) as exc:
+        logger.error("apply_metadata_safely: write failed %s: %s", dest, exc)
         _cleanup_dest(dest)
         return WriteResult(path=None, success=False, error=str(exc))
 
@@ -139,13 +141,21 @@ def apply_metadata_safely(
     try:
         verifications = _verify_write(dest, metadata)
     except (OSError, EpubReadError) as exc:
+        logger.error("apply_metadata_safely: verify read-back failed %s: %s", dest, exc)
         _cleanup_dest(dest)
         return WriteResult(path=None, success=False, error=str(exc))
 
     # Check if all fields passed
     if not all(v.passed for v in verifications):
-        _cleanup_dest(dest)
         failed = [v.field for v in verifications if not v.passed]
+        for v in verifications:
+            if not v.passed:
+                logger.warning(
+                    "apply_metadata_safely: field %s mismatch expected=%r actual=%r",
+                    v.field, v.expected, v.actual,
+                )
+        logger.error("apply_metadata_safely: verification failed, cleaning up %s", dest)
+        _cleanup_dest(dest)
         return WriteResult(
             path=None,
             success=False,
@@ -194,37 +204,61 @@ def match_one(
     Returns:
         MatchOneResult with status, metadata, output_path, and error details.
     """
+    logger.info("match_one: start %s", epub_path.name)
+
     # Read metadata from EPUB
     try:
         extracted = read_epub_metadata(epub_path)
     except EpubReadError as exc:
+        logger.error("match_one: read failed %s: %s", epub_path.name, exc)
         return MatchOneResult(status="error", error=str(exc))
+
+    logger.debug(
+        "match_one: extracted title=%r author=%r isbn=%r",
+        extracted.title, extracted.author, extracted.isbn,
+    )
 
     # Normalize mangled metadata for better search queries
     norm_result = normalize_metadata(extracted)
     search_meta = norm_result.normalized
 
+    if norm_result.was_modified:
+        logger.debug(
+            "match_one: normalized title=%r author=%r",
+            search_meta.title, search_meta.author,
+        )
+
     # Try ISBN lookup first, then fall back to title/author search
     candidates = []
     if search_meta.isbn:
         candidates = provider.search_by_isbn(search_meta.isbn)
+        logger.debug("match_one: ISBN search returned %d candidates", len(candidates))
 
     if not candidates:
         candidates = provider.search_by_title_author(
             search_meta.title, search_meta.author or None,
         )
+        logger.debug("match_one: title/author search returned %d candidates", len(candidates))
 
     if not candidates:
+        logger.info("match_one: skipped (no candidates) %s", epub_path.name)
         return MatchOneResult(status="skipped", normalization=norm_result)
 
     # Review: let the user (or auto-accept logic) pick a candidate
     selected = review_session.review(extracted, candidates)
     if selected is None:
+        logger.info("match_one: skipped (user declined) %s", epub_path.name)
         return MatchOneResult(status="skipped", normalization=norm_result)
+
+    logger.info(
+        "match_one: selected %r by %s for %s",
+        selected.title, selected.author, epub_path.name,
+    )
 
     # Write the selected metadata to a copy
     write_result = apply_metadata_safely(epub_path, selected, output_dir)
     if write_result.success:
+        logger.info("match_one: written %s", write_result.path)
         return MatchOneResult(
             status="matched",
             metadata=selected,
@@ -232,4 +266,5 @@ def match_one(
             normalization=norm_result,
         )
 
+    logger.error("match_one: write failed %s: %s", epub_path.name, write_result.error)
     return MatchOneResult(status="error", error=write_result.error, normalization=norm_result)
