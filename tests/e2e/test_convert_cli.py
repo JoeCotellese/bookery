@@ -204,6 +204,235 @@ class TestConvertCliErrors:
         assert "1 error" in result.output
 
 
+def _mock_extract_to_html_with_opf(tmp_path: Path):
+    """Create a mock extract_mobi that returns HTML with OPF metadata and images."""
+    call_count = 0
+
+    def side_effect(path):
+        nonlocal call_count
+        call_count += 1
+        extract_dir = tmp_path / f"mobi_extract_{call_count}"
+        mobi7_dir = extract_dir / "mobi7"
+        mobi7_dir.mkdir(parents=True)
+
+        html_file = mobi7_dir / "book.html"
+        html_file.write_text(
+            '<html><body><img src="Images/cover.jpg"/><p>Content</p></body></html>'
+        )
+
+        opf_file = mobi7_dir / "content.opf"
+        opf_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+            xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>The Martian</dc:title>
+    <dc:creator>Andy Weir</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:publisher>Crown Publishing</dc:publisher>
+  </metadata>
+</package>
+""")
+
+        images_dir = mobi7_dir / "Images"
+        images_dir.mkdir()
+        (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpg")
+
+        return MobiExtractResult(
+            tempdir=extract_dir,
+            format="html",
+            html_path=html_file,
+            opf_path=opf_file,
+            images_dir=images_dir,
+        )
+
+    return side_effect
+
+
+class TestConvertCliMobi7Metadata:
+    """E2E tests for MOBI7 conversion preserving OPF metadata and images."""
+
+    def test_mobi7_preserves_metadata(self, tmp_path: Path) -> None:
+        """MOBI7 conversion embeds OPF metadata in the output EPUB."""
+        from bookery.formats.epub import read_epub_metadata
+
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.side_effect = _mock_extract_to_html_with_opf(tmp_path)
+            result = runner.invoke(cli, [
+                "convert", str(mobi_file), "-o", str(output_dir),
+            ])
+
+        assert result.exit_code == 0, result.output
+        assert "1 converted" in result.output
+
+        epub_path = output_dir / "book.epub"
+        assert epub_path.exists()
+
+        metadata = read_epub_metadata(epub_path)
+        assert metadata.title == "The Martian"
+        assert "Andy Weir" in metadata.authors
+
+    def test_mobi7_includes_images(self, tmp_path: Path) -> None:
+        """MOBI7 conversion includes images in the output EPUB."""
+        import ebooklib
+
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.side_effect = _mock_extract_to_html_with_opf(tmp_path)
+            result = runner.invoke(cli, [
+                "convert", str(mobi_file), "-o", str(output_dir),
+            ])
+
+        assert result.exit_code == 0, result.output
+
+        epub_path = output_dir / "book.epub"
+        book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
+        image_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_IMAGE
+        ]
+        assert len(image_items) == 1
+        assert image_items[0].get_name() == "Images/cover.jpg"
+
+
+def _mock_extract_to_html_with_ncx(tmp_path: Path):
+    """Create a mock extract_mobi that returns HTML with NCX TOC."""
+    call_count = 0
+
+    def side_effect(path):
+        nonlocal call_count
+        call_count += 1
+        extract_dir = tmp_path / f"mobi_extract_ncx_{call_count}"
+        mobi7_dir = extract_dir / "mobi7"
+        mobi7_dir.mkdir(parents=True)
+
+        html_file = mobi7_dir / "book.html"
+        html_file.write_text(
+            '<html><body>'
+            '<p>Book preamble</p>'
+            '<a id="filepos000100"></a><h1>Chapter 1</h1>'
+            '<p>First chapter content.</p>'
+            '<a id="filepos000500"></a><h1>Chapter 2</h1>'
+            '<p>Second chapter content.</p>'
+            '<a id="filepos001000"></a><h1>Chapter 3</h1>'
+            '<p>Third chapter content.</p>'
+            '</body></html>'
+        )
+
+        ncx_file = mobi7_dir / "toc.ncx"
+        ncx_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>Chapter 1</text></navLabel>
+      <content src="book.html#filepos000100"/>
+    </navPoint>
+    <navPoint id="np2" playOrder="2">
+      <navLabel><text>Chapter 2</text></navLabel>
+      <content src="book.html#filepos000500"/>
+    </navPoint>
+    <navPoint id="np3" playOrder="3">
+      <navLabel><text>Chapter 3</text></navLabel>
+      <content src="book.html#filepos001000"/>
+    </navPoint>
+  </navMap>
+</ncx>
+""")
+
+        opf_file = mobi7_dir / "content.opf"
+        opf_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>The Martian</dc:title>
+    <dc:creator>Andy Weir</dc:creator>
+    <dc:language>en</dc:language>
+  </metadata>
+</package>
+""")
+
+        return MobiExtractResult(
+            tempdir=extract_dir,
+            format="html",
+            html_path=html_file,
+            opf_path=opf_file,
+            ncx_path=ncx_file,
+        )
+
+    return side_effect
+
+
+class TestConvertCliNcxChapters:
+    """E2E tests for MOBI7 conversion with NCX chapter splitting."""
+
+    def test_ncx_produces_multi_chapter_epub(self, tmp_path: Path) -> None:
+        """CLI convert with NCX produces EPUB with multiple TOC entries."""
+        import ebooklib
+
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.side_effect = _mock_extract_to_html_with_ncx(tmp_path)
+            result = runner.invoke(cli, [
+                "convert", str(mobi_file), "-o", str(output_dir),
+            ])
+
+        assert result.exit_code == 0, result.output
+        assert "1 converted" in result.output
+
+        epub_path = output_dir / "book.epub"
+        assert epub_path.exists()
+
+        book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
+        assert len(book.toc) == 3
+
+        # Verify all chapter content is present
+        doc_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_DOCUMENT
+        ]
+        all_content = b"".join(
+            item.get_content() for item in doc_items
+        )
+        assert b"First chapter content" in all_content
+        assert b"Second chapter content" in all_content
+        assert b"Third chapter content" in all_content
+
+    def test_ncx_preserves_metadata(self, tmp_path: Path) -> None:
+        """NCX-split EPUB still preserves OPF metadata."""
+        from bookery.formats.epub import read_epub_metadata
+
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        with patch("bookery.core.converter.extract_mobi") as mock_extract:
+            mock_extract.side_effect = _mock_extract_to_html_with_ncx(tmp_path)
+            result = runner.invoke(cli, [
+                "convert", str(mobi_file), "-o", str(output_dir),
+            ])
+
+        assert result.exit_code == 0, result.output
+
+        metadata = read_epub_metadata(output_dir / "book.epub")
+        assert metadata.title == "The Martian"
+        assert "Andy Weir" in metadata.authors
+
+
 class TestConvertCliMatch:
     """E2E tests for --match flag integration."""
 

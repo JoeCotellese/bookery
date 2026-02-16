@@ -61,6 +61,260 @@ class TestHtmlToEpubAssembly:
         assert content_found
 
 
+class TestOpfMetadataRoundTrip:
+    """Integration tests for OPF metadata flowing through assembly."""
+
+    def test_opf_metadata_survives_assembly(self, tmp_path: Path) -> None:
+        """Metadata from OPF is readable in the assembled EPUB."""
+        from bookery.formats.mobi import parse_opf_metadata
+
+        # Write a realistic OPF file
+        opf_file = tmp_path / "content.opf"
+        opf_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+            xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>The Martian</dc:title>
+    <dc:creator>Andy Weir</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:publisher>Crown Publishing</dc:publisher>
+    <dc:identifier opf:scheme="ISBN">9780553418026</dc:identifier>
+  </metadata>
+</package>
+""")
+        metadata = parse_opf_metadata(opf_file)
+        assert metadata is not None
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text("<html><body><p>I'm stranded on Mars.</p></body></html>")
+        output = tmp_path / "assembled.epub"
+
+        assemble_epub_from_html(html_file, output, metadata=metadata)
+
+        read_back = read_epub_metadata(output)
+        assert read_back.title == "The Martian"
+        assert read_back.authors == ["Andy Weir"]
+        assert read_back.language == "en"
+
+    def test_images_survive_assembly(self, tmp_path: Path) -> None:
+        """Images from images_dir are readable in the assembled EPUB."""
+        import ebooklib
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text(
+            '<html><body><img src="Images/photo.jpg"/></body></html>'
+        )
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        image_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100  # Fake JPEG
+        (images_dir / "photo.jpg").write_bytes(image_data)
+
+        output = tmp_path / "assembled.epub"
+        assemble_epub_from_html(html_file, output, images_dir=images_dir)
+
+        book = epub.read_epub(str(output), options={"ignore_ncx": True})
+        image_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_IMAGE
+        ]
+        assert len(image_items) == 1
+        assert image_items[0].get_content() == image_data
+
+    def test_opf_metadata_and_images_together(self, tmp_path: Path) -> None:
+        """Both OPF metadata and images survive assembly into EPUB."""
+        import ebooklib
+
+        from bookery.formats.mobi import parse_opf_metadata
+
+        opf_file = tmp_path / "content.opf"
+        opf_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Full Test</dc:title>
+    <dc:creator>Test Author</dc:creator>
+  </metadata>
+</package>
+""")
+        metadata = parse_opf_metadata(opf_file)
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text(
+            '<html><body><img src="Images/fig1.png"/><p>Text</p></body></html>'
+        )
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        (images_dir / "fig1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake-png")
+
+        output = tmp_path / "assembled.epub"
+        assemble_epub_from_html(html_file, output, metadata=metadata, images_dir=images_dir)
+
+        read_back = read_epub_metadata(output)
+        assert read_back.title == "Full Test"
+        assert read_back.authors == ["Test Author"]
+
+        book = epub.read_epub(str(output), options={"ignore_ncx": True})
+        image_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_IMAGE
+        ]
+        assert len(image_items) == 1
+
+
+class TestNcxSplitRoundTrip:
+    """Integration tests for NCX-based chapter splitting through full assembly."""
+
+    def test_ncx_split_produces_multi_chapter_epub(self, tmp_path: Path) -> None:
+        """Full round-trip: parse NCX → split HTML → assemble → readable multi-chapter EPUB."""
+        import ebooklib
+
+        from bookery.formats.mobi import (
+            assemble_epub_from_html,
+            parse_ncx_toc,
+            split_html_by_anchors,
+        )
+
+        # Create a realistic NCX file
+        ncx_file = tmp_path / "toc.ncx"
+        ncx_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>Chapter 1 - Arrival</text></navLabel>
+      <content src="book.html#filepos000100"/>
+    </navPoint>
+    <navPoint id="np2" playOrder="2">
+      <navLabel><text>Chapter 2 - Survival</text></navLabel>
+      <content src="book.html#filepos000500"/>
+    </navPoint>
+    <navPoint id="np3" playOrder="3">
+      <navLabel><text>Chapter 3 - Rescue</text></navLabel>
+      <content src="book.html#filepos001000"/>
+    </navPoint>
+  </navMap>
+</ncx>
+""")
+
+        # Create matching HTML with anchor points
+        html_file = tmp_path / "book.html"
+        html_file.write_text(
+            '<html><body>'
+            '<p>Book preamble</p>'
+            '<a id="filepos000100"></a><h1>Chapter 1</h1>'
+            '<p>Arrival on Mars. Content for chapter one.</p>'
+            '<a id="filepos000500"></a><h1>Chapter 2</h1>'
+            '<p>Learning to survive. Content for chapter two.</p>'
+            '<a id="filepos001000"></a><h1>Chapter 3</h1>'
+            '<p>Rescue mission. Content for chapter three.</p>'
+            '</body></html>'
+        )
+
+        # Parse NCX
+        nav_points = parse_ncx_toc(ncx_file)
+        assert len(nav_points) == 3
+
+        # Split HTML
+        html_content = html_file.read_text()
+        chapters = split_html_by_anchors(html_content, nav_points)
+        assert len(chapters) == 3
+
+        # Assemble EPUB
+        output = tmp_path / "output.epub"
+        metadata = BookMetadata(
+            title="The Martian",
+            authors=["Andy Weir"],
+            language="en",
+        )
+        assemble_epub_from_html(
+            html_file, output, metadata=metadata, chapters=chapters,
+        )
+
+        # Verify the EPUB
+        assert output.exists()
+        book = epub.read_epub(str(output), options={"ignore_ncx": True})
+
+        # TOC has 3 entries
+        assert len(book.toc) == 3
+        toc_labels = [entry.title for entry in book.toc]
+        assert "Chapter 1 - Arrival" in toc_labels
+        assert "Chapter 2 - Survival" in toc_labels
+        assert "Chapter 3 - Rescue" in toc_labels
+
+        # Spine has 3 document items (plus nav)
+        doc_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_DOCUMENT
+        ]
+        assert len(doc_items) >= 3
+
+        # Content is present in each chapter
+        all_content = b"".join(
+            item.get_content() for item in doc_items
+            if hasattr(item, "get_content")
+        )
+        assert b"Arrival on Mars" in all_content
+        assert b"Learning to survive" in all_content
+        assert b"Rescue mission" in all_content
+
+        # Metadata survived
+        read_back = read_epub_metadata(output)
+        assert read_back.title == "The Martian"
+        assert read_back.authors == ["Andy Weir"]
+
+    def test_ncx_split_with_images(self, tmp_path: Path) -> None:
+        """NCX split EPUB includes images alongside chapters."""
+        import ebooklib
+
+        from bookery.formats.mobi import (
+            assemble_epub_from_html,
+            parse_ncx_toc,
+            split_html_by_anchors,
+        )
+
+        ncx_file = tmp_path / "toc.ncx"
+        ncx_file.write_text("""\
+<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>Chapter 1</text></navLabel>
+      <content src="book.html#filepos000100"/>
+    </navPoint>
+  </navMap>
+</ncx>
+""")
+
+        html_file = tmp_path / "book.html"
+        html_file.write_text(
+            '<html><body>'
+            '<a id="filepos000100"></a><h1>Chapter 1</h1>'
+            '<img src="Images/cover.jpg"/><p>Content</p>'
+            '</body></html>'
+        )
+
+        images_dir = tmp_path / "Images"
+        images_dir.mkdir()
+        (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpg")
+
+        nav_points = parse_ncx_toc(ncx_file)
+        chapters = split_html_by_anchors(html_file.read_text(), nav_points)
+
+        output = tmp_path / "output.epub"
+        assemble_epub_from_html(
+            html_file, output, chapters=chapters, images_dir=images_dir,
+        )
+
+        book = epub.read_epub(str(output), options={"ignore_ncx": True})
+        image_items = [
+            item for item in book.get_items()
+            if item.get_type() == ebooklib.ITEM_IMAGE
+        ]
+        assert len(image_items) == 1
+        assert image_items[0].get_name() == "Images/cover.jpg"
+
+
 class TestConvertThenMatchPipeline:
     """Integration tests for convert→match pipeline chain."""
 

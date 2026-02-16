@@ -11,6 +11,9 @@ from bookery.formats.mobi import (
     MobiReadError,
     assemble_epub_from_html,
     extract_mobi,
+    parse_ncx_toc,
+    parse_opf_metadata,
+    split_html_by_anchors,
 )
 from bookery.metadata.types import BookMetadata
 
@@ -74,7 +77,35 @@ def convert_one(
         if extract_result.format == "epub":
             shutil.copy2(extract_result.epub_path, output_path)
         else:
-            assemble_epub_from_html(extract_result.html_path, output_path)
+            opf_metadata = parse_opf_metadata(extract_result.opf_path)
+
+            # Parse NCX TOC and split HTML into chapters if available
+            chapters = None
+            nav_points = parse_ncx_toc(extract_result.ncx_path)
+            if nav_points:
+                html_content = extract_result.html_path.read_text(
+                    encoding="utf-8", errors="replace",
+                )
+                chapters = split_html_by_anchors(html_content, nav_points)
+                if chapters:
+                    logger.info(
+                        "Split %s into %d chapters from NCX",
+                        extract_result.html_path.name,
+                        len(chapters),
+                    )
+                else:
+                    logger.warning(
+                        "NCX had %d nav points but no anchors found in HTML",
+                        len(nav_points),
+                    )
+
+            assemble_epub_from_html(
+                extract_result.html_path,
+                output_path,
+                metadata=opf_metadata,
+                images_dir=extract_result.images_dir,
+                chapters=chapters if chapters else None,
+            )
 
         # Read metadata from the resulting EPUB
         metadata = None
