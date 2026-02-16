@@ -147,6 +147,7 @@ class OpenLibraryProvider:
         Supports URLs like:
           https://openlibrary.org/works/OL123W/Title
           https://openlibrary.org/works/OL123W?edition=key:/books/OL456M
+          https://openlibrary.org/books/OL456M/Title
 
         Returns None on any parse or fetch failure.
         """
@@ -156,6 +157,17 @@ class OpenLibraryProvider:
 
         works_key, edition_key = parsed
         try:
+            # Edition-only URL (/books/...): fetch edition to resolve works key
+            if edition_key and not works_key:
+                edition_data = self._http.get(f"{_OL_BASE}{edition_key}.json")
+                works_list = edition_data.get("works", [])
+                if not works_list:
+                    logger.warning("Edition %s has no works key", edition_key)
+                    return None
+                works_key = works_list[0].get("key", "")
+                if not works_key:
+                    return None
+
             if edition_key:
                 return self._lookup_by_edition(works_key, edition_key)
             return self._lookup_by_works(works_key)
@@ -164,10 +176,11 @@ class OpenLibraryProvider:
             return None
 
     @staticmethod
-    def _parse_ol_url(url: str) -> tuple[str, str | None] | None:
-        """Extract works key and optional edition key from an OL URL.
+    def _parse_ol_url(url: str) -> tuple[str | None, str | None] | None:
+        """Extract works key and/or edition key from an OL URL.
 
-        Returns (works_key, edition_key) or None if URL is not a valid OL works URL.
+        Returns (works_key, edition_key) where either may be None,
+        or None if the URL is not a recognized Open Library URL.
         """
         try:
             parsed = urlparse(url)
@@ -177,21 +190,32 @@ class OpenLibraryProvider:
         if parsed.hostname != "openlibrary.org":
             return None
 
-        # Extract works key from path: /works/OL123W or /works/OL123W/Title_Slug
-        match = re.match(r"(/works/OL\w+)", parsed.path)
-        if not match:
-            return None
-        works_key = match.group(1)
+        works_key: str | None = None
+        edition_key: str | None = None
+
+        # Match /works/OL123W or /works/OL123W/Title_Slug
+        works_match = re.match(r"(/works/OL\w+)", parsed.path)
+        if works_match:
+            works_key = works_match.group(1)
+
+        # Match /books/OL456M or /books/OL456M/Title_Slug
+        books_match = re.match(r"(/books/OL\w+)", parsed.path)
+        if books_match:
+            edition_key = books_match.group(1)
 
         # Check for edition key in query: edition=key:/books/OL456M
-        edition_key = None
-        qs = parse_qs(parsed.query)
-        edition_values = qs.get("edition", [])
-        if edition_values:
-            edition_raw = edition_values[0]
-            # Format: "key:/books/OL456M"
-            if edition_raw.startswith("key:"):
-                edition_key = edition_raw[4:]
+        if works_key and not edition_key:
+            qs = parse_qs(parsed.query)
+            edition_values = qs.get("edition", [])
+            if edition_values:
+                edition_raw = edition_values[0]
+                # Format: "key:/books/OL456M"
+                if edition_raw.startswith("key:"):
+                    edition_key = edition_raw[4:]
+
+        # Must have at least one key
+        if not works_key and not edition_key:
+            return None
 
         return works_key, edition_key
 

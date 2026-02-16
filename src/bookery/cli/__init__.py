@@ -1,6 +1,8 @@
 # ABOUTME: CLI package for Bookery, built on Click.
 # ABOUTME: Defines the root command group and registers subcommands.
 
+import logging
+
 import click
 
 from bookery.cli.commands import (
@@ -20,8 +22,19 @@ from bookery.cli.commands import (
 
 @click.group()
 @click.version_option(package_name="bookery")
-def cli() -> None:
+@click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
+def cli(verbose: int) -> None:
     """Bookery - a CLI-first ebook library manager."""
+    if verbose >= 2:
+        level = logging.DEBUG
+    elif verbose >= 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(name)s %(levelname)s: %(message)s",
+    )
 
 
 cli.add_command(convert_cmd.convert)
