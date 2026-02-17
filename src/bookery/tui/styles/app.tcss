@@ -8,11 +8,21 @@ Horizontal {
 #book-list {
     width: 2fr;
     border: solid $panel;
-    padding: 1 2;
 }
 
-#book-list:focus {
+#book-list:focus-within {
     border: solid $accent;
+}
+
+#book-table {
+    height: 1fr;
+}
+
+#row-count {
+    height: 1;
+    dock: bottom;
+    text-style: dim;
+    padding: 0 2;
 }
 
 #book-detail {

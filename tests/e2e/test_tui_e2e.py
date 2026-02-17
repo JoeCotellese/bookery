@@ -1,6 +1,7 @@
 # ABOUTME: End-to-end tests for the `bookery tui` command.
 # ABOUTME: Verifies --help output, missing DB error, headless app launch, and two-pane layout.
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +10,7 @@ from click.testing import CliRunner
 from bookery.cli import cli
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+from bookery.metadata.types import BookMetadata
 from bookery.tui.app import BookeryApp
 
 
@@ -82,6 +84,56 @@ class TestTuiE2E:
             book_detail = app.query_one("#book-detail")
             assert book_list is not None
             assert book_detail is not None
+
+            await pilot.press("q")
+
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_empty_catalog_shows_zero_books(self, tmp_path) -> None:
+        """An empty catalog shows '0 books' in the row count."""
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        app = BookeryApp(catalog=catalog)
+        async with app.run_test() as pilot:
+            label = app.query_one("#row-count")
+            assert "0 books" in str(label.render())
+            await pilot.press("q")
+
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_populated_catalog_renders_book_list(self, tmp_path) -> None:
+        """A catalog with books renders them in the DataTable sorted by author."""
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        catalog.add_book(
+            BookMetadata(title="The Name of the Rose", authors=["Umberto Eco"],
+                         source_path=Path("/books/rose.epub")),
+            file_hash="hash1",
+        )
+        catalog.add_book(
+            BookMetadata(title="If on a winter's night a traveler",
+                         authors=["Italo Calvino"],
+                         source_path=Path("/books/winter.epub")),
+            file_hash="hash2",
+        )
+
+        app = BookeryApp(catalog=catalog)
+        async with app.run_test() as pilot:
+            table = app.query_one("#book-table")
+            assert table.row_count == 2
+
+            # Calvino sorts before Eco
+            first_row = table.get_row_at(0)
+            assert "Calvino" in str(first_row[0])
+
+            label = app.query_one("#row-count")
+            assert "2 books" in str(label.render())
 
             await pilot.press("q")
 

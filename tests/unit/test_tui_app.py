@@ -95,15 +95,11 @@ class TestBookeryAppUnit:
     async def test_book_list_placeholder_text(
         self, catalog: LibraryCatalog
     ) -> None:
-        """Left pane shows placeholder text when no books loaded."""
-        from textual.widgets import Static
-
+        """Left pane shows '0 books' when catalog is empty."""
         app = BookeryApp(catalog=catalog)
         async with app.run_test():
-            book_list = app.query_one("#book-list")
-            # The Static inside the pane should have placeholder text
-            static = book_list.query_one(Static)
-            assert "No books loaded" in str(static.render())
+            row_count = app.query_one("#row-count")
+            assert "0 books" in str(row_count.render())
 
     @pytest.mark.asyncio
     async def test_book_detail_placeholder_text(
@@ -136,18 +132,18 @@ class TestBookeryAppUnit:
     async def test_tab_cycles_focus_between_panes(
         self, catalog: LibraryCatalog
     ) -> None:
-        """Pressing Tab cycles focus between the two panes."""
+        """Pressing Tab cycles focus between the book table and detail pane."""
         app = BookeryApp(catalog=catalog)
         async with app.run_test() as pilot:
-            # Focus the left pane first
-            book_list = app.query_one("#book-list")
-            book_list.focus()
-            assert app.focused.id == "book-list"
+            # Focus starts on the book table inside #book-list
+            book_table = app.query_one("#book-table")
+            book_table.focus()
+            assert app.focused.id == "book-table"
 
             # Tab should move to the right pane
             await pilot.press("tab")
             assert app.focused.id == "book-detail"
 
-            # Tab again should cycle back to the left pane
+            # Tab again should cycle back to the book table
             await pilot.press("tab")
-            assert app.focused.id == "book-list"
+            assert app.focused.id == "book-table"
