@@ -60,10 +60,17 @@ def convert_one(
 
     # Skip if already processed (check manifest first, then rglob fallback)
     if not force:
-        if is_processed(output_dir, mobi_path.name):
+        processed = is_processed(output_dir, mobi_path.name)
+        if processed is not False:
+            # Manifest hit — recover the output path if stored
+            epub_path = None
+            if isinstance(processed, str):
+                candidate = Path(processed)
+                if candidate.exists():
+                    epub_path = candidate
             return ConvertResult(
                 source=mobi_path,
-                epub_path=None,
+                epub_path=epub_path,
                 success=True,
                 skipped=True,
             )
@@ -143,7 +150,7 @@ def convert_one(
         organized_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(output_path), organized_path)
 
-        record_processed(output_dir, mobi_path.name)
+        record_processed(output_dir, mobi_path.name, output_path=organized_path)
 
         return ConvertResult(
             source=mobi_path,

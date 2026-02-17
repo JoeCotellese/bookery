@@ -188,3 +188,27 @@ class TestProcessedManifest:
         record_processed(output_dir, "book.epub")
         assert output_dir.exists()
         assert is_processed(output_dir, "book.epub") is True
+
+    def test_record_with_output_path(self, tmp_path: Path) -> None:
+        """Records a source with its output path and retrieves it."""
+        out = tmp_path / "Author" / "Title.epub"
+        record_processed(tmp_path, "book.mobi", output_path=out)
+        result = is_processed(tmp_path, "book.mobi")
+        assert result == str(out)
+
+    def test_is_processed_returns_true_for_legacy_lines(self, tmp_path: Path) -> None:
+        """Legacy manifest lines (no tab) still return True."""
+        manifest = tmp_path / ".bookery-processed"
+        manifest.write_text("old_book.mobi\n")
+        result = is_processed(tmp_path, "old_book.mobi")
+        assert result is True
+
+    def test_mixed_legacy_and_new_manifest(self, tmp_path: Path) -> None:
+        """Manifest with both legacy and new-format lines works."""
+        manifest = tmp_path / ".bookery-processed"
+        manifest.write_text("legacy.mobi\n")
+        out = tmp_path / "Author" / "New Book.epub"
+        record_processed(tmp_path, "new.mobi", output_path=out)
+
+        assert is_processed(tmp_path, "legacy.mobi") is True
+        assert is_processed(tmp_path, "new.mobi") == str(out)
