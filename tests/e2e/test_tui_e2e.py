@@ -1,5 +1,5 @@
 # ABOUTME: End-to-end tests for the `bookery tui` command.
-# ABOUTME: Verifies --help output, missing DB error, and headless app launch.
+# ABOUTME: Verifies --help output, missing DB error, headless app launch, and two-pane layout.
 
 from unittest.mock import patch
 
@@ -57,6 +57,32 @@ class TestTuiE2E:
 
         app = BookeryApp(catalog=catalog)
         async with app.run_test() as pilot:
+            await pilot.press("q")
+
+        conn.close()
+
+    @pytest.mark.asyncio
+    async def test_app_mounts_with_both_panes(self, tmp_path) -> None:
+        """The Textual app mounts with both book-list and book-detail panes."""
+        from textual.containers import Horizontal
+        from textual.widgets import Footer, Header
+
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        app = BookeryApp(catalog=catalog)
+        async with app.run_test() as pilot:
+            # Verify full layout structure
+            assert len(app.query(Header)) == 1
+            assert len(app.query(Footer)) == 1
+            assert len(app.query(Horizontal)) == 1
+
+            book_list = app.query_one("#book-list")
+            book_detail = app.query_one("#book-detail")
+            assert book_list is not None
+            assert book_detail is not None
+
             await pilot.press("q")
 
         conn.close()
