@@ -87,6 +87,28 @@ class TestWriteEpubMetadata:
         with pytest.raises(EpubReadError):
             write_epub_metadata(corrupt_epub, meta)
 
+    def test_write_survives_none_uid_identifier(self, sample_epub: Path) -> None:
+        """EPUBs where the uid identifier has a None value get a replacement uid."""
+        from unittest.mock import patch
+        from ebooklib import epub
+
+        original_read = epub.read_epub
+
+        def read_and_poison(*args, **kwargs):
+            book = original_read(*args, **kwargs)
+            # Simulate a Calibre EPUB with None uid identifier
+            dc_ns = "http://purl.org/dc/elements/1.1/"
+            book.metadata[dc_ns]["identifier"] = [(None, {"id": "uuid_id"})]
+            book.uid = None
+            return book
+
+        with patch("bookery.formats.epub.epub.read_epub", side_effect=read_and_poison):
+            updated = BookMetadata(title="Survives None UID")
+            write_epub_metadata(sample_epub, updated)
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.title == "Survives None UID"
+
     def test_write_survives_none_opf_metadata(self, sample_epub: Path) -> None:
         """EPUBs with None values in OPF metadata (e.g. cover meta) don't crash on write.
 
