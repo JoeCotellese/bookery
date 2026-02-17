@@ -153,6 +153,9 @@ def _scrub_none_metadata(book: epub.EpubBook) -> None:
 
     ebooklib preserves OPF meta tags like <meta name="cover" content="..."/>
     as (None, {attrs}) tuples. lxml rejects None when serializing to XML.
+
+    If scrubbing removes the book's uid identifier, a new UUID is generated
+    to prevent ebooklib from crashing when writing the NCX.
     """
     for ns in book.metadata:
         for name in list(book.metadata[ns]):
@@ -164,6 +167,14 @@ def _scrub_none_metadata(book: epub.EpubBook) -> None:
                     len(entries) - len(cleaned), ns, name,
                 )
                 book.metadata[ns][name] = cleaned
+
+    # If scrubbing removed the uid identifier, generate a replacement
+    if book.uid is None:
+        import uuid
+        new_uid = str(uuid.uuid4())
+        book.set_unique_metadata("DC", "identifier", new_uid, {"id": "bookery-uid"})
+        book.uid = new_uid
+        logger.debug("Generated replacement uid: %s", new_uid)
 
 
 def _scrub_none_guide(book: epub.EpubBook) -> None:
