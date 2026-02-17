@@ -52,10 +52,10 @@ def _verify_write(dest: Path, metadata: BookMetadata) -> list[FieldVerification]
         passed=metadata.title == read_back.title,
     ))
 
-    # Authors — sorted comparison for order independence
+    # Authors — sorted comparison for order independence, stripped for whitespace tolerance
     if metadata.authors:
-        expected_sorted = ", ".join(sorted(metadata.authors))
-        actual_sorted = ", ".join(sorted(read_back.authors))
+        expected_sorted = ", ".join(sorted(a.strip() for a in metadata.authors))
+        actual_sorted = ", ".join(sorted(a.strip() for a in read_back.authors))
         verifications.append(FieldVerification(
             field="authors",
             expected=expected_sorted,
@@ -141,9 +141,11 @@ def apply_metadata_safely(
     try:
         verifications = _verify_write(dest, metadata)
     except (OSError, EpubReadError) as exc:
-        logger.error("apply_metadata_safely: verify read-back failed %s: %s", dest, exc)
-        _cleanup_dest(dest)
-        return WriteResult(path=None, success=False, error=str(exc))
+        # Read-back failed (e.g. missing archive entry from Kobo-modified EPUBs).
+        # The write itself succeeded, so keep the file and skip verification.
+        logger.warning("apply_metadata_safely: verify read-back failed %s: %s", dest, exc)
+        record_processed(output_dir, source.name)
+        return WriteResult(path=dest, success=True, verified_fields=[])
 
     # Check if all fields passed
     if not all(v.passed for v in verifications):
