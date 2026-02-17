@@ -1,11 +1,15 @@
 # ABOUTME: Integration tests for the import pipeline with real DB operations.
-# ABOUTME: Validates end-to-end import flow including dedup across imports.
+# ABOUTME: Validates end-to-end import flow including dedup across imports and conversion.
 
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
+from click.testing import CliRunner
 from ebooklib import epub
 
+from bookery.cli import cli
+from bookery.core.converter import ConvertResult
 from bookery.core.importer import import_books
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
@@ -104,4 +108,53 @@ class TestImportPipelineIntegration:
         result2 = import_books([dir_b / "book_copy.epub"], catalog)
         assert result2.added == 0
         assert result2.skipped == 1
+        conn.close()
+
+
+class TestImportConvertIntegration:
+    """Integration tests for convert+import pipeline."""
+
+    def test_import_convert_mixed_directory(self, tmp_path: Path) -> None:
+        """Dir with EPUBs + MOBIs and --convert → all cataloged."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+
+        # Create a real EPUB
+        _make_epub(scan_dir / "real.epub", "Real Book", "Author A")
+
+        # Create a fake MOBI
+        mobi_path = scan_dir / "converted.mobi"
+        mobi_path.write_bytes(b"fake mobi")
+
+        # Create another real EPUB that convert_one will "produce"
+        converted_epub = _make_epub(
+            tmp_path / "converted.epub", "Converted Book", "Author B",
+        )
+        fake_result = ConvertResult(
+            source=mobi_path,
+            epub_path=converted_epub,
+            success=True,
+        )
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        with patch(
+            "bookery.core.converter.convert_one",
+            return_value=fake_result,
+        ):
+            result = runner.invoke(
+                cli,
+                ["import", str(scan_dir), "--convert", "--db", str(db_path)],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Converted 1 of 1" in result.output
+
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        records = catalog.list_all()
+        titles = {r.metadata.title for r in records}
+        assert len(records) == 2
+        assert "Real Book" in titles
+        assert "Converted Book" in titles
         conn.close()

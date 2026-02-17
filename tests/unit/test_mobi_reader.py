@@ -329,6 +329,30 @@ class TestParseNcxToc:
 
         assert result == []
 
+    def test_unescaped_ampersand_in_chapter_title(self, tmp_path: Path) -> None:
+        """Parses NCX with bare & in chapter titles (common KindleUnpack output)."""
+        from bookery.formats.mobi import parse_ncx_toc
+
+        ncx = """\
+<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="ch1" playOrder="1">
+      <navLabel><text>Romeo & Juliet</text></navLabel>
+      <content src="content.html#filepos001"/>
+    </navPoint>
+  </navMap>
+</ncx>
+"""
+        ncx_file = tmp_path / "toc.ncx"
+        ncx_file.write_text(ncx)
+
+        result = parse_ncx_toc(ncx_file)
+
+        assert len(result) == 1
+        assert result[0].label == "Romeo & Juliet"
+        assert result[0].anchor_id == "filepos001"
+
     def test_empty_navmap_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty list when navMap has no navPoints."""
         from bookery.formats.mobi import parse_ncx_toc
@@ -943,6 +967,26 @@ class TestParseOpfMetadata:
         result = parse_opf_metadata(opf_file)
 
         assert result is None
+
+    def test_unescaped_ampersand_in_title(self, tmp_path: Path) -> None:
+        """Parses OPF with bare & in title (common KindleUnpack output)."""
+        opf = """\
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Tom & Jerry</dc:title>
+    <dc:creator>Hanna & Barbera</dc:creator>
+  </metadata>
+</package>
+"""
+        opf_file = tmp_path / "content.opf"
+        opf_file.write_text(opf)
+
+        result = parse_opf_metadata(opf_file)
+
+        assert result is not None
+        assert result.title == "Tom & Jerry"
+        assert result.authors == ["Hanna & Barbera"]
 
     def test_empty_title_returns_none(self, tmp_path: Path) -> None:
         """Returns None when dc:title is empty."""

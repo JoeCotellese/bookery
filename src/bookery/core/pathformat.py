@@ -125,17 +125,44 @@ def resolve_collision(output_path: Path) -> Path:
 _MANIFEST_NAME = ".bookery-processed"
 
 
-def record_processed(output_dir: Path, source_name: str) -> None:
-    """Record a source filename as processed in the output directory manifest."""
+def record_processed(
+    output_dir: Path,
+    source_name: str,
+    *,
+    output_path: Path | None = None,
+) -> None:
+    """Record a source filename as processed in the output directory manifest.
+
+    When output_path is provided, the manifest entry stores the mapping
+    so that future lookups can recover where the output file went.
+    Format: ``source_name\\toutput_path`` (tab-separated).
+    Legacy entries without a tab are still supported by is_processed().
+    """
     manifest = output_dir / _MANIFEST_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
     with manifest.open("a", encoding="utf-8") as f:
-        f.write(source_name + "\n")
+        if output_path is not None:
+            f.write(f"{source_name}\t{output_path}\n")
+        else:
+            f.write(source_name + "\n")
 
 
-def is_processed(output_dir: Path, source_name: str) -> bool:
-    """Check if a source filename has been recorded as processed."""
+def is_processed(output_dir: Path, source_name: str) -> bool | str:
+    """Check if a source filename has been recorded as processed.
+
+    Returns:
+        False if not found.
+        The output path string if recorded with one.
+        True if recorded without an output path (legacy format).
+    """
     manifest = output_dir / _MANIFEST_NAME
     if not manifest.exists():
         return False
-    return source_name in manifest.read_text(encoding="utf-8").splitlines()
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if "\t" in line:
+            name, path = line.split("\t", 1)
+            if name == source_name:
+                return path
+        elif line == source_name:
+            return True
+    return False

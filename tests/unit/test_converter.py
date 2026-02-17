@@ -348,6 +348,26 @@ class TestConvertOneSkipAndForce:
         assert result.success is True
         assert result.skipped is True
 
+    def test_skips_existing_returns_epub_path(
+        self, tmp_path: Path, _mock_epub_extraction,
+    ) -> None:
+        """Manifest-hit returns stored epub_path instead of None."""
+        mobi_file = tmp_path / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        # Create the EPUB file so it can be verified
+        epub_path = output_dir / "Author" / "Book.epub"
+        epub_path.parent.mkdir(parents=True)
+        epub_path.write_bytes(b"fake epub")
+        record_processed(output_dir, "book.mobi", output_path=epub_path)
+
+        result = convert_one(mobi_file, output_dir, force=False)
+
+        assert result.success is True
+        assert result.skipped is True
+        assert result.epub_path == epub_path
+
     def test_normal_conversion_not_skipped(
         self, tmp_path: Path, _mock_epub_extraction,
     ) -> None:
