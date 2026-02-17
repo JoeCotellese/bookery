@@ -1,0 +1,26 @@
+/* Two-pane layout for Bookery TUI */
+/* Left pane: book list, Right pane: book detail */
+
+Horizontal {
+    height: 1fr;
+}
+
+#book-list {
+    width: 2fr;
+    border: solid $panel;
+    padding: 1 2;
+}
+
+#book-list:focus {
+    border: solid $accent;
+}
+
+#book-detail {
+    width: 3fr;
+    border: solid $panel;
+    padding: 1 2;
+}
+
+#book-detail:focus {
+    border: solid $accent;
+}
