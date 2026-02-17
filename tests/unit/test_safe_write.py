@@ -186,10 +186,10 @@ class TestWriteBackVerification:
         assert result.success is False
         assert not list(output_dir.rglob("*.epub"))
 
-    def test_verification_readback_failure_cleans_up(
+    def test_verification_readback_failure_keeps_file(
         self, sample_epub: Path, tmp_path: Path
     ) -> None:
-        """If read-back raises, the copy is deleted."""
+        """If read-back raises, the file is kept (write succeeded, verify skipped)."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         metadata = BookMetadata(title="Test")
@@ -200,9 +200,10 @@ class TestWriteBackVerification:
         ):
             result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
-        assert result.success is False
-        assert result.error is not None
-        assert not list(output_dir.rglob("*.epub"))
+        assert result.success is True
+        assert result.path is not None
+        assert result.path.exists()
+        assert result.verified_fields == []
 
     def test_only_written_fields_are_verified(
         self, sample_epub: Path, tmp_path: Path
@@ -252,3 +253,35 @@ class TestWriteBackVerification:
 
         lang_field = next(v for v in result.verified_fields if v.field == "language")
         assert lang_field.passed is True
+
+    def test_author_whitespace_tolerance(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """Author verification strips whitespace before comparing."""
+        output_dir = tmp_path / "output"
+        metadata = BookMetadata(
+            title="Test",
+            authors=["Neil Rackham       "],
+        )
+
+        result = apply_metadata_safely(sample_epub, metadata, output_dir)
+
+        authors_field = next(v for v in result.verified_fields if v.field == "authors")
+        assert authors_field.passed is True
+
+    def test_verify_readback_failure_keeps_file(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """If read-back fails (e.g. missing archive entry), keep the file and warn."""
+        output_dir = tmp_path / "output"
+        metadata = BookMetadata(title="Test", authors=["Author"])
+
+        with patch(
+            "bookery.core.pipeline.read_epub_metadata",
+            side_effect=EpubReadError("There is no item named 'js/kobo.js' in the archive"),
+        ):
+            result = apply_metadata_safely(sample_epub, metadata, output_dir)
+
+        assert result.success is True
+        assert result.path is not None
+        assert result.path.exists()
