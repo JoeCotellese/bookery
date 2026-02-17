@@ -57,23 +57,23 @@ class TestScoreCandidate:
         extracted = BookMetadata(title="the name of the rose", authors=["UMBERTO ECO"])
         candidate = BookMetadata(title="The Name of the Rose", authors=["Umberto Eco"])
         score = score_candidate(extracted, candidate)
-        assert score >= 0.65  # title(0.4) + author(0.3) without ISBN/lang
+        assert score >= 0.95  # title+author weights redistributed to fill 1.0
 
     def test_author_last_first_normalization(self) -> None:
         """'Last, First' author format is normalized to 'First Last' for comparison."""
         extracted = BookMetadata(title="Test", authors=["Eco, Umberto"])
         candidate = BookMetadata(title="Test", authors=["Umberto Eco"])
         score = score_candidate(extracted, candidate)
-        # Title is exact (0.4) + author normalized match (0.3) = 0.7
-        assert score >= 0.65
+        # Title+author weights redistributed → near 1.0
+        assert score >= 0.95
 
     def test_isbn_strips_hyphens_and_spaces(self) -> None:
         """ISBN comparison ignores hyphens and spaces."""
         extracted = BookMetadata(title="Test", isbn="978-0-12-345647-2")
         candidate = BookMetadata(title="Test", isbn="9780123456472")
         score = score_candidate(extracted, candidate)
-        # Title match (0.4) + ISBN match (0.2) = 0.6
-        assert score >= 0.55
+        # Title+ISBN weights redistributed → near 1.0
+        assert score >= 0.95
 
     def test_score_clamped_to_zero_one(self) -> None:
         """Score is always in [0.0, 1.0]."""
@@ -83,7 +83,7 @@ class TestScoreCandidate:
         assert 0.0 <= score <= 1.0
 
     def test_missing_isbn_does_not_penalize(self) -> None:
-        """When extracted has no ISBN, ISBN component contributes zero (not negative)."""
+        """When extracted has no ISBN, its weight is redistributed — score stays high."""
         extracted = BookMetadata(title="The Name of the Rose", authors=["Umberto Eco"])
         candidate = BookMetadata(
             title="The Name of the Rose",
@@ -91,8 +91,8 @@ class TestScoreCandidate:
             isbn="9780123456472",
         )
         score = score_candidate(extracted, candidate)
-        # Should still be high: title(0.4) + author(0.3) = 0.7
-        assert score >= 0.65
+        # ISBN weight redistributed to title+author → near 1.0 + completeness bonus
+        assert score >= 0.95
 
     def test_language_match_contributes(self) -> None:
         """Matching language adds to the score."""
@@ -113,7 +113,63 @@ class TestScoreCandidate:
             title="Good Omens", authors=["Terry Pratchett", "Neil Gaiman"]
         )
         score = score_candidate(extracted, candidate)
-        assert score >= 0.65
+        assert score >= 0.95
+
+    def test_missing_isbn_redistributes_weight(self) -> None:
+        """Perfect title+author with no ISBN should score near 1.0 (weight redistributed)."""
+        extracted = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+            language="en",
+        )
+        candidate = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+            isbn="9780123456472",
+            language="en",
+        )
+        score = score_candidate(extracted, candidate)
+        # ISBN weight (0.2) redistributed across title, author, language
+        # Base match should be >= 0.95 before completeness bonus
+        assert score >= 0.95
+
+    def test_missing_language_redistributes_weight(self) -> None:
+        """Perfect title+author, no ISBN, no language → score near 1.0."""
+        extracted = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+        )
+        candidate = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+        )
+        score = score_candidate(extracted, candidate)
+        # Both ISBN and language weights redistributed to title+author
+        assert score >= 0.95
+
+    def test_mismatched_isbn_still_penalizes(self) -> None:
+        """When both sides have ISBN but they differ, score should be lower than a match."""
+        extracted = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+            isbn="9780123456472",
+            language="en",
+        )
+        matching_isbn = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+            isbn="9780123456472",
+            language="en",
+        )
+        mismatched_isbn = BookMetadata(
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
+            isbn="9789999999999",
+            language="en",
+        )
+        score_match = score_candidate(extracted, matching_isbn)
+        score_mismatch = score_candidate(extracted, mismatched_isbn)
+        assert score_match > score_mismatch
 
     def test_completeness_bonus_boosts_rich_candidates(self) -> None:
         """Candidates with more populated fields score higher than sparse ones."""
