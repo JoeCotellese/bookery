@@ -10,6 +10,17 @@ from bookery.metadata.types import BookMetadata
 
 
 @dataclass
+class DuplicateMatch:
+    """Result of a duplicate check against the catalog.
+
+    Wraps the existing record that matched and the reason for the match.
+    """
+
+    record: "BookRecord"
+    reason: str  # "isbn" | "title_author"
+
+
+@dataclass
 class BookRecord:
     """A cataloged book: BookMetadata plus database-specific fields."""
 

@@ -13,13 +13,26 @@ from bookery.metadata.types import BookMetadata
 
 
 @dataclass
+class SkipDetail:
+    """Detail about a single skipped file during import."""
+
+    path: Path
+    reason: str  # "hash" | "isbn" | "title_author"
+    existing_id: int | None = None
+
+
+@dataclass
 class ImportResult:
     """Summary of an import operation."""
 
     added: int = 0
     skipped: int = 0
+    skipped_hash: int = 0
+    skipped_metadata: int = 0
+    forced: int = 0
     errors: int = 0
     error_details: list[tuple[Path, str]] = field(default_factory=list)
+    skip_details: list[SkipDetail] = field(default_factory=list)
 
 
 @dataclass
@@ -37,18 +50,26 @@ class MatchResult:
 # Type for the match callback: takes (extracted_metadata, epub_path) -> MatchResult or None
 MatchFn = Callable[[BookMetadata, Path], MatchResult | None]
 
+# Type for progress callback: fires per-file with status info
+# Args: (path, title, author, status, reason, existing_id)
+# status is one of: "added", "skipped", "forced", "error"
+ProgressFn = Callable[[Path, str, str, str, str | None, int | None], None]
+
 
 def import_books(
     paths: list[Path],
     catalog: LibraryCatalog,
     *,
     match_fn: MatchFn | None = None,
+    force_duplicates: bool = False,
+    on_progress: ProgressFn | None = None,
 ) -> ImportResult:
     """Import EPUB files into the library catalog.
 
     For each file: extracts metadata, computes SHA-256 hash, and adds to
-    the catalog. Duplicate files (same hash) are skipped. Corrupt files
-    are recorded as errors.
+    the catalog. Duplicate files (same hash) are skipped. Metadata-level
+    duplicates (same ISBN or same title+author) are also skipped unless
+    force_duplicates is True.
 
     When match_fn is provided, it is called with (extracted_metadata, epub_path)
     after extraction. If it returns a MatchResult, the matched metadata and
@@ -59,6 +80,8 @@ def import_books(
         paths: List of EPUB file paths to import.
         catalog: The library catalog to add books to.
         match_fn: Optional callback to run the match pipeline per file.
+        force_duplicates: If True, import metadata duplicates with a warning.
+        on_progress: Optional callback fired per-file with status info.
 
     Returns:
         ImportResult with counts of added, skipped, and errored files.
@@ -72,11 +95,19 @@ def import_books(
         except (OSError, FileNotFoundError) as exc:
             result.errors += 1
             result.error_details.append((epub_path, str(exc)))
+            if on_progress:
+                on_progress(epub_path, "", "", "error", str(exc), None)
             continue
 
         # Check for duplicate before reading metadata (cheaper)
         if catalog.get_by_hash(file_hash) is not None:
             result.skipped += 1
+            result.skipped_hash += 1
+            result.skip_details.append(
+                SkipDetail(path=epub_path, reason="hash"),
+            )
+            if on_progress:
+                on_progress(epub_path, "", "", "skipped", "hash", None)
             continue
 
         try:
@@ -84,6 +115,8 @@ def import_books(
         except EpubReadError as exc:
             result.errors += 1
             result.error_details.append((epub_path, str(exc)))
+            if on_progress:
+                on_progress(epub_path, "", "", "error", str(exc), None)
             continue
 
         metadata.source_path = epub_path
@@ -97,14 +130,50 @@ def import_books(
                 metadata.source_path = epub_path
                 output_path = match_result.output_path
 
+        # Metadata-level duplicate check (ISBN, then title+author)
+        dup_match = catalog.find_duplicate(metadata)
+        if dup_match is not None:
+            existing_id = dup_match.record.id
+            result.skip_details.append(
+                SkipDetail(
+                    path=epub_path,
+                    reason=dup_match.reason,
+                    existing_id=existing_id,
+                ),
+            )
+            if not force_duplicates:
+                result.skipped += 1
+                result.skipped_metadata += 1
+                if on_progress:
+                    on_progress(
+                        epub_path, metadata.title, metadata.author,
+                        "skipped", dup_match.reason, existing_id,
+                    )
+                continue
+            # force_duplicates: import anyway but track it
+
         try:
             book_id = catalog.add_book(
                 metadata, file_hash=file_hash, output_path=output_path,
             )
             result.added += 1
+            if dup_match is not None:
+                result.forced += 1
+            if on_progress:
+                status = "forced" if dup_match else "added"
+                on_progress(
+                    epub_path, metadata.title, metadata.author,
+                    status,
+                    dup_match.reason if dup_match else None,
+                    dup_match.record.id if dup_match else None,
+                )
         except DuplicateBookError:
             # Race condition guard — another process could have inserted
             result.skipped += 1
+            result.skipped_hash += 1
+            result.skip_details.append(
+                SkipDetail(path=epub_path, reason="hash"),
+            )
             continue
 
         # Auto-assign genres from subjects

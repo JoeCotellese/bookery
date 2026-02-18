@@ -6,11 +6,40 @@ from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
+from ebooklib import epub
 
 from bookery.cli import cli
 from bookery.core.converter import ConvertResult
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+
+
+def _make_epub_unique(
+    path: Path, title: str, author: str, *, content_marker: str = "",
+) -> Path:
+    """Create a minimal EPUB with unique content to produce distinct hashes."""
+    book = epub.EpubBook()
+    book.set_identifier(f"id-{title}-{content_marker}")
+    book.set_title(title)
+    book.set_language("en")
+    book.add_author(author)
+
+    chapter = epub.EpubHtml(
+        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+    )
+    chapter.content = (
+        b"<html><body><h1>Chapter 1</h1>"
+        b"<p>Content: " + content_marker.encode() + b".</p>"
+        b"</body></html>"
+    )
+    book.add_item(chapter)
+    book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", chapter]
+
+    epub.write_epub(str(path), book)
+    return path
 
 
 class TestImportCommand:
@@ -272,3 +301,91 @@ class TestImportCommand:
         assert "book.mobi" in result.output
         # Should NOT show dedup skip message
         assert "EPUB exists" not in result.output
+
+
+class TestImportMetadataDedupCli:
+    """E2E tests for metadata-level dedup in CLI output."""
+
+    def test_metadata_dup_shows_skip_reason(self, tmp_path: Path) -> None:
+        """Two EPUBs with same title+author → second skipped with reason."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        _make_epub_unique(
+            scan_dir / "rose_v1.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v1",
+        )
+        _make_epub_unique(
+            scan_dir / "rose_v2.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v2",
+        )
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--db", str(db_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "1 added" in result.output.lower()
+        assert "1 skipped" in result.output.lower()
+        assert "title+author" in result.output.lower()
+
+    def test_force_duplicates_flag_imports_dups(self, tmp_path: Path) -> None:
+        """--force-duplicates imports metadata dups with warning."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        _make_epub_unique(
+            scan_dir / "rose_v1.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v1",
+        )
+        _make_epub_unique(
+            scan_dir / "rose_v2.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v2",
+        )
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, [
+                "import", str(scan_dir), "--db", str(db_path),
+                "--force-duplicates",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "2 added" in result.output.lower()
+        assert "1 forced" in result.output.lower()
+
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        records = catalog.list_all()
+        assert len(records) == 2
+        conn.close()
+
+    def test_summary_breakdown_hash_and_metadata(self, tmp_path: Path) -> None:
+        """Summary shows breakdown when both hash and metadata skips occur."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        epub1 = _make_epub_unique(
+            scan_dir / "rose_v1.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v1",
+        )
+        _make_epub_unique(
+            scan_dir / "rose_v2.epub", "The Name of the Rose",
+            "Umberto Eco", content_marker="v2",
+        )
+        # Byte-identical copy → hash dup
+        shutil.copy(epub1, scan_dir / "rose_copy.epub")
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--db", str(db_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "1 added" in result.output.lower()
+        assert "2 skipped" in result.output.lower()
+        # Summary should contain breakdown info
+        assert "hash" in result.output.lower()
+        assert "title+author" in result.output.lower()
