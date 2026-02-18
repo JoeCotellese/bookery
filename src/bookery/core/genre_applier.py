@@ -12,7 +12,6 @@ class ApplyResult:
     """Summary of a batch genre-apply operation."""
 
     assigned: list[tuple[int, str, str]] = field(default_factory=list)
-    skipped_no_match: int = 0
     unmatched: list[tuple[int, str, list[str]]] = field(default_factory=list)
 
 
