@@ -1,9 +1,14 @@
-# ABOUTME: Unit tests for filter_redundant_mobis() deduplication logic.
-# ABOUTME: Verifies MOBIs are skipped when an EPUB exists in the same directory.
+# ABOUTME: Unit tests for deduplication logic: MOBI filtering and metadata normalization.
+# ABOUTME: Covers filter_redundant_mobis and normalize_for_dedup/author/isbn functions.
 
 from pathlib import Path
 
-from bookery.core.dedup import filter_redundant_mobis
+from bookery.core.dedup import (
+    filter_redundant_mobis,
+    normalize_author_for_dedup,
+    normalize_for_dedup,
+    normalize_isbn,
+)
 
 
 class TestFilterRedundantMobis:
@@ -116,3 +121,82 @@ class TestFilterRedundantMobis:
 
         assert to_convert == [mobi]
         assert skipped == []
+
+
+class TestNormalizeForDedup:
+    """Tests for title normalization."""
+
+    def test_strips_leading_the(self) -> None:
+        assert normalize_for_dedup("The Name of the Rose") == "name of the rose"
+
+    def test_strips_leading_a(self) -> None:
+        assert normalize_for_dedup("A Tale of Two Cities") == "tale of two cities"
+
+    def test_strips_leading_an(self) -> None:
+        assert normalize_for_dedup("An Unexpected Journey") == "unexpected journey"
+
+    def test_collapses_whitespace(self) -> None:
+        assert normalize_for_dedup("  A  Tale of  Two Cities  ") == "tale of two cities"
+
+    def test_lowercases(self) -> None:
+        assert normalize_for_dedup("DUNE") == "dune"
+
+    def test_empty_string(self) -> None:
+        assert normalize_for_dedup("") == ""
+
+    def test_only_article(self) -> None:
+        """A bare article with no trailing word is kept as-is (lowercased)."""
+        assert normalize_for_dedup("The") == "the"
+
+    def test_article_not_stripped_mid_title(self) -> None:
+        """Only leading articles are stripped, not mid-title ones."""
+        result = normalize_for_dedup("Murder on the Orient Express")
+        assert result == "murder on the orient express"
+
+
+class TestNormalizeAuthorForDedup:
+    """Tests for author name normalization."""
+
+    def test_first_last_to_last_first(self) -> None:
+        assert normalize_author_for_dedup("Umberto Eco") == "eco, umberto"
+
+    def test_already_inverted(self) -> None:
+        assert normalize_author_for_dedup("Eco, Umberto") == "eco, umberto"
+
+    def test_lowercases(self) -> None:
+        assert normalize_author_for_dedup("J.R.R. Tolkien") == "tolkien, j.r.r."
+
+    def test_empty_string(self) -> None:
+        assert normalize_author_for_dedup("") == ""
+
+    def test_single_name(self) -> None:
+        """Mononymous authors stay as-is (lowercased)."""
+        assert normalize_author_for_dedup("Voltaire") == "voltaire"
+
+    def test_multiple_spaces(self) -> None:
+        assert normalize_author_for_dedup("  Frank  Herbert  ") == "herbert, frank"
+
+
+class TestNormalizeIsbn:
+    """Tests for ISBN normalization."""
+
+    def test_strips_hyphens(self) -> None:
+        assert normalize_isbn("978-0-15-144647-6") == "9780151446476"
+
+    def test_isbn10_to_isbn13(self) -> None:
+        assert normalize_isbn("0151446474") == "9780151446476"
+
+    def test_isbn13_passthrough(self) -> None:
+        assert normalize_isbn("9780151446476") == "9780151446476"
+
+    def test_strips_spaces(self) -> None:
+        assert normalize_isbn("978 0 15 144647 6") == "9780151446476"
+
+    def test_empty_string(self) -> None:
+        assert normalize_isbn("") == ""
+
+    def test_none_returns_empty(self) -> None:
+        assert normalize_isbn(None) == ""  # type: ignore[arg-type]
+
+    def test_isbn10_with_hyphens(self) -> None:
+        assert normalize_isbn("0-15-144647-4") == "9780151446476"

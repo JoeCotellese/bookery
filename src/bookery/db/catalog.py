@@ -5,7 +5,12 @@ import json
 import sqlite3
 from pathlib import Path
 
-from bookery.db.mapping import BookRecord, metadata_to_row, row_to_record
+from bookery.core.dedup import (
+    normalize_author_for_dedup,
+    normalize_for_dedup,
+    normalize_isbn,
+)
+from bookery.db.mapping import BookRecord, DuplicateMatch, metadata_to_row, row_to_record
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
@@ -74,6 +79,50 @@ class LibraryCatalog:
         cursor = self._conn.execute("SELECT * FROM books WHERE isbn = ?", (isbn,))
         row = cursor.fetchone()
         return row_to_record(row) if row else None
+
+    def find_duplicate(self, metadata: BookMetadata) -> DuplicateMatch | None:
+        """Check if a book with matching metadata already exists in the catalog.
+
+        Checks ISBN first (highest confidence), then falls back to normalized
+        title + author comparison.
+
+        Returns a DuplicateMatch with the existing record and match reason,
+        or None if no duplicate found.
+        """
+        # ISBN check: normalize candidate ISBN and compare against all catalog ISBNs
+        if metadata.isbn:
+            candidate_isbn = normalize_isbn(metadata.isbn)
+            if candidate_isbn:
+                cursor = self._conn.execute(
+                    "SELECT * FROM books WHERE isbn IS NOT NULL AND isbn != ''",
+                )
+                for row in cursor.fetchall():
+                    existing_isbn = normalize_isbn(row["isbn"])
+                    if existing_isbn == candidate_isbn:
+                        return DuplicateMatch(
+                            record=row_to_record(row), reason="isbn",
+                        )
+
+        # Title + author check
+        candidate_title = normalize_for_dedup(metadata.title)
+        candidate_authors = sorted(
+            normalize_author_for_dedup(a) for a in metadata.authors
+        )
+
+        if not candidate_title or not candidate_authors:
+            return None
+
+        cursor = self._conn.execute("SELECT * FROM books")
+        for row in cursor.fetchall():
+            record = row_to_record(row)
+            existing_title = normalize_for_dedup(record.metadata.title)
+            existing_authors = sorted(
+                normalize_author_for_dedup(a) for a in record.metadata.authors
+            )
+            if existing_title == candidate_title and existing_authors == candidate_authors:
+                return DuplicateMatch(record=record, reason="title_author")
+
+        return None
 
     def list_all(self) -> list[BookRecord]:
         """Return all books in the catalog, ordered by title."""

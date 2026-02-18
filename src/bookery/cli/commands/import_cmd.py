@@ -8,7 +8,7 @@ from rich.console import Console
 
 from bookery.cli.options import db_option
 from bookery.core.dedup import filter_redundant_mobis
-from bookery.core.importer import MatchResult, import_books
+from bookery.core.importer import ImportResult, MatchFn, MatchResult, ProgressFn, import_books
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 from bookery.metadata.types import BookMetadata
@@ -85,7 +85,7 @@ def _convert_mobis(
 
 def _build_match_fn(
     output_dir: Path, quiet: bool, threshold: float,
-) -> "MatchResult | None":
+) -> MatchFn:
     """Build a match callback that runs the full metadata pipeline.
 
     Imports match-pipeline dependencies lazily so the import command
@@ -115,7 +115,7 @@ def _build_match_fn(
                 f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}"
             )
 
-        if result.status == "matched":
+        if result.status == "matched" and result.metadata is not None:
             if not quiet:
                 console.print(
                     f"  [green]Written:[/green] {result.output_path}"
@@ -132,6 +132,62 @@ def _build_match_fn(
         return None
 
     return match_fn
+
+
+def _format_skip_breakdown(result: ImportResult) -> str:
+    """Format a skip count with breakdown by reason."""
+    if result.skipped == 0:
+        return ""
+
+    parts = []
+    if result.skipped_hash:
+        parts.append(f"{result.skipped_hash} hash")
+    if result.skipped_metadata:
+        # Break metadata skips down by specific reason
+        reason_counts: dict[str, int] = {}
+        for detail in result.skip_details:
+            if detail.reason in ("isbn", "title_author"):
+                label = detail.reason.replace("_", "+")
+                reason_counts[label] = reason_counts.get(label, 0) + 1
+        parts.extend(f"{count} {reason}" for reason, count in reason_counts.items())
+
+    breakdown = f" ({', '.join(parts)})" if parts else ""
+    return f"{result.skipped} skipped{breakdown}"
+
+
+def _build_progress_fn() -> ProgressFn:
+    """Build a per-file progress callback for Rich console output."""
+
+    def on_progress(
+        path: Path,
+        title: str,
+        author: str,
+        status: str,
+        reason: str | None,
+        existing_id: int | None,
+    ) -> None:
+        label = f"{title} — {author}" if title and author else path.name
+        if status == "added":
+            console.print(f"  [green]✓[/green] {label}")
+        elif status == "skipped" and reason:
+            reason_label = reason.replace("_", "+")
+            id_suffix = f", #{existing_id}" if existing_id else ""
+            console.print(
+                f"  [yellow]⊘[/yellow] {label} — "
+                f"[dim]skipped (duplicate: {reason_label}{id_suffix})[/dim]"
+            )
+        elif status == "forced" and reason:
+            reason_label = reason.replace("_", "+")
+            id_suffix = f", #{existing_id}" if existing_id else ""
+            console.print(
+                f"  [yellow]⚠[/yellow] {label} — "
+                f"[dim]imported (duplicate: {reason_label}{id_suffix})[/dim]"
+            )
+        elif status == "error":
+            console.print(f"  [red]✗[/red] {path.name} — [red]{reason}[/red]")
+
+    return on_progress
+
 
 
 @click.command("import")
@@ -170,6 +226,12 @@ def _build_match_fn(
     default=False,
     help="Convert MOBI files to EPUB before importing.",
 )
+@click.option(
+    "--force-duplicates",
+    is_flag=True,
+    default=False,
+    help="Import metadata duplicates (same ISBN or title+author) instead of skipping.",
+)
 def import_command(
     directory: Path,
     db_path: Path | None,
@@ -178,6 +240,7 @@ def import_command(
     quiet: bool,
     threshold: float,
     do_convert: bool,
+    force_duplicates: bool,
 ) -> None:
     """Scan a directory for EPUB files and catalog them in the library."""
     epub_files = _find_epubs(directory)
@@ -213,7 +276,7 @@ def import_command(
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
-    match_fn = None
+    match_fn: MatchFn | None = None
     if do_match:
         match_fn = _build_match_fn(
             output_dir=output_dir or Path("bookery-output"),
@@ -221,14 +284,24 @@ def import_command(
             threshold=threshold,
         )
 
-    result = import_books(epub_files, catalog, match_fn=match_fn)
+    on_progress = _build_progress_fn()
+
+    result = import_books(
+        epub_files, catalog,
+        match_fn=match_fn,
+        force_duplicates=force_duplicates,
+        on_progress=on_progress,
+    )
 
     # Summary
+    console.print()  # blank line before summary
     parts = []
     if result.added:
         parts.append(f"[green]{result.added} added[/green]")
     if result.skipped:
-        parts.append(f"[yellow]{result.skipped} skipped[/yellow]")
+        parts.append(f"[yellow]{_format_skip_breakdown(result)}[/yellow]")
+    if result.forced:
+        parts.append(f"[yellow]{result.forced} forced[/yellow]")
     if result.errors:
         parts.append(f"[red]{result.errors} error(s)[/red]")
 
