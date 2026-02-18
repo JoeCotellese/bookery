@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from bookery.cli.options import db_option
+from bookery.core.genre_applier import apply_genres
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
 
@@ -88,4 +89,39 @@ def genre_unmatched(db_path: Path | None) -> None:
 
     console.print(table)
     console.print(f"\n[dim]{len(unmatched)} book(s) need genre assignment[/dim]")
+    conn.close()
+
+
+@genre.command("apply")
+@click.option("--dry-run", is_flag=True, help="Show what would be assigned without writing.")
+@click.option("--force", is_flag=True, help="Re-evaluate all books, even those with genres.")
+@db_option
+@click.pass_context
+def genre_apply(ctx: click.Context, dry_run: bool, force: bool, db_path: Path | None) -> None:
+    """Batch-assign genres from subjects for cataloged books."""
+    conn = open_library(db_path or DEFAULT_DB_PATH)
+    catalog = LibraryCatalog(conn)
+    verbose = ctx.parent.params.get("verbose", 0) if ctx.parent else 0
+
+    result = apply_genres(catalog, dry_run=dry_run, force=force)
+
+    if dry_run:
+        console.print("[bold yellow]Dry run[/bold yellow] — no changes written.\n")
+
+    if result.assigned:
+        if verbose or dry_run:
+            for book_id, title, primary_genre in result.assigned:
+                console.print(
+                    f"  [bold]{title}[/bold] → [cyan]{primary_genre}[/cyan]"
+                )
+            console.print()
+
+    console.print(f"[green]{len(result.assigned)}[/green] book(s) assigned genres.")
+
+    if result.unmatched:
+        console.print(
+            f"[yellow]{len(result.unmatched)}[/yellow] book(s) unmatched "
+            f"— run [dim]bookery genre unmatched[/dim] for details."
+        )
+
     conn.close()
