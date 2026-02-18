@@ -106,12 +106,8 @@ class TestScoreCandidate:
 
     def test_multiple_authors_compared(self) -> None:
         """Multiple authors are joined and compared as a single string."""
-        extracted = BookMetadata(
-            title="Good Omens", authors=["Terry Pratchett", "Neil Gaiman"]
-        )
-        candidate = BookMetadata(
-            title="Good Omens", authors=["Terry Pratchett", "Neil Gaiman"]
-        )
+        extracted = BookMetadata(title="Good Omens", authors=["Terry Pratchett", "Neil Gaiman"])
+        candidate = BookMetadata(title="Good Omens", authors=["Terry Pratchett", "Neil Gaiman"])
         score = score_candidate(extracted, candidate)
         assert score >= 0.95
 
@@ -188,9 +184,7 @@ class TestScoreCandidate:
     def test_completeness_bonus_is_a_tiebreaker(self) -> None:
         """Completeness bonus never overrides a significantly better match score."""
         extracted = BookMetadata(title="Alexandria Link", authors=["Steve Berry"])
-        good_match_sparse = BookMetadata(
-            title="Alexandria Link", authors=["Steve Berry"]
-        )
+        good_match_sparse = BookMetadata(title="Alexandria Link", authors=["Steve Berry"])
         bad_match_rich = BookMetadata(
             title="Totally Different Book",
             authors=["Other Author"],

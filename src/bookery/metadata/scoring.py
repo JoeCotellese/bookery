@@ -62,9 +62,7 @@ def score_candidate(extracted: BookMetadata, candidate: BookMetadata) -> float:
     comparable: list[tuple[float, float]] = []
 
     # Title is always comparable (always present on both sides).
-    comparable.append(
-        (_WEIGHT_TITLE, _string_similarity(extracted.title, candidate.title))
-    )
+    comparable.append((_WEIGHT_TITLE, _string_similarity(extracted.title, candidate.title)))
 
     # Author is comparable if either side has authors.
     # When both sides lack author info, we can't infer a match — skip entirely.
