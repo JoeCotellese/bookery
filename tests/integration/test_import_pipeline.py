@@ -122,8 +122,11 @@ class TestImportConvertIntegration:
         # Create a real EPUB
         _make_epub(scan_dir / "real.epub", "Real Book", "Author A")
 
-        # Create a fake MOBI
-        mobi_path = scan_dir / "converted.mobi"
+        # Create a fake MOBI in a subdirectory so filter_redundant_mobis
+        # doesn't skip it (an EPUB in the same dir would cause dedup)
+        mobi_dir = scan_dir / "mobi"
+        mobi_dir.mkdir()
+        mobi_path = mobi_dir / "converted.mobi"
         mobi_path.write_bytes(b"fake mobi")
 
         # Create another real EPUB that convert_one will "produce"
