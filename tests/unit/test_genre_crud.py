@@ -248,7 +248,9 @@ class TestGetBooksWithSubjects:
         results = catalog.get_books_with_subjects()
         assert len(results) == 0
 
-    def test_excludes_books_with_empty_subjects(self, catalog: LibraryCatalog, book_id: int) -> None:
+    def test_excludes_books_with_empty_subjects(
+        self, catalog: LibraryCatalog, book_id: int
+    ) -> None:
         """Books with empty subjects list are excluded."""
         catalog.store_subjects(book_id, [])
         results = catalog.get_books_with_subjects()

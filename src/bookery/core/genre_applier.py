@@ -37,10 +37,7 @@ def apply_genres(
     """
     result = ApplyResult()
 
-    if force:
-        books = catalog.get_books_with_subjects()
-    else:
-        books = catalog.get_unmatched_subjects()
+    books = catalog.get_books_with_subjects() if force else catalog.get_unmatched_subjects()
 
     for book_id, title, subjects in books:
         genre_result = normalize_subjects(subjects)

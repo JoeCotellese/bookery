@@ -108,12 +108,11 @@ def genre_apply(ctx: click.Context, dry_run: bool, force: bool, db_path: Path | 
     if dry_run:
         console.print("[bold yellow]Dry run[/bold yellow] — no changes written.\n")
 
-    if result.assigned:
-        if verbose or dry_run:
-            for book_id, title, primary_genre in result.assigned:
-                console.print(
-                    f"  [bold]{title}[/bold] → [cyan]{primary_genre}[/cyan]"
-                )
+    if result.assigned and (verbose or dry_run):
+        for _book_id, title, primary_genre in result.assigned:
+            console.print(
+                f"  [bold]{title}[/bold] → [cyan]{primary_genre}[/cyan]"
+            )
             console.print()
 
     console.print(f"[green]{len(result.assigned)}[/green] book(s) assigned genres.")
