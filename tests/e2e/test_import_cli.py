@@ -212,3 +212,63 @@ class TestImportCommand:
         assert result.exit_code == 0, result.output
         assert "skipped" in result.output
         assert "rose.mobi" in result.output
+
+    def test_import_convert_skips_mobi_when_epub_exists(
+        self, sample_epub: Path, tmp_path: Path,
+    ) -> None:
+        """MOBI + EPUB in same dir + --convert → MOBI not converted, skip reported."""
+        scan_dir = tmp_path / "scan"
+        book_dir = scan_dir / "Author" / "Title"
+        book_dir.mkdir(parents=True)
+        shutil.copy(sample_epub, book_dir / "book.epub")
+        (book_dir / "book.mobi").write_bytes(b"fake mobi")
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["import", str(scan_dir), "--convert", "--db", str(db_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Skipped 1 MOBI" in result.output
+        assert "EPUB exists" in result.output
+        # The EPUB should still be cataloged
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        records = catalog.list_all()
+        assert len(records) == 1
+        conn.close()
+
+    def test_import_convert_processes_mobi_without_epub(
+        self, sample_epub: Path, tmp_path: Path,
+    ) -> None:
+        """MOBI alone in dir + --convert → MOBI converted normally."""
+        scan_dir = tmp_path / "scan"
+        mobi_dir = scan_dir / "Author" / "MobiOnly"
+        mobi_dir.mkdir(parents=True)
+        mobi_file = mobi_dir / "book.mobi"
+        mobi_file.write_bytes(b"fake mobi")
+
+        fake_result = ConvertResult(
+            source=mobi_file,
+            epub_path=sample_epub,
+            success=True,
+        )
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        with patch(
+            "bookery.core.converter.convert_one",
+            return_value=fake_result,
+        ):
+            result = runner.invoke(
+                cli,
+                ["import", str(scan_dir), "--convert", "--db", str(db_path)],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Converting" in result.output
+        assert "book.mobi" in result.output
+        # Should NOT show dedup skip message
+        assert "EPUB exists" not in result.output
