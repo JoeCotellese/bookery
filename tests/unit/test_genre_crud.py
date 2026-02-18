@@ -224,3 +224,48 @@ class TestGetUnmatchedSubjects:
         )
         unmatched = catalog.get_unmatched_subjects()
         assert len(unmatched) == 0
+
+
+class TestGetBooksWithSubjects:
+    """Tests for LibraryCatalog.get_books_with_subjects()."""
+
+    def test_returns_books_with_subjects(self, catalog: LibraryCatalog, book_id: int) -> None:
+        """Books with subjects are returned regardless of genre status."""
+        catalog.store_subjects(book_id, ["Fiction", "Mystery"])
+        catalog.add_genre(book_id, "Literary Fiction")
+        results = catalog.get_books_with_subjects()
+        assert len(results) == 1
+        assert results[0][0] == book_id
+        assert results[0][1] == "The Name of the Rose"
+        assert results[0][2] == ["Fiction", "Mystery"]
+
+    def test_excludes_books_without_subjects(self, catalog: LibraryCatalog) -> None:
+        """Books without subjects are excluded."""
+        catalog.add_book(
+            BookMetadata(title="No Subjects", source_path=Path("/ns.epub")),
+            file_hash="ns_hash",
+        )
+        results = catalog.get_books_with_subjects()
+        assert len(results) == 0
+
+    def test_excludes_books_with_empty_subjects(self, catalog: LibraryCatalog, book_id: int) -> None:
+        """Books with empty subjects list are excluded."""
+        catalog.store_subjects(book_id, [])
+        results = catalog.get_books_with_subjects()
+        assert len(results) == 0
+
+    def test_includes_genred_and_ungenred(self, catalog: LibraryCatalog) -> None:
+        """Both genred and ungenred books with subjects are returned."""
+        id1 = catalog.add_book(
+            BookMetadata(title="Genred Book", source_path=Path("/g.epub")),
+            file_hash="hash_g",
+        )
+        id2 = catalog.add_book(
+            BookMetadata(title="Ungenred Book", source_path=Path("/u.epub")),
+            file_hash="hash_u",
+        )
+        catalog.store_subjects(id1, ["Fiction"])
+        catalog.store_subjects(id2, ["Mystery"])
+        catalog.add_genre(id1, "Literary Fiction")
+        results = catalog.get_books_with_subjects()
+        assert len(results) == 2
