@@ -54,34 +54,40 @@ def score_candidate(extracted: BookMetadata, candidate: BookMetadata) -> float:
     """Score how well a candidate matches extracted EPUB metadata.
 
     Uses weighted comparison across title, author, ISBN, and language.
+    Weights from uncomparable fields (missing on one or both sides) are
+    redistributed proportionally across comparable fields so that a perfect
+    match on available fields scores near 1.0.
     Returns a float clamped to [0.0, 1.0].
     """
-    score = 0.0
+    comparable: list[tuple[float, float]] = []
 
-    # Title similarity (weight: 0.4)
-    score += _WEIGHT_TITLE * _string_similarity(extracted.title, candidate.title)
+    # Title is always comparable (always present on both sides).
+    comparable.append((_WEIGHT_TITLE, _string_similarity(extracted.title, candidate.title)))
 
-    # Author similarity (weight: 0.3)
-    # When both sides lack author info, we can't infer a match — score 0 instead of 1.
+    # Author is comparable if either side has authors.
+    # When both sides lack author info, we can't infer a match — skip entirely.
     extracted_authors = " ".join(_normalize_author(a) for a in extracted.authors)
     candidate_authors = " ".join(_normalize_author(a) for a in candidate.authors)
     if extracted_authors or candidate_authors:
-        score += _WEIGHT_AUTHOR * _string_similarity(extracted_authors, candidate_authors)
+        comparable.append(
+            (_WEIGHT_AUTHOR, _string_similarity(extracted_authors, candidate_authors))
+        )
 
-    # ISBN exact match (weight: 0.2)
+    # ISBN is comparable only if both sides have one.
     if extracted.isbn and candidate.isbn:
         extracted_isbn = _normalize_isbn(extracted.isbn)
         candidate_isbn = _normalize_isbn(candidate.isbn)
-        if extracted_isbn == candidate_isbn:
-            score += _WEIGHT_ISBN
+        isbn_score = 1.0 if extracted_isbn == candidate_isbn else 0.0
+        comparable.append((_WEIGHT_ISBN, isbn_score))
 
-    # Language match (weight: 0.1)
-    if (
-        extracted.language
-        and candidate.language
-        and extracted.language.lower() == candidate.language.lower()
-    ):
-        score += _WEIGHT_LANGUAGE
+    # Language is comparable only if both sides have one.
+    if extracted.language and candidate.language:
+        lang_score = 1.0 if extracted.language.lower() == candidate.language.lower() else 0.0
+        comparable.append((_WEIGHT_LANGUAGE, lang_score))
+
+    # Redistribute: normalize weights so comparable fields sum to 1.0.
+    available_weight = sum(w for w, _ in comparable)
+    score = sum(w / available_weight * s for w, s in comparable) if available_weight > 0 else 0.0
 
     score += completeness_bonus(candidate)
 
