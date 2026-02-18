@@ -4,6 +4,7 @@
 import sqlite3
 
 import pytest
+from textual.binding import Binding
 
 from bookery.db.catalog import LibraryCatalog
 from bookery.tui.app import BookeryApp
@@ -31,7 +32,9 @@ class TestBookeryAppUnit:
     def test_has_quit_binding(self, catalog: LibraryCatalog) -> None:
         """App declares a 'q' key binding for quitting."""
         app = BookeryApp(catalog=catalog)
-        binding_keys = [b.key for b in app.BINDINGS]
+        binding_keys = [
+            b.key if isinstance(b, Binding) else b[0] for b in app.BINDINGS
+        ]
         assert "q" in binding_keys
 
     def test_title_is_bookery(self, catalog: LibraryCatalog) -> None:
@@ -44,6 +47,7 @@ class TestBookeryAppUnit:
         from bookery import __version__
 
         app = BookeryApp(catalog=catalog)
+        assert app.SUB_TITLE is not None
         assert __version__ in app.SUB_TITLE
 
     @pytest.mark.asyncio
@@ -138,12 +142,20 @@ class TestBookeryAppUnit:
             # Focus starts on the book table inside #book-list
             book_table = app.query_one("#book-table")
             book_table.focus()
+            assert app.focused is not None
             assert app.focused.id == "book-table"
 
-            # Tab should move to the right pane
+            # Tab should move to the detail pane
             await pilot.press("tab")
+            assert app.focused is not None
             assert app.focused.id == "book-detail"
+
+            # Tab moves to the scrollable region inside detail pane
+            await pilot.press("tab")
+            assert app.focused is not None
+            assert app.focused.id == "detail-scroll"
 
             # Tab again should cycle back to the book table
             await pilot.press("tab")
+            assert app.focused is not None
             assert app.focused.id == "book-table"

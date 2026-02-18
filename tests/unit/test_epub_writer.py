@@ -90,6 +90,7 @@ class TestWriteEpubMetadata:
     def test_write_survives_none_uid_identifier(self, sample_epub: Path) -> None:
         """EPUBs where the uid identifier has a None value get a replacement uid."""
         from unittest.mock import patch
+
         from ebooklib import epub
 
         original_read = epub.read_epub
@@ -139,6 +140,7 @@ class TestWriteEpubMetadata:
     def test_write_survives_deeply_nested_toc(self, sample_epub: Path) -> None:
         """EPUBs with 3+ levels of TOC nesting don't crash on write."""
         from unittest.mock import patch
+
         from ebooklib import epub
 
         # Read the EPUB, then monkey-patch its TOC with deep nesting
@@ -163,6 +165,7 @@ class TestWriteEpubMetadata:
     def test_write_survives_none_guide_entries(self, sample_epub: Path) -> None:
         """EPUBs with None-valued guide entries don't crash on write."""
         from unittest.mock import patch
+
         from ebooklib import epub
 
         original_read = epub.read_epub
