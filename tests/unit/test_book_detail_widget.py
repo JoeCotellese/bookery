@@ -250,6 +250,83 @@ class TestBookDetailClear:
             assert "Select a book to view details" in rendered
 
 
+class TestBookDetailGenre:
+    """Tests for genre display in BookDetail."""
+
+    @pytest.mark.asyncio
+    async def test_genre_displayed(self) -> None:
+        """update_detail() renders genre when provided."""
+        from textual.app import App, ComposeResult
+
+        from bookery.tui.widgets.book_detail import BookDetail
+
+        record = _make_record()
+        genres = [("Mystery & Thriller", True), ("Literary Fiction", False)]
+
+        class Harness(App):
+            def compose(self) -> ComposeResult:
+                yield BookDetail(id="book-detail")
+
+        app = Harness()
+        async with app.run_test() as pilot:
+            detail = app.query_one(BookDetail)
+            detail.update_detail(record, [], genres=genres)
+            await pilot.pause()
+
+            metadata = app.query_one("#detail-metadata")
+            rendered = str(metadata.render())
+            assert "Mystery & Thriller" in rendered
+            assert "Literary Fiction" in rendered
+
+    @pytest.mark.asyncio
+    async def test_no_genre_shows_em_dash(self) -> None:
+        """No genres shows em dash."""
+        from textual.app import App, ComposeResult
+
+        from bookery.tui.widgets.book_detail import BookDetail
+
+        record = _make_record()
+
+        class Harness(App):
+            def compose(self) -> ComposeResult:
+                yield BookDetail(id="book-detail")
+
+        app = Harness()
+        async with app.run_test() as pilot:
+            detail = app.query_one(BookDetail)
+            detail.update_detail(record, [], genres=[])
+            await pilot.pause()
+
+            metadata = app.query_one("#detail-metadata")
+            rendered = str(metadata.render())
+            # Genre line should show em dash when empty
+            assert "\u2014" in rendered
+
+    @pytest.mark.asyncio
+    async def test_primary_genre_marked(self) -> None:
+        """Primary genre is marked with an asterisk."""
+        from textual.app import App, ComposeResult
+
+        from bookery.tui.widgets.book_detail import BookDetail
+
+        record = _make_record()
+        genres = [("Science Fiction", True)]
+
+        class Harness(App):
+            def compose(self) -> ComposeResult:
+                yield BookDetail(id="book-detail")
+
+        app = Harness()
+        async with app.run_test() as pilot:
+            detail = app.query_one(BookDetail)
+            detail.update_detail(record, [], genres=genres)
+            await pilot.pause()
+
+            metadata = app.query_one("#detail-metadata")
+            rendered = str(metadata.render())
+            assert "Science Fiction *" in rendered
+
+
 class TestBookDetailDescription:
     """Tests for description rendering and scrollability."""
 

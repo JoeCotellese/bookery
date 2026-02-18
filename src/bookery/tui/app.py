@@ -53,4 +53,5 @@ class BookeryApp(App):
             return
 
         tags = self.catalog.get_tags_for_book(book_id)
-        self.query_one(BookDetail).update_detail(record, tags)
+        genres = self.catalog.get_genres_for_book(book_id)
+        self.query_one(BookDetail).update_detail(record, tags, genres=genres)
