@@ -31,6 +31,19 @@ Horizontal {
     padding: 1 2;
 }
 
-#book-detail:focus {
+#book-detail:focus-within {
     border: solid $accent;
+}
+
+#detail-header {
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+#detail-metadata {
+    padding: 0 0 1 0;
+}
+
+#detail-scroll {
+    height: 1fr;
 }

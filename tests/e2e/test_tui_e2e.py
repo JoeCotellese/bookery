@@ -138,3 +138,77 @@ class TestTuiE2E:
             await pilot.press("q")
 
         conn.close()
+
+    @pytest.mark.asyncio
+    async def test_select_book_shows_detail(self, tmp_path) -> None:
+        """Full flow: launch app, highlight row, detail pane shows metadata."""
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        catalog.add_book(
+            BookMetadata(
+                title="If on a winter's night a traveler",
+                authors=["Italo Calvino"],
+                publisher="Einaudi",
+                language="it",
+                description="<p>A novel about reading novels.</p>",
+                source_path=Path("/books/winter.epub"),
+            ),
+            file_hash="hash_winter",
+        )
+        catalog.add_book(
+            BookMetadata(
+                title="The Name of the Rose",
+                authors=["Umberto Eco"],
+                isbn="978-0-15-144647-6",
+                series="Medieval Mysteries",
+                series_index=1.0,
+                source_path=Path("/books/rose.epub"),
+            ),
+            file_hash="hash_rose",
+        )
+
+        app = BookeryApp(catalog=catalog)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+            # Focus the table; cursor starts at row 0 (Calvino),
+            # pressing down moves to row 1 (Eco).
+            table = app.query_one("#book-table")
+            table.focus()
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+
+            # Verify the detail pane shows Eco's book (row 1)
+            header = app.query_one("#detail-header")
+            header_text = str(header.render())
+            assert "Rose" in header_text
+
+            metadata = app.query_one("#detail-metadata")
+            meta_text = str(metadata.render())
+            assert "Eco" in meta_text
+            assert "978-0-15-144647-6" in meta_text
+            assert "Medieval Mysteries" in meta_text
+            assert "#1" in meta_text
+
+            # Now press up to go back to Calvino (row 0)
+            await pilot.press("up")
+            await pilot.pause()
+
+            header_text = str(app.query_one("#detail-header").render())
+            assert "winter" in header_text.lower()
+
+            meta_text = str(app.query_one("#detail-metadata").render())
+            assert "Calvino" in meta_text
+            assert "Einaudi" in meta_text
+
+            # Description should have HTML stripped
+            desc_text = str(app.query_one("#detail-description").render())
+            assert "A novel about reading novels." in desc_text
+            assert "<p>" not in desc_text
+
+            await pilot.press("q")
+
+        conn.close()
