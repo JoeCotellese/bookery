@@ -355,6 +355,22 @@ class LibraryCatalog:
         """Update the subjects JSON column for a book."""
         self.update_book(book_id, subjects=json.dumps(subjects))
 
+    def get_books_with_subjects(self) -> list[tuple[int, str, list[str]]]:
+        """Get all books that have subjects, regardless of genre status.
+
+        Returns list of (book_id, title, subjects) tuples.
+        """
+        cursor = self._conn.execute(
+            "SELECT b.id, b.title, b.subjects FROM books b "
+            "WHERE b.subjects IS NOT NULL AND b.subjects != '[]' "
+            "ORDER BY b.title"
+        )
+        results: list[tuple[int, str, list[str]]] = []
+        for row in cursor.fetchall():
+            subjects = json.loads(row[2]) if row[2] else []
+            results.append((row[0], row[1], subjects))
+        return results
+
     def get_unmatched_subjects(self) -> list[tuple[int, str, list[str]]]:
         """Get books that have subjects but no genre assigned.
 
