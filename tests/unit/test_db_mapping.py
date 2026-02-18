@@ -19,7 +19,7 @@ class TestMetadataToRow:
         expected_keys = {
             "title", "authors", "author_sort", "language", "publisher",
             "isbn", "description", "series", "series_index", "identifiers",
-            "source_path", "output_path", "file_hash",
+            "subjects", "source_path", "output_path", "file_hash",
         }
         assert expected_keys == set(row.keys())
 

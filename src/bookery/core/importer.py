@@ -8,6 +8,7 @@ from pathlib import Path
 from bookery.db.catalog import DuplicateBookError, LibraryCatalog
 from bookery.db.hashing import compute_file_hash
 from bookery.formats.epub import EpubReadError, read_epub_metadata
+from bookery.metadata.genres import normalize_subjects
 from bookery.metadata.types import BookMetadata
 
 
@@ -97,12 +98,22 @@ def import_books(
                 output_path = match_result.output_path
 
         try:
-            catalog.add_book(
+            book_id = catalog.add_book(
                 metadata, file_hash=file_hash, output_path=output_path,
             )
             result.added += 1
         except DuplicateBookError:
             # Race condition guard — another process could have inserted
             result.skipped += 1
+            continue
+
+        # Auto-assign genres from subjects
+        if metadata.subjects:
+            catalog.store_subjects(book_id, metadata.subjects)
+            genre_result = normalize_subjects(metadata.subjects)
+            for match in genre_result.matches:
+                catalog.add_genre(book_id, match.genre)
+            if genre_result.primary_genre:
+                catalog.set_primary_genre(book_id, genre_result.primary_genre)
 
     return result

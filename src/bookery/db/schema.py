@@ -78,4 +78,38 @@ CREATE INDEX idx_book_tags_tag_id ON book_tags(tag_id);
 INSERT INTO schema_version (version) VALUES (2);
 """
 
-MIGRATIONS = [(2, SCHEMA_V2)]
+SCHEMA_V3 = """
+CREATE TABLE genres (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+INSERT INTO genres (name) VALUES ('Literary Fiction');
+INSERT INTO genres (name) VALUES ('Science Fiction');
+INSERT INTO genres (name) VALUES ('Fantasy');
+INSERT INTO genres (name) VALUES ('Mystery & Thriller');
+INSERT INTO genres (name) VALUES ('Romance');
+INSERT INTO genres (name) VALUES ('Horror');
+INSERT INTO genres (name) VALUES ('Historical Fiction');
+INSERT INTO genres (name) VALUES ('History & Biography');
+INSERT INTO genres (name) VALUES ('Science & Technology');
+INSERT INTO genres (name) VALUES ('Philosophy & Religion');
+INSERT INTO genres (name) VALUES ('Self-Help & Personal Development');
+INSERT INTO genres (name) VALUES ('Children''s & Middle Grade');
+INSERT INTO genres (name) VALUES ('Young Adult');
+INSERT INTO genres (name) VALUES ('Poetry & Drama');
+
+CREATE TABLE book_genres (
+    book_id    INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    genre_id   INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (book_id, genre_id)
+);
+CREATE INDEX idx_book_genres_genre_id ON book_genres(genre_id);
+
+ALTER TABLE books ADD COLUMN subjects TEXT;
+
+INSERT INTO schema_version (version) VALUES (3);
+"""
+
+MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3)]

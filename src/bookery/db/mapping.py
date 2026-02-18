@@ -43,6 +43,7 @@ def metadata_to_row(
         "series": metadata.series,
         "series_index": metadata.series_index,
         "identifiers": json.dumps(metadata.identifiers),
+        "subjects": json.dumps(metadata.subjects),
         "source_path": str(metadata.source_path) if metadata.source_path else None,
         "output_path": str(output_path) if output_path else None,
         "file_hash": file_hash,
@@ -55,6 +56,10 @@ def row_to_metadata(row: Any) -> BookMetadata:
     Deserializes JSON strings for authors and identifiers fields.
     """
     source = row["source_path"]
+    try:
+        subjects_raw = row["subjects"]
+    except (KeyError, IndexError):
+        subjects_raw = None
     return BookMetadata(
         title=row["title"],
         authors=json.loads(row["authors"]) if row["authors"] else [],
@@ -65,6 +70,7 @@ def row_to_metadata(row: Any) -> BookMetadata:
         description=row["description"],
         series=row["series"],
         series_index=row["series_index"],
+        subjects=json.loads(subjects_raw) if subjects_raw else [],
         identifiers=json.loads(row["identifiers"]) if row["identifiers"] else {},
         source_path=Path(source) if source else None,
     )

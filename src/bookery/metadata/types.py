@@ -23,6 +23,7 @@ class BookMetadata:
     description: str | None = None
     series: str | None = None
     series_index: float | None = None
+    subjects: list[str] = field(default_factory=list)
     identifiers: dict[str, str] = field(default_factory=dict)
     cover_image: bytes | None = None
     source_path: Path | None = None

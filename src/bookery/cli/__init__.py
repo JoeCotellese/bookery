@@ -7,6 +7,7 @@ import click
 
 from bookery.cli.commands import (
     convert_cmd,
+    genre_cmd,
     import_cmd,
     info_cmd,
     inspect_cmd,
@@ -39,6 +40,7 @@ def cli(verbose: int) -> None:
 
 
 cli.add_command(convert_cmd.convert)
+cli.add_command(genre_cmd.genre)
 cli.add_command(import_cmd.import_command)
 cli.add_command(info_cmd.info)
 cli.add_command(inspect_cmd.inspect)

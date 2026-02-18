@@ -28,13 +28,31 @@ console = Console()  # TODO: move Console() inside command for testability
     default=None,
     help="Filter by tag name.",
 )
-def ls(db_path: Path | None, series_filter: str | None, tag_filter: str | None) -> None:
+@click.option(
+    "--genre",
+    "genre_filter",
+    default=None,
+    help="Filter by genre name.",
+)
+def ls(
+    db_path: Path | None,
+    series_filter: str | None,
+    tag_filter: str | None,
+    genre_filter: str | None,
+) -> None:
     """List all books in the library catalog."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
-    if tag_filter:
+    if genre_filter:
+        try:
+            records = catalog.get_books_by_genre(genre_filter)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            conn.close()
+            raise SystemExit(1) from exc
+    elif tag_filter:
         try:
             records = catalog.get_books_by_tag(tag_filter)
         except ValueError as exc:

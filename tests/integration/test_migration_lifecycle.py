@@ -30,7 +30,7 @@ class TestMigrationLifecycle:
 
         # Step 2: Open with bookery to trigger migration
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 2
+        assert _get_schema_version(conn) == 3
 
         # Step 3: Verify the book survived and tags work
         catalog = LibraryCatalog(conn)
@@ -51,7 +51,7 @@ class TestMigrationLifecycle:
         # Open 3 times
         for _ in range(3):
             conn = open_library(db_path)
-            assert _get_schema_version(conn) == 2
+            assert _get_schema_version(conn) == 3
             conn.close()
 
         # Final open — add a book and tag it

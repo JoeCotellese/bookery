@@ -14,6 +14,7 @@ from bookery.metadata.openlibrary_parser import (
     parse_search_results,
     parse_works_metadata,
     parse_works_response,
+    parse_works_subjects,
     select_best_edition,
 )
 from bookery.metadata.scoring import score_candidate
@@ -325,6 +326,11 @@ class OpenLibraryProvider:
         description = parse_works_response(works_data)
         if description:
             metadata.description = description
+
+        subjects = parse_works_subjects(works_data)
+        if subjects:
+            metadata.subjects = subjects
+
         return metadata
 
     def _enrich_authors(self, metadata: BookMetadata, isbn_data: dict[str, Any]) -> BookMetadata:
