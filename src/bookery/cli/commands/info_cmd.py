@@ -51,6 +51,12 @@ def info(book_id: int, db_path: Path | None) -> None:
         idx = meta.series_index
         series_str = f"{meta.series} #{idx:g}" if idx is not None else meta.series
         table.add_row("Series", series_str)
+    genres = catalog.get_genres_for_book(book_id)
+    if genres:
+        genre_strs = []
+        for name, is_primary in genres:
+            genre_strs.append(f"{name} *" if is_primary else name)
+        table.add_row("Genre", ", ".join(genre_strs))
     tags = catalog.get_tags_for_book(book_id)
     if tags:
         table.add_row("Tags", ", ".join(tags))

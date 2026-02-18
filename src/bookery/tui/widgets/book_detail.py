@@ -58,7 +58,13 @@ class BookDetail(Widget):
         with VerticalScroll(id="detail-scroll"):
             yield Static("", id="detail-description")
 
-    def update_detail(self, record: BookRecord, tags: list[str]) -> None:
+    def update_detail(
+        self,
+        record: BookRecord,
+        tags: list[str],
+        *,
+        genres: list[tuple[str, bool]] | None = None,
+    ) -> None:
         """Populate the detail pane with a book's metadata."""
         meta = record.metadata
 
@@ -83,6 +89,15 @@ class BookDetail(Widget):
             lines.append(_format_field("Series", series_display))
         else:
             lines.append(_format_field("Series", None))
+
+        # Genre
+        if genres:
+            genre_strs = []
+            for name, is_primary in genres:
+                genre_strs.append(f"{name} *" if is_primary else name)
+            lines.append(_format_field("Genre", ", ".join(genre_strs)))
+        else:
+            lines.append(_format_field("Genre", None))
 
         # Tags
         if tags:

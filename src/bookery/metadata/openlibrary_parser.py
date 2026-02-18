@@ -59,15 +59,24 @@ def parse_works_response(data: dict[str, Any]) -> str | None:
     return None
 
 
+def parse_works_subjects(data: dict[str, Any]) -> list[str]:
+    """Extract the subjects list from an Open Library Works response.
+
+    Returns an empty list if no subjects are present.
+    """
+    return data.get("subjects", [])
+
+
 def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
     """Parse an Open Library Works endpoint response into BookMetadata.
 
-    Extracts title, description, works key, and author keys from the works
-    response. Author keys are stored in identifiers for later resolution
-    via the author endpoint.
+    Extracts title, description, subjects, works key, and author keys from
+    the works response. Author keys are stored in identifiers for later
+    resolution via the author endpoint.
     """
     title = data.get("title", "Unknown")
     description = parse_works_response(data)
+    subjects = parse_works_subjects(data)
 
     identifiers: dict[str, str] = {}
     works_key = data.get("key")
@@ -88,6 +97,7 @@ def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
     return BookMetadata(
         title=title,
         description=description,
+        subjects=subjects,
         identifiers=identifiers,
     )
 
@@ -117,6 +127,8 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
         publishers = doc.get("publisher", [])
         publisher = publishers[0] if publishers else None
 
+        subjects = doc.get("subject", [])
+
         identifiers: dict[str, str] = {}
         work_key = doc.get("key")
         if work_key:
@@ -129,6 +141,7 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
                 isbn=isbn,
                 language=language,
                 publisher=publisher,
+                subjects=subjects,
                 identifiers=identifiers,
             )
         )

@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from bookery.db.mapping import BookRecord, metadata_to_row, row_to_record
+from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
 
@@ -235,3 +236,138 @@ class LibraryCatalog:
             (tag_name,),
         )
         return [row_to_record(row) for row in cursor.fetchall()]
+
+    # --- Genre operations ---
+
+    def add_genre(self, book_id: int, genre_name: str, *, is_primary: bool = False) -> None:
+        """Assign a canonical genre to a book. Idempotent.
+
+        Raises:
+            ValueError: If the genre is not canonical or the book doesn't exist.
+        """
+        if not is_canonical_genre(genre_name):
+            raise ValueError(f"'{genre_name}' is not a canonical genre")
+        if self.get_by_id(book_id) is None:
+            raise ValueError(f"Book with id {book_id} not found")
+
+        cursor = self._conn.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+        genre_id = cursor.fetchone()[0]
+
+        self._conn.execute(
+            "INSERT OR IGNORE INTO book_genres (book_id, genre_id, is_primary) VALUES (?, ?, ?)",
+            (book_id, genre_id, int(is_primary)),
+        )
+        self._conn.commit()
+
+    def remove_genre(self, book_id: int, genre_name: str) -> None:
+        """Remove a genre from a book.
+
+        Raises:
+            ValueError: If the genre is not assigned to the book.
+        """
+        cursor = self._conn.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+        genre_row = cursor.fetchone()
+        if genre_row is None:
+            raise ValueError(f"Genre '{genre_name}' not assigned to book {book_id}")
+
+        genre_id = genre_row[0]
+        cursor = self._conn.execute(
+            "DELETE FROM book_genres WHERE book_id = ? AND genre_id = ?",
+            (book_id, genre_id),
+        )
+        self._conn.commit()
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Genre '{genre_name}' not assigned to book {book_id}")
+
+    def set_primary_genre(self, book_id: int, genre_name: str) -> None:
+        """Set a genre as the primary for a book, clearing any previous primary.
+
+        The genre must already be assigned to the book.
+        """
+        # Clear existing primary
+        self._conn.execute(
+            "UPDATE book_genres SET is_primary = 0 WHERE book_id = ?",
+            (book_id,),
+        )
+        # Set new primary
+        cursor = self._conn.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+        genre_id = cursor.fetchone()[0]
+        self._conn.execute(
+            "UPDATE book_genres SET is_primary = 1 WHERE book_id = ? AND genre_id = ?",
+            (book_id, genre_id),
+        )
+        self._conn.commit()
+
+    def get_genres_for_book(self, book_id: int) -> list[tuple[str, bool]]:
+        """Get all genres for a book as (name, is_primary) pairs, sorted by name."""
+        cursor = self._conn.execute(
+            "SELECT g.name, bg.is_primary FROM genres g "
+            "JOIN book_genres bg ON g.id = bg.genre_id "
+            "WHERE bg.book_id = ? "
+            "ORDER BY g.name",
+            (book_id,),
+        )
+        return [(row[0], bool(row[1])) for row in cursor.fetchall()]
+
+    def get_primary_genre(self, book_id: int) -> str | None:
+        """Get the primary genre name for a book, or None."""
+        cursor = self._conn.execute(
+            "SELECT g.name FROM genres g "
+            "JOIN book_genres bg ON g.id = bg.genre_id "
+            "WHERE bg.book_id = ? AND bg.is_primary = 1",
+            (book_id,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def list_genres(self) -> list[tuple[str, int]]:
+        """List all canonical genres with their book counts, sorted by name."""
+        cursor = self._conn.execute(
+            "SELECT g.name, COUNT(bg.book_id) as book_count "
+            "FROM genres g "
+            "LEFT JOIN book_genres bg ON g.id = bg.genre_id "
+            "GROUP BY g.id "
+            "ORDER BY g.name"
+        )
+        return [(row[0], row[1]) for row in cursor.fetchall()]
+
+    def get_books_by_genre(self, genre_name: str) -> list[BookRecord]:
+        """Get all books with a given genre.
+
+        Raises:
+            ValueError: If the genre is not a canonical genre.
+        """
+        if not is_canonical_genre(genre_name):
+            raise ValueError(f"'{genre_name}' is not a canonical genre")
+
+        cursor = self._conn.execute(
+            "SELECT b.* FROM books b "
+            "JOIN book_genres bg ON b.id = bg.book_id "
+            "JOIN genres g ON bg.genre_id = g.id "
+            "WHERE g.name = ? "
+            "ORDER BY b.title",
+            (genre_name,),
+        )
+        return [row_to_record(row) for row in cursor.fetchall()]
+
+    def store_subjects(self, book_id: int, subjects: list[str]) -> None:
+        """Update the subjects JSON column for a book."""
+        self.update_book(book_id, subjects=json.dumps(subjects))
+
+    def get_unmatched_subjects(self) -> list[tuple[int, str, list[str]]]:
+        """Get books that have subjects but no genre assigned.
+
+        Returns list of (book_id, title, subjects) tuples.
+        """
+        cursor = self._conn.execute(
+            "SELECT b.id, b.title, b.subjects FROM books b "
+            "WHERE b.subjects IS NOT NULL AND b.subjects != '[]' "
+            "AND b.id NOT IN (SELECT book_id FROM book_genres) "
+            "ORDER BY b.title"
+        )
+        results: list[tuple[int, str, list[str]]] = []
+        for row in cursor.fetchall():
+            subjects = json.loads(row[2]) if row[2] else []
+            results.append((row[0], row[1], subjects))
+        return results

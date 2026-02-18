@@ -50,6 +50,7 @@ class TestOpenLibrary:
             "series",
             "series_index",
             "identifiers",
+            "subjects",
             "source_path",
             "output_path",
             "file_hash",
@@ -74,7 +75,7 @@ class TestOpenLibrary:
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 2
+        assert row[0] == 3
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""
