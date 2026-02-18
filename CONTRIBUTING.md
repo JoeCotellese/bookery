@@ -8,7 +8,8 @@ Thanks for your interest in contributing! Bookery is built with the help of AI c
 git clone https://github.com/JoeCotellese/bookery.git
 cd bookery
 uv sync
-uv run pytest          # should be green before you start
+git config core.hooksPath hooks   # enable pre-commit checks
+uv run pytest                     # should be green before you start
 ```
 
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
@@ -26,6 +27,8 @@ Branch naming: `feature/<desc>`, `fix/<desc>`, or `hotfix/<desc>`.
 ### Style
 
 - **Ruff** is the linter and formatter. Run `uv run ruff check src/ tests/` before committing.
+- **Pyright** is the type checker. Run `uv run pyright src/` to check types.
+- Both run automatically on staged files via the pre-commit hook (see Getting Started).
 - Python 3.12+ features are encouraged (type unions with `|`, etc.).
 - Line length limit is 99 characters.
 - Match the style of surrounding code. Consistency within a file matters more than strict rules.
@@ -135,7 +138,8 @@ This project uses Claude Code for development. If you use Claude Code or another
 
 1. Ensure all tests pass: `uv run pytest`
 2. Ensure linting passes: `uv run ruff check src/ tests/`
-3. Push your branch and open a PR against `main`
+3. Ensure type checking passes: `uv run pyright src/`
+4. Push your branch and open a PR against `main`
 4. PRs should include a summary of changes and a test plan
 
 ## License

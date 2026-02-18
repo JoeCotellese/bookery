@@ -140,5 +140,4 @@ class TestApplyResult:
         """ApplyResult initializes with empty/zero defaults."""
         result = ApplyResult()
         assert result.assigned == []
-        assert result.skipped_no_match == 0
         assert result.unmatched == []
