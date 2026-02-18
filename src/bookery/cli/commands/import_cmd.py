@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 
 from bookery.cli.options import db_option
+from bookery.core.dedup import filter_redundant_mobis
 from bookery.core.importer import MatchResult, import_books
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
@@ -183,6 +184,15 @@ def import_command(
 
     if do_convert:
         mobi_files = _find_mobis(directory)
+        if mobi_files:
+            mobi_files, dedup_skipped = filter_redundant_mobis(
+                mobi_files, epub_files,
+            )
+            if dedup_skipped:
+                console.print(
+                    f"Skipped {len(dedup_skipped)} MOBI file(s) "
+                    f"— EPUB exists in directory\n",
+                )
         if mobi_files:
             epub_files = _convert_mobis(mobi_files, epub_files, output_dir)
 
