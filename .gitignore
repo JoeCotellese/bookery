@@ -31,6 +31,9 @@ uv.lock
 # Ruff
 .ruff_cache/
 
+# Claude Code
+.claude/
+
 # Bookery runtime
 *.db
 bookery-output/
