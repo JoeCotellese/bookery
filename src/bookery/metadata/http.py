@@ -41,6 +41,7 @@ class BookeryHttpClient:
         client_kwargs: dict[str, Any] = {
             "headers": {"User-Agent": "bookery/0.1.0"},
             "timeout": 30.0,
+            "follow_redirects": True,
         }
         if transport is not None:
             client_kwargs["transport"] = transport
