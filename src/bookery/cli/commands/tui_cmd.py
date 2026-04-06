@@ -13,7 +13,14 @@ from bookery.tui.app import BookeryApp
 
 @click.command("tui")
 @db_option
-def tui(db_path: Path | None) -> None:
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory for enriched copies (default: ./bookery-output).",
+)
+def tui(db_path: Path | None, output_dir: Path | None) -> None:
     """Launch the interactive terminal UI for browsing the library."""
     resolved = db_path or DEFAULT_DB_PATH
 
@@ -25,6 +32,6 @@ def tui(db_path: Path | None) -> None:
     catalog = LibraryCatalog(conn)
 
     try:
-        BookeryApp(catalog=catalog).run()
+        BookeryApp(catalog=catalog, output_dir=output_dir).run()
     finally:
         conn.close()

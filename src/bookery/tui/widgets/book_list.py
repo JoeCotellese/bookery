@@ -10,14 +10,18 @@ from bookery.db.mapping import BookRecord
 
 
 def format_row_label(record: BookRecord) -> str:
-    """Format a BookRecord as 'Author Last, First \u2014 Title' for display."""
+    """Format a BookRecord as 'Author Last, First \u2014 Title' for display.
+
+    Books with an output_path (already enriched) get a checkmark badge.
+    """
     author_sort = derive_author_sort(record.metadata)
     if author_sort == "Unknown":
         author_sort = "Unknown Author"
 
     title = record.metadata.title if record.metadata.title else "(Untitled)"
 
-    return f"{author_sort} \u2014 {title}"
+    badge = "\u2713 " if record.output_path is not None else ""
+    return f"{badge}{author_sort} \u2014 {title}"
 
 
 def author_sort_key(record: BookRecord) -> tuple[int, str]:
