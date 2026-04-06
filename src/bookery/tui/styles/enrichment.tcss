@@ -1,0 +1,96 @@
+/* Styles for the metadata enrichment workflow screens */
+
+/* Loading overlay */
+LoadingOverlay {
+    align: center middle;
+    background: $surface 80%;
+}
+
+LoadingOverlay Center {
+    width: auto;
+    height: auto;
+}
+
+#loading-message {
+    text-align: center;
+    padding: 1 2;
+    text-style: dim;
+}
+
+/* Candidate selection screen */
+CandidateSelectScreen {
+    layout: vertical;
+}
+
+#candidate-header {
+    height: 1;
+    padding: 0 1;
+}
+
+#candidate-list {
+    height: 2fr;
+    border: solid $panel;
+}
+
+#candidate-diff {
+    height: 1fr;
+    border: solid $panel;
+    padding: 0 1;
+}
+
+/* Confirm screen */
+ConfirmScreen {
+    layout: vertical;
+}
+
+#confirm-header {
+    height: 1;
+    padding: 0 1;
+}
+
+#data-loss-warning {
+    height: 1;
+    padding: 0 1;
+    background: $error 20%;
+}
+
+#confirm-diff {
+    height: 1fr;
+    padding: 0 1;
+}
+
+/* Manual search modal */
+ManualSearchModal {
+    align: center middle;
+    background: $surface 80%;
+}
+
+ManualSearchModal Center {
+    width: 60;
+    height: auto;
+}
+
+#manual-search-label {
+    text-align: center;
+    padding: 1 2;
+}
+
+#manual-search-input {
+    margin: 1 2;
+}
+
+/* Re-enrich confirmation modal */
+ReEnrichConfirmModal {
+    align: center middle;
+    background: $surface 80%;
+}
+
+ReEnrichConfirmModal Center {
+    width: 60;
+    height: auto;
+}
+
+#reenrich-message {
+    text-align: center;
+    padding: 1 2;
+}

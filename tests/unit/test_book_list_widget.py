@@ -102,6 +102,34 @@ class TestAuthorSortKey:
         assert author_sort_key(calvino) < author_sort_key(eco)
 
 
+class TestEnrichedBadge:
+    """Tests for the enrichment badge in row labels."""
+
+    def test_enriched_book_shows_checkmark(self) -> None:
+        """BookRecord with output_path shows checkmark in row label."""
+        from bookery.tui.widgets.book_list import format_row_label
+
+        record = BookRecord(
+            id=1,
+            metadata=BookMetadata(title="Test", authors=["Author"]),
+            file_hash="abc",
+            source_path=Path("/books/test.epub"),
+            output_path=Path("/output/test.epub"),
+            date_added="2025-01-01T00:00:00",
+            date_modified="2025-01-01T00:00:00",
+        )
+        label = format_row_label(record)
+        assert "\u2713" in label  # checkmark character
+
+    def test_unenriched_book_has_no_checkmark(self) -> None:
+        """BookRecord with output_path=None has no checkmark."""
+        from bookery.tui.widgets.book_list import format_row_label
+
+        record = _make_record()
+        label = format_row_label(record)
+        assert "\u2713" not in label
+
+
 class TestBookListLoad:
     """Tests for BookList.load() via Textual's async test harness."""
 
@@ -109,6 +137,7 @@ class TestBookListLoad:
     async def test_load_populates_table(self) -> None:
         """load() populates the DataTable with sorted records."""
         from textual.app import App, ComposeResult
+        from textual.widgets import DataTable
 
         from bookery.tui.widgets.book_list import BookList
 
@@ -128,7 +157,7 @@ class TestBookListLoad:
             book_list.load(records)
             await pilot.pause()
 
-            table = app.query_one("#book-table")
+            table = app.query_one("#book-table", DataTable)
             assert table.row_count == 3
 
             # Calvino should be first, Eco second, Unknown last
@@ -207,6 +236,7 @@ class TestBookListLoad:
     async def test_row_keys_are_record_ids(self) -> None:
         """DataTable row keys match BookRecord.id values."""
         from textual.app import App, ComposeResult
+        from textual.widgets import DataTable
 
         from bookery.tui.widgets.book_list import BookList
 
@@ -224,6 +254,6 @@ class TestBookListLoad:
             book_list.load(records)
             await pilot.pause()
 
-            table = app.query_one("#book-table")
+            table = app.query_one("#book-table", DataTable)
             row_key = next(iter(table.rows.keys()))
             assert row_key.value == "42"
