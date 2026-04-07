@@ -97,3 +97,72 @@ class TestWebE2E:
         assert "<html" not in html
 
         conn.close()
+
+    def test_full_edit_flow(self, tmp_path) -> None:
+        """Full user journey: browse → detail → edit → save → verify."""
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        catalog.add_book(
+            BookMetadata(
+                title="Neuromancer",
+                authors=["Gibson, William"],
+                author_sort="Gibson, William",
+                isbn="9780441569595",
+                language="en",
+                publisher="Ace Books",
+                description="Cyberpunk noir.",
+                source_path=Path("/books/neuromancer.epub"),
+            ),
+            file_hash="hash_neuro",
+        )
+
+        app = create_app(catalog)
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        # Step 1: Browse and find the book
+        response = client.get("/books")
+        assert "Neuromancer" in response.data.decode()
+
+        # Step 2: View detail
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Neuromancer" in html
+        assert "Edit" in html
+
+        # Step 3: Get edit form
+        response = client.get("/books/1/edit")
+        html = response.data.decode()
+        assert "<form" in html
+        assert "Neuromancer" in html
+
+        # Step 4: Save with updated metadata
+        response = client.post(
+            "/books/1/edit",
+            data={
+                "title": "Neuromancer (Revised)",
+                "authors": "Gibson, William; Sterling, Bruce",
+                "isbn": "9780441569595",
+                "language": "en",
+                "publisher": "Ace Books",
+                "description": "Cyberpunk noir, updated edition.",
+                "series": "Sprawl Trilogy",
+                "series_index": "1",
+            },
+        )
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "Neuromancer (Revised)" in html
+
+        # Step 5: Verify detail page shows updated data
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Neuromancer (Revised)" in html
+        assert "Gibson, William" in html
+        assert "Sterling, Bruce" in html
+        assert "Sprawl Trilogy" in html
+        assert "Cyberpunk noir, updated edition." in html
+
+        conn.close()

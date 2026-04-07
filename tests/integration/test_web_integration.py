@@ -106,3 +106,57 @@ class TestWebIntegration:
         response = c.get("/books")
         html = response.data.decode()
         assert "Your library is empty" in html
+
+    def test_edit_and_save_persists_changes(self, client):
+        # Get the edit form
+        response = client.get("/books/1/edit")
+        assert response.status_code == 200
+        assert "<form" in response.data.decode()
+
+        # Save with updated title
+        response = client.post(
+            "/books/1/edit",
+            data={
+                "title": "Dune Messiah",
+                "authors": "Herbert, Frank",
+                "isbn": "9780441172719",
+                "language": "en",
+                "publisher": "Ace Books",
+                "description": "A desert planet epic.",
+                "series": "",
+                "series_index": "",
+            },
+        )
+        assert response.status_code == 200
+
+        # Verify the detail page shows the updated title
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Dune Messiah" in html
+
+    def test_edit_cancel_preserves_original(self, client):
+        # Load the edit form (read-only, no changes)
+        response = client.get("/books/1/edit")
+        assert response.status_code == 200
+
+        # Without posting, go back to detail — title unchanged
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Dune" in html
+
+    def test_edit_title_validation(self, client):
+        response = client.post(
+            "/books/1/edit",
+            data={
+                "title": "",
+                "authors": "Herbert, Frank",
+                "isbn": "",
+                "language": "",
+                "publisher": "",
+                "description": "",
+                "series": "",
+                "series_index": "",
+            },
+        )
+        assert response.status_code == 400
+        assert "Title is required" in response.data.decode()

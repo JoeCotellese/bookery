@@ -1,0 +1,60 @@
+<h2>{{ book.metadata.title }}</h2>
+
+<button class="btn btn-secondary"
+        hx-get="{{ url_for('web.edit_form', book_id=book.id) }}"
+        hx-target="#book-content"
+        hx-swap="innerHTML">Edit</button>
+
+<dl class="metadata">
+    <dt>Author</dt>
+    <dd>{{ book.metadata.author }}</dd>
+
+    {% if book.metadata.isbn %}
+    <dt>ISBN</dt>
+    <dd>{{ book.metadata.isbn }}</dd>
+    {% endif %}
+
+    {% if book.metadata.language %}
+    <dt>Language</dt>
+    <dd>{{ book.metadata.language }}</dd>
+    {% endif %}
+
+    {% if book.metadata.publisher %}
+    <dt>Publisher</dt>
+    <dd>{{ book.metadata.publisher }}</dd>
+    {% endif %}
+
+    {% if book.metadata.series %}
+    <dt>Series</dt>
+    <dd>{{ book.metadata.series }}{% if book.metadata.series_index %} #{{ book.metadata.series_index }}{% endif %}</dd>
+    {% endif %}
+</dl>
+
+{% if book.metadata.description %}
+<div class="description">
+    <h3>Description</h3>
+    <p>{{ book.metadata.description }}</p>
+</div>
+{% endif %}
+
+{% if tags %}
+<div class="tags">
+    <h3>Tags</h3>
+    <ul>
+        {% for tag in tags %}
+        <li>{{ tag }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if genres %}
+<div class="genres">
+    <h3>Genres</h3>
+    <ul>
+        {% for name, is_primary in genres %}
+        <li>{{ name }}{% if is_primary %} <span class="primary-badge">(primary)</span>{% endif %}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
