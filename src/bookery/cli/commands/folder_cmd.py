@@ -48,9 +48,7 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
             raise SystemExit(1)
 
         if isinstance(result, Ambiguous):
-            console.print(
-                f"[yellow]Multiple books match[/yellow] '{query}':"
-            )
+            console.print(f"[yellow]Multiple books match[/yellow] '{query}':")
             for r in result.records:
                 console.print(f"  [dim]{r.id}[/dim]  {r.metadata.title}")
             console.print("[dim]Re-run with a numeric ID to disambiguate.[/dim]")
@@ -72,9 +70,7 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
         folder_path = record.output_path or record.source_path.parent
 
         if not folder_path.exists():
-            console.print(
-                f"[red]Folder does not exist:[/red] {folder_path}"
-            )
+            console.print(f"[red]Folder does not exist:[/red] {folder_path}")
             console.print("[dim]DB may be out of sync with the filesystem.[/dim]")
             raise SystemExit(1)
 
@@ -90,9 +86,7 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
             return
 
         if isinstance(open_result, Headless):
-            console.print(
-                "[yellow]No graphical environment available (headless).[/yellow]"
-            )
+            console.print("[yellow]No graphical environment available (headless).[/yellow]")
             click.echo(str(folder_path))
             return
 

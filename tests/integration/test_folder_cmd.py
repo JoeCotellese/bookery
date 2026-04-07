@@ -58,9 +58,7 @@ class TestFolderCommandPrint:
 
 
 class TestFolderCommandOpen:
-    def test_open_by_id_invokes_opener(
-        self, db_with_books: tuple[Path, dict[str, int]]
-    ) -> None:
+    def test_open_by_id_invokes_opener(self, db_with_books: tuple[Path, dict[str, int]]) -> None:
         db_path, ids = db_with_books
         runner = CliRunner()
         with patch(
@@ -108,46 +106,32 @@ class TestFolderCommandOpen:
 
 
 class TestFolderCommandLookupErrors:
-    def test_unknown_id_exits_one(
-        self, db_with_books: tuple[Path, dict[str, int]]
-    ) -> None:
+    def test_unknown_id_exits_one(self, db_with_books: tuple[Path, dict[str, int]]) -> None:
         db_path, _ = db_with_books
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", "9999", "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", "9999", "--print", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
-    def test_ambiguous_title_exits_two(
-        self, db_with_books: tuple[Path, dict[str, int]]
-    ) -> None:
+    def test_ambiguous_title_exits_two(self, db_with_books: tuple[Path, dict[str, int]]) -> None:
         db_path, _ = db_with_books
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", "Dune", "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", "Dune", "--print", "--db", str(db_path)])
         assert result.exit_code == 2
         assert "Dune" in result.output
         assert "Dune Messiah" in result.output
 
-    def test_typo_returns_suggestions(
-        self, db_with_books: tuple[Path, dict[str, int]]
-    ) -> None:
+    def test_typo_returns_suggestions(self, db_with_books: tuple[Path, dict[str, int]]) -> None:
         db_path, _ = db_with_books
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", "Hobit", "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", "Hobit", "--print", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "did you mean" in result.output.lower()
         assert "Hobbit" in result.output
 
 
 class TestFolderCommandFilesystemErrors:
-    def test_missing_folder_on_disk_exits_one(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_folder_on_disk_exits_one(self, tmp_path: Path) -> None:
         db_path = tmp_path / "lib.db"
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
@@ -160,15 +144,11 @@ class TestFolderCommandFilesystemErrors:
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", str(book_id), "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", str(book_id), "--print", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "out of sync" in result.output.lower() or "does not exist" in result.output.lower()
 
-    def test_no_output_path_falls_back_to_source_parent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_no_output_path_falls_back_to_source_parent(self, tmp_path: Path) -> None:
         """When output_path is None, fall back to the parent of source_path.
 
         Books imported without --match never get an output_path. The folder
@@ -191,9 +171,6 @@ class TestFolderCommandFilesystemErrors:
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", str(book_id), "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", str(book_id), "--print", "--db", str(db_path)])
         assert result.exit_code == 0, result.output
         assert str(source_dir) in result.output
-

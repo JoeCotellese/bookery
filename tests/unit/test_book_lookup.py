@@ -66,9 +66,7 @@ class TestNumericId:
 
 
 class TestSubstringMatch:
-    def test_single_substring_hit_returns_found(
-        self, catalog: StubCatalog
-    ) -> None:
+    def test_single_substring_hit_returns_found(self, catalog: StubCatalog) -> None:
         result = resolve_book(catalog, "Hobbit")
         assert isinstance(result, Found)
         assert result.record.metadata.title == "The Hobbit"
@@ -78,9 +76,7 @@ class TestSubstringMatch:
         assert isinstance(result, Found)
         assert result.record.id == 1
 
-    def test_multiple_substring_hits_returns_ambiguous(
-        self, catalog: StubCatalog
-    ) -> None:
+    def test_multiple_substring_hits_returns_ambiguous(self, catalog: StubCatalog) -> None:
         result = resolve_book(catalog, "the")
         assert isinstance(result, Ambiguous)
         assert len(result.records) >= 2
@@ -92,8 +88,43 @@ class TestFuzzyFallback:
         assert isinstance(result, Suggestions)
         assert any("Hobbit" in r.metadata.title for r in result.records)
 
-    def test_no_match_at_all_returns_not_found(
-        self, catalog: StubCatalog
-    ) -> None:
+    def test_no_match_at_all_returns_not_found(self, catalog: StubCatalog) -> None:
         result = resolve_book(catalog, "qzxqzxqzx")
         assert isinstance(result, NotFound)
+
+    def test_suggestions_preserve_difflib_relevance_order(self) -> None:
+        """Suggestions must be ordered by difflib relevance, not catalog order.
+
+        get_close_matches() returns titles best-first; the result must reflect
+        that ordering so the user sees the most likely guess first.
+        """
+        # Catalog inserted in reverse-relevance order on purpose: the most
+        # similar title to "Dunes" ("Dune") is added LAST.
+        records = [
+            _record(1, "Doom"),
+            _record(2, "Dudes"),
+            _record(3, "Dune"),
+        ]
+        catalog = StubCatalog(records)
+
+        result = resolve_book(catalog, "Dunes")
+        assert isinstance(result, Suggestions)
+        # The closest match ("Dune") should be first in the result list.
+        assert result.records[0].metadata.title == "Dune"
+
+    def test_suggestions_never_repeat_same_book_id(self) -> None:
+        """Each book may appear at most once in the suggestion list.
+
+        Two distinct editions sharing a title are both legitimate candidates
+        and may both appear, but a single book should never be listed twice.
+        """
+        records = [
+            _record(1, "Dune"),
+            _record(2, "Dune"),  # same title, different edition (distinct book)
+        ]
+        catalog = StubCatalog(records)
+
+        result = resolve_book(catalog, "Dunes")
+        assert isinstance(result, Suggestions)
+        ids = [r.id for r in result.records]
+        assert len(ids) == len(set(ids)), f"duplicate book ids in suggestions: {ids}"

@@ -63,11 +63,20 @@ def resolve_book(catalog: CatalogLike, query: str) -> LookupResult:
     if len(matches) > 1:
         return Ambiguous(matches)
 
-    # Fuzzy fallback against titles.
+    # Fuzzy fallback against titles. get_close_matches returns titles in
+    # best-match order, so preserve that ordering and emit one record per
+    # matched title to keep the "did you mean" list relevance-ranked.
     titles = [r.metadata.title for r in all_records]
     close = get_close_matches(query, titles, n=5, cutoff=0.6)
     if close:
-        suggested = [r for r in all_records if r.metadata.title in close]
+        suggested: list[BookRecord] = []
+        seen_ids: set[int] = set()
+        for title in close:
+            for r in all_records:
+                if r.metadata.title == title and r.id not in seen_ids:
+                    suggested.append(r)
+                    seen_ids.add(r.id)
+                    break
         return Suggestions(suggested)
 
     return NotFound()

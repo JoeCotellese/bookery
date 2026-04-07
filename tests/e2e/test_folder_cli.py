@@ -35,9 +35,7 @@ class TestFolderCliE2E:
         book_id = _seed_book(db_path, "The Hobbit", folder)
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", str(book_id), "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", str(book_id), "--print", "--db", str(db_path)])
         assert result.exit_code == 0, result.output
 
         printed = result.output.strip().splitlines()[-1]
@@ -52,8 +50,6 @@ class TestFolderCliE2E:
         _seed_book(db_path, "The Hobbit", folder)
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["folder", "Hobbit", "--print", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["folder", "Hobbit", "--print", "--db", str(db_path)])
         assert result.exit_code == 0, result.output
         assert str(folder) in result.output

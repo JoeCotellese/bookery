@@ -88,9 +88,7 @@ class TestOpenInFileManager:
             result = open_in_file_manager(tmp_path)
 
         assert isinstance(result, Opened)
-        mock_run.assert_called_once_with(
-            ["open", str(tmp_path)], check=True
-        )
+        mock_run.assert_called_once_with(["open", str(tmp_path)], check=True)
 
     def test_linux_dispatches_xdg_open(self, tmp_path: Path) -> None:
         with (
@@ -108,9 +106,7 @@ class TestOpenInFileManager:
             result = open_in_file_manager(tmp_path)
 
         assert isinstance(result, Opened)
-        mock_run.assert_called_once_with(
-            ["xdg-open", str(tmp_path)], check=True
-        )
+        mock_run.assert_called_once_with(["xdg-open", str(tmp_path)], check=True)
 
     def test_windows_dispatches_startfile(self, tmp_path: Path) -> None:
         with (
@@ -125,9 +121,7 @@ class TestOpenInFileManager:
         assert isinstance(result, Opened)
         mock_startfile.assert_called_once_with(str(tmp_path))
 
-    def test_wsl_dispatches_explorer_with_translated_path(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wsl_dispatches_explorer_with_translated_path(self, tmp_path: Path) -> None:
         with (
             patch(
                 "bookery.util.file_manager.detect_platform",
