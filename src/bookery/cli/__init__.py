@@ -18,7 +18,6 @@ from bookery.cli.commands import (
     search_cmd,
     serve_cmd,
     tag_cmd,
-    tui_cmd,
     verify_cmd,
 )
 
@@ -52,5 +51,4 @@ cli.add_command(rematch_cmd.rematch)
 cli.add_command(search_cmd.search)
 cli.add_command(serve_cmd.serve)
 cli.add_command(tag_cmd.tag)
-cli.add_command(tui_cmd.tui)
 cli.add_command(verify_cmd.verify)
