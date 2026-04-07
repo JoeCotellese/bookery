@@ -11,7 +11,7 @@ A technically literate ebook collector who:
 - Has a collection of mostly EPUB files (500-2000 books)
 - Wants to quickly search, browse, and send books to the device
 - Values speed, simplicity, and control over their file organization
-- Is comfortable with CLI and may want TUI/WebUI later
+- Is comfortable with CLI and uses the web UI for browsing
 
 ## Architectural Model: beets
 
@@ -21,7 +21,7 @@ Bookery follows the [beets](https://beets.io/) model — a music library manager
 - **Query DSL** — `field:value` syntax, combinable, powerful but learnable
 - **Autotagger pipeline** — match against external sources, present candidates, let user confirm
 - **Plugin hooks** — events throughout the pipeline that plugins can tap into
-- **Layered architecture** — core library separated from UI (CLI first, TUI/WebUI later)
+- **Layered architecture** — core library separated from UI (CLI plus web UI)
 - **YAML configuration**
 - **SQLite catalog**
 - **Non-destructive by default**
@@ -35,7 +35,7 @@ Bookery follows the [beets](https://beets.io/) model — a music library manager
 | Database | Opaque SQLite, Calibre-specific | Portable, simple metadata store |
 | Scope | Everything (conversion, editing, news, stores) | Focused: catalog + send to device |
 | Extensibility | Monolithic plugins | Plugin architecture from day one |
-| UI | One heavyweight GUI | Layered: CLI → TUI → WebUI |
+| UI | One heavyweight GUI | Layered: CLI + web UI |
 
 ## Design Principles
 
@@ -99,7 +99,7 @@ Bookery follows the [beets](https://beets.io/) model — a music library manager
 - `bookery info <query>` shows all extracted metadata fields
 - Shows file path, size, format
 - Shows device status (on Kobo or not, when last sent)
-- Shows cover image path (for TUI/WebUI to render later)
+- Shows cover image path (for the web UI to render)
 
 ### Epic 2: Kobo Device Integration
 
