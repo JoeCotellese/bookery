@@ -41,7 +41,11 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             conn.executescript(sql)
 
 
-def open_library(path: Path | None = None) -> sqlite3.Connection:
+def open_library(
+    path: Path | None = None,
+    *,
+    check_same_thread: bool = True,
+) -> sqlite3.Connection:
     """Open or create the Bookery library database.
 
     Creates the database file and parent directories if they don't exist.
@@ -50,6 +54,8 @@ def open_library(path: Path | None = None) -> sqlite3.Connection:
 
     Args:
         path: Path to the database file. Defaults to ~/.bookery/library.db.
+        check_same_thread: If False, allow connection use across threads.
+            Set to False for web servers where requests run on worker threads.
 
     Returns:
         A configured sqlite3.Connection.
@@ -57,7 +63,7 @@ def open_library(path: Path | None = None) -> sqlite3.Connection:
     db_path = path or DEFAULT_DB_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

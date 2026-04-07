@@ -100,14 +100,13 @@ class LibraryCatalog:
                     existing_isbn = normalize_isbn(row["isbn"])
                     if existing_isbn == candidate_isbn:
                         return DuplicateMatch(
-                            record=row_to_record(row), reason="isbn",
+                            record=row_to_record(row),
+                            reason="isbn",
                         )
 
         # Title + author check
         candidate_title = normalize_for_dedup(metadata.title)
-        candidate_authors = sorted(
-            normalize_author_for_dedup(a) for a in metadata.authors
-        )
+        candidate_authors = sorted(normalize_author_for_dedup(a) for a in metadata.authors)
 
         if not candidate_title or not candidate_authors:
             return None
@@ -127,6 +126,11 @@ class LibraryCatalog:
     def list_all(self) -> list[BookRecord]:
         """Return all books in the catalog, ordered by title."""
         cursor = self._conn.execute("SELECT * FROM books ORDER BY title")
+        return [row_to_record(row) for row in cursor.fetchall()]
+
+    def list_all_by_author(self) -> list[BookRecord]:
+        """Return all books in the catalog, ordered by author then title."""
+        cursor = self._conn.execute("SELECT * FROM books ORDER BY author_sort, title")
         return [row_to_record(row) for row in cursor.fetchall()]
 
     def list_by_series(self, series: str) -> list[BookRecord]:
