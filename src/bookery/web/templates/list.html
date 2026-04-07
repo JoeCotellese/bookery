@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Library - Bookery{% endblock %}
+
+{% block content %}
+<div class="search-bar">
+    <input type="search"
+           name="q"
+           placeholder="Search books..."
+           value="{{ query or '' }}"
+           hx-get="{{ url_for('web.books') }}"
+           hx-trigger="keyup changed delay:300ms"
+           hx-target="#book-table-body"
+           hx-include="this">
+</div>
+
+<table class="book-table">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>ISBN</th>
+            <th>Language</th>
+            <th>Publisher</th>
+            <th>Enriched</th>
+        </tr>
+    </thead>
+    <tbody id="book-table-body">
+        {% include "_table.html" %}
+    </tbody>
+</table>
+{% endblock %}

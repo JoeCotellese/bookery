@@ -1,0 +1,20 @@
+{% if books %}
+    {% for book in books %}
+    <tr onclick="window.location='{{ url_for('web.book_detail', book_id=book.id) }}'">
+        <td>{{ book.metadata.title }}</td>
+        <td>{{ book.metadata.author }}</td>
+        <td>{{ book.metadata.isbn or '' }}</td>
+        <td>{{ book.metadata.language or '' }}</td>
+        <td>{{ book.metadata.publisher or '' }}</td>
+        <td>{% if book.output_path %}&#10003;{% endif %}</td>
+    </tr>
+    {% endfor %}
+{% elif query %}
+    <tr>
+        <td colspan="6" class="empty-state">No books matching '{{ query }}'</td>
+    </tr>
+{% else %}
+    <tr>
+        <td colspan="6" class="empty-state">Your library is empty. Run <code>bookery import</code> to add books.</td>
+    </tr>
+{% endif %}
