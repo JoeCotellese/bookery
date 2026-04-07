@@ -1,0 +1,51 @@
+<form class="edit-form" hx-post="{{ url_for('web.update_book', book_id=book.id) }}" hx-target="#book-content" hx-swap="innerHTML">
+    {% if error %}
+    <div class="form-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="form-group">
+        <label for="title">Title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" value="{{ book.metadata.title }}" required>
+    </div>
+
+    <div class="form-group">
+        <label for="authors">Authors <span class="hint">(semicolon-separated)</span></label>
+        <input type="text" id="authors" name="authors" value="{{ book.metadata.authors | join('; ') }}">
+    </div>
+
+    <div class="form-group">
+        <label for="isbn">ISBN</label>
+        <input type="text" id="isbn" name="isbn" value="{{ book.metadata.isbn or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="language">Language</label>
+        <input type="text" id="language" name="language" value="{{ book.metadata.language or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="publisher">Publisher</label>
+        <input type="text" id="publisher" name="publisher" value="{{ book.metadata.publisher or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="4">{{ book.metadata.description or '' }}</textarea>
+    </div>
+
+    <div class="form-group form-row">
+        <div>
+            <label for="series">Series</label>
+            <input type="text" id="series" name="series" value="{{ book.metadata.series or '' }}">
+        </div>
+        <div>
+            <label for="series_index">Series #</label>
+            <input type="number" id="series_index" name="series_index" step="any" value="{{ book.metadata.series_index if book.metadata.series_index is not none else '' }}">
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" hx-get="{{ url_for('web.book_detail', book_id=book.id) }}" hx-target="#book-content" hx-swap="innerHTML">Cancel</button>
+    </div>
+</form>
