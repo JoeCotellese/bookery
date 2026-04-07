@@ -80,7 +80,9 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
             raise SystemExit(1)
 
         if print_only:
-            console.print(str(record.output_path))
+            # Use click.echo (not Rich) so the path is emitted unwrapped and
+            # is safe to consume from a shell pipeline.
+            click.echo(str(record.output_path))
             return
 
         open_result = open_in_file_manager(record.output_path)
@@ -92,7 +94,7 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
             console.print(
                 "[yellow]No graphical environment available (headless).[/yellow]"
             )
-            console.print(str(record.output_path))
+            click.echo(str(record.output_path))
             return
 
         if isinstance(open_result, OpenerFailed):
