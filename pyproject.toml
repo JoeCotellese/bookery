@@ -1,6 +1,6 @@
 [project]
 name = "bookery"
-version = "2026.2.1"
+version = "2026.4.1"
 description = "CLI-first ebook library manager inspired by beets"
 readme = "README.md"
 authors = [
