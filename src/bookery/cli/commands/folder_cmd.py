@@ -66,15 +66,14 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
         assert isinstance(result, Found)
         record = result.record
 
-        if record.output_path is None:
-            console.print(
-                f"[red]Book has no on-disk location:[/red] {record.metadata.title}"
-            )
-            raise SystemExit(1)
+        # Books that went through the match/write pipeline have an explicit
+        # output_path. Books imported without --match only have source_path,
+        # so fall back to the directory containing the original file.
+        folder_path = record.output_path or record.source_path.parent
 
-        if not record.output_path.exists():
+        if not folder_path.exists():
             console.print(
-                f"[red]Folder does not exist:[/red] {record.output_path}"
+                f"[red]Folder does not exist:[/red] {folder_path}"
             )
             console.print("[dim]DB may be out of sync with the filesystem.[/dim]")
             raise SystemExit(1)
@@ -82,10 +81,10 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
         if print_only:
             # Use click.echo (not Rich) so the path is emitted unwrapped and
             # is safe to consume from a shell pipeline.
-            click.echo(str(record.output_path))
+            click.echo(str(folder_path))
             return
 
-        open_result = open_in_file_manager(record.output_path)
+        open_result = open_in_file_manager(folder_path)
 
         if isinstance(open_result, Opened):
             return
@@ -94,7 +93,7 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
             console.print(
                 "[yellow]No graphical environment available (headless).[/yellow]"
             )
-            click.echo(str(record.output_path))
+            click.echo(str(folder_path))
             return
 
         if isinstance(open_result, OpenerFailed):

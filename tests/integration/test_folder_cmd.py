@@ -166,12 +166,25 @@ class TestFolderCommandFilesystemErrors:
         assert result.exit_code == 1
         assert "out of sync" in result.output.lower() or "does not exist" in result.output.lower()
 
-    def test_no_output_path_exits_one(self, tmp_path: Path) -> None:
+    def test_no_output_path_falls_back_to_source_parent(
+        self, tmp_path: Path
+    ) -> None:
+        """When output_path is None, fall back to the parent of source_path.
+
+        Books imported without --match never get an output_path. The folder
+        command should still be useful by opening the directory containing
+        the original EPUB.
+        """
         db_path = tmp_path / "lib.db"
+        source_dir = tmp_path / "ingest" / "Some Book"
+        source_dir.mkdir(parents=True)
+        source_file = source_dir / "book.epub"
+        source_file.write_bytes(b"fake")
+
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         book_id = catalog.add_book(
-            BookMetadata(title="Pathless", source_path=Path("/src/p.epub")),
+            BookMetadata(title="Pathless", source_path=source_file),
             file_hash="pl",
             # no output_path
         )
@@ -181,5 +194,6 @@ class TestFolderCommandFilesystemErrors:
         result = runner.invoke(
             cli, ["folder", str(book_id), "--print", "--db", str(db_path)]
         )
-        assert result.exit_code == 1
-        assert "no on-disk" in result.output.lower() or "no on disk" in result.output.lower()
+        assert result.exit_code == 0, result.output
+        assert str(source_dir) in result.output
+
