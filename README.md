@@ -120,6 +120,7 @@ bookery info 42
 | Command | Description |
 |---------|-------------|
 | `convert <path> -o <dir>` | Convert MOBI files to EPUB format (supports `--match` to chain into matching) |
+| `vault-export --vault <path> -o <file>` | Export an Obsidian vault to a single EPUB with clickable TOC, resolved wiki-links, and an optional tag index. Requires [pandoc](https://pandoc.org). |
 
 ### Library Catalog
 

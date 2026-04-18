@@ -60,11 +60,23 @@ class SyncConfig:
 
 
 @dataclass(frozen=True)
+class VaultExportConfig:
+    vault_path: Path | None = None
+    folders: list[str] = field(default_factory=list)
+    include_index: bool = False
+    index_exclude_prefixes: list[str] = field(default_factory=list)
+    index_min_count: int = 1
+    default_author: str = "Obsidian Vault"
+    uuid_mode: str = "stable"  # "stable" | "random"
+
+
+@dataclass(frozen=True)
 class Config:
     library_root: Path
     data_dir: Path
     convert: ConvertConfig = field(default_factory=ConvertConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
+    vault_export: VaultExportConfig = field(default_factory=VaultExportConfig)
 
 
 def _config_path() -> Path:
@@ -119,6 +131,24 @@ def _parse_sync(section: dict[str, Any] | None) -> SyncConfig:
     return SyncConfig(kobo=_parse_sync_kobo(section.get("kobo")))
 
 
+def _parse_vault_export(section: dict[str, Any] | None) -> VaultExportConfig:
+    if not section:
+        return VaultExportConfig()
+    raw_path = section.get("vault_path")
+    vault_path = Path(str(raw_path)).expanduser() if raw_path else None
+    folders = [str(x) for x in section.get("folders", [])]
+    exclude = [str(x) for x in section.get("index_exclude_prefixes", [])]
+    return VaultExportConfig(
+        vault_path=vault_path,
+        folders=folders,
+        include_index=bool(section.get("include_index", False)),
+        index_exclude_prefixes=exclude,
+        index_min_count=int(section.get("index_min_count", 1)),
+        default_author=str(section.get("default_author", "Obsidian Vault")),
+        uuid_mode=str(section.get("uuid_mode", "stable")),
+    )
+
+
 def load_config() -> Config:
     """Load configuration from disk, creating a default file on first run.
 
@@ -160,8 +190,13 @@ def load_config() -> Config:
 
     convert = _parse_convert(data.get("convert"))
     sync = _parse_sync(data.get("sync"))
+    vault_export = _parse_vault_export(data.get("vault_export"))
     return Config(
-        library_root=library_root, data_dir=data_dir, convert=convert, sync=sync
+        library_root=library_root,
+        data_dir=data_dir,
+        convert=convert,
+        sync=sync,
+        vault_export=vault_export,
     )
 
 
