@@ -6,6 +6,7 @@ import logging
 import click
 
 from bookery.cli.commands import (
+    add_cmd,
     convert_cmd,
     folder_cmd,
     genre_cmd,
@@ -40,6 +41,7 @@ def cli(verbose: int) -> None:
     )
 
 
+cli.add_command(add_cmd.add_command)
 cli.add_command(convert_cmd.convert)
 cli.add_command(folder_cmd.folder)
 cli.add_command(genre_cmd.genre)
