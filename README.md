@@ -14,6 +14,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
+- **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB plus a Kobo `.kepub.epub` variant. Scanned PDFs are refused (OCR not yet supported).
 - **Open Library matching** — searches by ISBN (precise) or title/author (fuzzy), with confidence scoring
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
 - **Smart normalization** — splits mangled filenames like `SteveBerry-TheTemplarLegacy` into clean search queries, detects embedded author names
@@ -30,6 +31,33 @@ git clone https://github.com/joecotellese/bookery.git
 cd bookery
 uv sync
 ```
+
+### Optional: PDF conversion
+
+The PDF path in `bookery add` / `bookery import` is opt-in on your
+machine and needs two extra pieces wired up once:
+
+1. **`kepubify`** on your `PATH` — produces the `.kepub.epub` variant:
+   ```bash
+   brew install pgaskin/kepubify/kepubify
+   ```
+2. **LM Studio** (or any OpenAI-compatible endpoint) running locally
+   with a model that follows JSON-mode instructions well. Known-good
+   default: **Qwen 2.5 7B Instruct**. Point bookery at it via
+   `~/.bookery/config.toml`:
+   ```toml
+   [convert]
+   llm_base_url = "http://localhost:1234/v1"
+   llm_model = "qwen2.5-7b-instruct"
+   llm_api_key = "lm-studio"
+   llm_max_retries = 3
+   prompt_version = 1
+   header_footer_threshold = 0.6
+   ```
+
+Response chunks are cached under `~/.bookery/data/convert_cache.db`
+so re-runs on the same PDF skip the LLM. Safe to delete at any time;
+bumping `prompt_version` invalidates only stale entries.
 
 ## Quick Start
 

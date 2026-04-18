@@ -22,6 +22,25 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 Branch naming: `feature/<desc>`, `fix/<desc>`, or `hotfix/<desc>`.
 
+## Dependency License Policy
+
+Bookery is MIT-licensed. Runtime dependencies must be under a
+permissive license compatible with MIT redistribution:
+
+- ✅ **MIT**, **BSD** (2 / 3-clause), **Apache 2.0**, **ISC**
+- ❌ **GPL**, **AGPL**, **LGPL** (without a permissive dual-license),
+  **SSPL**, or any copyleft license that would force our downstream
+  users to publish source.
+
+Dev-only dependencies (linters, type checkers, test fixtures) may
+use a wider license set as long as they don't end up in the runtime
+distribution.
+
+When adding a runtime dep, check its license on PyPI and record the
+choice in the PR description. For example, the PDF pipeline
+intentionally uses `pdfplumber` (MIT) and `pypdf` (BSD-3) instead of
+`pymupdf` (AGPL-3.0).
+
 ## Code Standards
 
 ### Style
