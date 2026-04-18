@@ -68,7 +68,28 @@ def test_assemble_list_blocks_wrap_in_ul(tmp_path: Path, sample_doc: ClassifiedD
     assert content.index("<ul>") < content.index("<li>First item</li>")
 
 
-def test_assemble_title_from_h1(tmp_path: Path, sample_doc: ClassifiedDoc) -> None:
+def test_assemble_title_from_hint(tmp_path: Path, sample_doc: ClassifiedDoc) -> None:
+    path = assemble(
+        sample_doc, tmp_path, stem="raw_stem", title_hint="The New Yorker - April 13 2026"
+    )
+    book = epub.read_epub(str(path))
+    assert book.get_metadata("DC", "title")[0][0] == "The New Yorker - April 13 2026"
+
+
+def test_assemble_title_from_humanized_stem(
+    tmp_path: Path, sample_doc: ClassifiedDoc
+) -> None:
+    path = assemble(sample_doc, tmp_path, stem="The_New_Yorker-2026-04-13")
+    book = epub.read_epub(str(path))
+    assert (
+        book.get_metadata("DC", "title")[0][0] == "The New Yorker 2026 04 13"
+    )
+
+
+def test_assemble_title_falls_back_to_h1_when_stem_already_plain(
+    tmp_path: Path, sample_doc: ClassifiedDoc
+) -> None:
+    # stem with no separators — humanizer leaves it unchanged, so we fall back to h1.
     path = assemble(sample_doc, tmp_path, stem="book")
     book = epub.read_epub(str(path))
     assert book.get_metadata("DC", "title")[0][0] == "Opening Line"

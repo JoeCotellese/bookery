@@ -69,7 +69,9 @@ def convert_pdf(
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    epub_path = assemble_mod.assemble(classified, out_dir, stem=src.stem)
+    epub_path = assemble_mod.assemble(
+        classified, out_dir, stem=src.stem, title_hint=src.stem
+    )
     kepub_path = kepub_mod.run_kepubify(epub_path, out_dir=out_dir)
 
     return PdfConvertResult(

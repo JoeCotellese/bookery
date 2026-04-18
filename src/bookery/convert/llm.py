@@ -103,10 +103,30 @@ def _parse_response(raw: str, expected: int) -> list[str]:
     return out
 
 
+CLASSIFICATION_SCHEMA = {
+    "name": "classifications",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "classifications": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["h1", "h2", "h3", "p", "blockquote", "li"],
+                },
+            }
+        },
+        "required": ["classifications"],
+        "additionalProperties": False,
+    },
+}
+
+
 def _call_llm(client: Any, cfg: ConvertConfig, prompt_text: str) -> str:
     response = client.chat.completions.create(
         model=cfg.llm_model,
-        response_format={"type": "json_object"},
+        response_format={"type": "json_schema", "json_schema": CLASSIFICATION_SCHEMA},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt_text},

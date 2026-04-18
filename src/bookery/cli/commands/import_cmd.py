@@ -40,8 +40,18 @@ def _find_mobis(directory: Path) -> list[Path]:
 
 
 def _find_pdfs(directory: Path) -> list[Path]:
-    """Recursively find all .pdf files in a directory."""
-    return sorted(directory.rglob("*.pdf"))
+    """Recursively find real text-based PDFs (suffix + magic bytes)."""
+    from bookery.cli._dispatch import UnknownFormatError, detect_source_format
+
+    candidates = sorted(directory.rglob("*.pdf"))
+    confirmed: list[Path] = []
+    for path in candidates:
+        try:
+            if detect_source_format(path) == "pdf":
+                confirmed.append(path)
+        except UnknownFormatError:
+            continue
+    return confirmed
 
 
 def _convert_pdfs(

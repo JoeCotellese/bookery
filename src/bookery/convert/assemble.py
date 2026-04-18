@@ -66,22 +66,41 @@ def _chapter_xhtml(chapter: ClassifiedChapter, index: int) -> epub.EpubHtml:
     return item
 
 
-def _guess_title(doc: ClassifiedDoc) -> str:
+def _humanize_stem(stem: str) -> str:
+    """Turn a filesystem stem into a readable title (underscores/dashes → spaces)."""
+    cleaned = stem.replace("_", " ").replace("-", " ")
+    collapsed = " ".join(cleaned.split())
+    return collapsed.strip() or stem
+
+
+def _resolve_title(doc: ClassifiedDoc, stem: str, title_hint: str | None) -> str:
+    """Prefer an explicit hint, then a humanized source stem, then body h1, then a fallback."""
+    if title_hint and title_hint.strip():
+        return title_hint.strip()
+    humanized = _humanize_stem(stem)
+    if humanized and humanized != stem:
+        return humanized
     for chapter in doc.chapters:
         for block in chapter.blocks:
             if block.kind == "h1" and block.text.strip():
                 return block.text.strip()
     if doc.chapters:
         return doc.chapters[0].title
-    return "Untitled"
+    return humanized or "Untitled"
 
 
-def assemble(doc: ClassifiedDoc, out_dir: Path, *, stem: str) -> Path:
+def assemble(
+    doc: ClassifiedDoc,
+    out_dir: Path,
+    *,
+    stem: str,
+    title_hint: str | None = None,
+) -> Path:
     """Write an EPUB at `out_dir/{stem}.epub` and return its path."""
     out_dir.mkdir(parents=True, exist_ok=True)
     book = epub.EpubBook()
     book.set_identifier(f"bookery-convert-{uuid.uuid4()}")
-    book.set_title(_guess_title(doc))
+    book.set_title(_resolve_title(doc, stem, title_hint))
     book.set_language("en")
 
     css_item = epub.EpubItem(
