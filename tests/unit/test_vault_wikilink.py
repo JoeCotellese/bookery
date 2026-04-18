@@ -39,6 +39,14 @@ def test_multiple_in_same_line():
     assert broken == 1
 
 
+def test_embedded_image_not_treated_as_wikilink():
+    body = "embed: ![[sample.png]]"
+    out, broken = resolve_wikilinks(body, {})
+    # The leading `!` signals an image embed — wiki-link resolver must leave it alone.
+    assert out == body
+    assert broken == 0
+
+
 def test_preserves_non_link_content():
     body = "text [link](http://x) and `[[not-a-wiki]]` in code"
     # Code spans are NOT specially handled in v1; the link inside backticks

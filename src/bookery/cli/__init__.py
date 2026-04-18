@@ -21,6 +21,7 @@ from bookery.cli.commands import (
     serve_cmd,
     sync_cmd,
     tag_cmd,
+    vault_export_cmd,
     verify_cmd,
 )
 
@@ -57,4 +58,5 @@ cli.add_command(search_cmd.search)
 cli.add_command(serve_cmd.serve)
 cli.add_command(sync_cmd.sync)
 cli.add_command(tag_cmd.tag)
+cli.add_command(vault_export_cmd.vault_export)
 cli.add_command(verify_cmd.verify)

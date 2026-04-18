@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-_WIKILINK_RE = re.compile(r"\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]")
+_WIKILINK_RE = re.compile(r"(?<!\!)\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]")
 
 
 def resolve_wikilinks(body: str, title_to_slug: dict[str, str]) -> tuple[str, int]:

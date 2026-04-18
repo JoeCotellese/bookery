@@ -60,6 +60,20 @@ def test_index_appended_when_enabled(tmp_path: Path):
     assert "## topic" in result.markdown
 
 
+def test_leading_duplicate_h1_stripped(tmp_path: Path):
+    notes = [_note("Same Title", "F", "# Same Title\n\nreal body\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    # Only the assembler-emitted anchor-bearing H1 should remain.
+    assert result.markdown.count("# Same Title") == 1
+    assert "# Same Title {#same-title}" in result.markdown
+
+
+def test_non_matching_h1_preserved(tmp_path: Path):
+    notes = [_note("Title", "F", "# Different Heading\n\nbody\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    assert "# Different Heading" in result.markdown
+
+
 def test_notes_without_tags_reported(tmp_path: Path):
     notes = [_note("Tagged", "P", "x", tags=["t"]), _note("Untagged", "P", "y")]
     result = assemble_vault(notes, vault_path=tmp_path, include_index=True)

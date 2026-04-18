@@ -12,6 +12,18 @@ from bookery.core.vault.note import Note
 from bookery.core.vault.wikilink import resolve_wikilinks
 
 
+def _strip_leading_duplicate_h1(body: str, title: str) -> str:
+    """Drop the body's leading H1 when it matches the resolved title (avoids TOC duplication)."""
+    stripped = body.lstrip("\n")
+    if not stripped.startswith("# "):
+        return body
+    first_line, _, rest = stripped.partition("\n")
+    heading = first_line[2:].strip()
+    if heading == title.strip():
+        return rest.lstrip("\n")
+    return body
+
+
 @dataclass(slots=True)
 class AssembledVault:
     markdown: str
@@ -44,7 +56,8 @@ def assemble_vault(
         label = folder if folder else "(root)"
         chunks.append(f"<!-- folder: {label} -->")
         for note in folder_to_notes[folder]:
-            body, broken = resolve_wikilinks(note.body, title_to_slug)
+            body = _strip_leading_duplicate_h1(note.body, note.title)
+            body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
             broken_total += broken
             for a in assets:
