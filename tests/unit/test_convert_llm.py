@@ -13,9 +13,15 @@ from bookery.convert.types import ChapterPlan, ChapterSpan, CleanBlock, CleanDoc
 from bookery.core.config import ConvertConfig
 
 
+class FakeMessage:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.parsed = None
+
+
 class FakeChoice:
     def __init__(self, content: str) -> None:
-        self.message = type("M", (), {"content": content})()
+        self.message = FakeMessage(content)
 
 
 class FakeResponse:
@@ -28,22 +34,27 @@ class FakeCompletions:
         self.responses = list(responses)
         self.calls = 0
 
-    def create(self, **_kwargs: Any) -> FakeResponse:
+    def parse(self, **_kwargs: Any) -> FakeResponse:
         self.calls += 1
         if not self.responses:
             raise RuntimeError("no more fake responses")
         return FakeResponse(self.responses.pop(0))
 
 
-class FakeChat:
+class FakeBetaChat:
     def __init__(self, completions: FakeCompletions) -> None:
         self.completions = completions
+
+
+class FakeBeta:
+    def __init__(self, completions: FakeCompletions) -> None:
+        self.chat = FakeBetaChat(completions)
 
 
 class FakeClient:
     def __init__(self, responses: list[str]) -> None:
         self._completions = FakeCompletions(responses)
-        self.chat = FakeChat(self._completions)
+        self.beta = FakeBeta(self._completions)
 
 
 @pytest.fixture

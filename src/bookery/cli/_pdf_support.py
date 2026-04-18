@@ -1,16 +1,15 @@
 # ABOUTME: Shared helpers for wiring PDF conversion into add/import commands.
-# ABOUTME: Wraps match callbacks to capture output paths so sibling .kepub.epub lands alongside.
+# ABOUTME: Locates cataloged EPUB paths by file hash so sibling .kepub.epub lands alongside.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from rich.console import Console
 
 from bookery.core.filecopy import copy_file
-from bookery.core.importer import MatchFn, MatchResult
 from bookery.core.pdf_converter import convert_pdf
-from bookery.metadata.types import BookMetadata
+from bookery.db.catalog import LibraryCatalog
+from bookery.db.hashing import compute_file_hash
 
 
 @dataclass(frozen=True)
@@ -36,38 +35,29 @@ def convert_pdf_to_pair(
     return PdfPair(source=source, epub=result.epub_path, kepub=result.kepub_path)
 
 
-def wrap_match_fn_capturing_paths(
-    match_fn: MatchFn | None,
-) -> tuple[MatchFn | None, dict[Path, Path]]:
-    """Wrap a match callback so that output_paths are recorded by their source epub."""
-    if match_fn is None:
-        return None, {}
-
-    captured: dict[Path, Path] = {}
-
-    def wrapped(extracted: BookMetadata, epub_path: Path) -> MatchResult | None:
-        result = match_fn(extracted, epub_path)
-        if result is not None and result.output_path is not None:
-            captured[epub_path] = cast(Path, result.output_path)
-        return result
-
-    return wrapped, captured
+def snapshot_epub_hashes(pairs: list[PdfPair]) -> dict[Path, str]:
+    """Pre-compute the SHA-256 of each temp EPUB before import_books touches it."""
+    return {pair.epub: compute_file_hash(pair.epub) for pair in pairs}
 
 
-def place_kepubs_alongside_epubs(
+def place_kepubs_via_catalog(
     pairs: list[PdfPair],
-    captured: dict[Path, Path],
+    hashes: dict[Path, str],
+    catalog: LibraryCatalog,
     console: Console,
 ) -> None:
-    """Copy each PdfPair.kepub into the directory where its .epub was placed by match."""
+    """Look each converted EPUB up in the catalog by hash and copy its kepub alongside."""
     for pair in pairs:
-        dest_epub = captured.get(pair.epub)
-        if dest_epub is None:
+        file_hash = hashes.get(pair.epub)
+        record = catalog.get_by_hash(file_hash) if file_hash else None
+        output_path = getattr(record, "output_path", None) if record else None
+        if output_path is None:
             console.print(
-                f"  [yellow]warning:[/yellow] metadata match did not produce an output "
-                f"path for {pair.source.name}; .kepub.epub was not catalogued."
+                f"  [yellow]warning:[/yellow] could not locate cataloged EPUB for "
+                f"{pair.source.name}; .kepub.epub was not placed."
             )
             continue
-        dest = dest_epub.parent / pair.kepub.name
+        dest_dir = Path(output_path).parent
+        dest = dest_dir / pair.kepub.name
         copy_file(pair.kepub, dest)
         console.print(f"  [green]Kobo:[/green] {dest}")

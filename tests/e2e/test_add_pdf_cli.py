@@ -15,9 +15,15 @@ from bookery.convert import preflight
 from tests.fixtures.pdf_factory import write_text_pdf
 
 
+class _FakeMessage:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.parsed = None
+
+
 class _FakeChoice:
     def __init__(self, content: str) -> None:
-        self.message = type("M", (), {"content": content})()
+        self.message = _FakeMessage(content)
 
 
 class _FakeResp:
@@ -26,7 +32,7 @@ class _FakeResp:
 
 
 class _FakeCompletions:
-    def create(self, **kwargs: Any) -> _FakeResp:
+    def parse(self, **kwargs: Any) -> _FakeResp:
         user = next(m for m in kwargs["messages"] if m["role"] == "user")
         n = len([line for line in user["content"].split("\n") if line.strip()])
         return _FakeResp(json.dumps({"classifications": ["p"] * n}))
@@ -34,7 +40,9 @@ class _FakeCompletions:
 
 class _FakeClient:
     def __init__(self, *_a: Any, **_k: Any) -> None:
-        self.chat = type("C", (), {"completions": _FakeCompletions()})()
+        self.beta = type(
+            "B", (), {"chat": type("C", (), {"completions": _FakeCompletions()})()}
+        )()
 
 
 @pytest.fixture

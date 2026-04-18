@@ -15,8 +15,8 @@ from bookery.cli._match_helpers import (
 from bookery.cli._pdf_support import (
     PdfPair,
     convert_pdf_to_pair,
-    place_kepubs_alongside_epubs,
-    wrap_match_fn_capturing_paths,
+    place_kepubs_via_catalog,
+    snapshot_epub_hashes,
 )
 from bookery.cli.options import db_option
 from bookery.convert.errors import ConvertError
@@ -263,19 +263,19 @@ def import_command(
     pdf_epub_set = {pair.epub for pair in pdf_pairs}
     effective_move = do_move and not pdf_epub_set
 
-    wrapped_match, captured = wrap_match_fn_capturing_paths(match_fn)
+    pdf_hashes = snapshot_epub_hashes(pdf_pairs)
 
     result = import_books(
         epub_files, catalog,
         library_root=library_root,
-        match_fn=wrapped_match,
+        match_fn=match_fn,
         move=effective_move,
         force_duplicates=force_duplicates,
         on_progress=on_progress,
     )
 
     if pdf_pairs:
-        place_kepubs_alongside_epubs(pdf_pairs, captured, console)
+        place_kepubs_via_catalog(pdf_pairs, pdf_hashes, catalog, console)
 
     # Summary
     console.print()  # blank line before summary

@@ -4,8 +4,9 @@
 import json
 from collections.abc import Callable, Iterable, Sequence
 from statistics import median
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -29,8 +30,15 @@ from bookery.convert.types import (
 )
 from bookery.core.config import ConvertConfig
 
-VALID_KINDS = {"h1", "h2", "h3", "p", "blockquote", "li"}
-CHUNK_SIZE = 40  # block count per LLM call
+BlockKind = Literal["h1", "h2", "h3", "p", "blockquote", "li"]
+VALID_KINDS: set[str] = {"h1", "h2", "h3", "p", "blockquote", "li"}
+CHUNK_SIZE = 15  # blocks per LLM call — keep well under typical 4K-token windows
+
+
+class Classifications(BaseModel):
+    """Structured output schema for a single LLM classification chunk."""
+
+    classifications: list[BlockKind]
 
 SYSTEM_PROMPT = (
     "You classify paragraph blocks from a book PDF into structural tags. "
@@ -103,36 +111,24 @@ def _parse_response(raw: str, expected: int) -> list[str]:
     return out
 
 
-CLASSIFICATION_SCHEMA = {
-    "name": "classifications",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "properties": {
-            "classifications": {
-                "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": ["h1", "h2", "h3", "p", "blockquote", "li"],
-                },
-            }
-        },
-        "required": ["classifications"],
-        "additionalProperties": False,
-    },
-}
-
-
 def _call_llm(client: Any, cfg: ConvertConfig, prompt_text: str) -> str:
-    response = client.chat.completions.create(
+    """Ask the LLM to classify blocks; returns raw JSON text matching Classifications."""
+    response = client.beta.chat.completions.parse(
         model=cfg.llm_model,
-        response_format={"type": "json_schema", "json_schema": CLASSIFICATION_SCHEMA},
+        response_format=Classifications,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt_text},
         ],
     )
-    return response.choices[0].message.content or ""
+    message = response.choices[0].message
+    parsed = getattr(message, "parsed", None)
+    if isinstance(parsed, Classifications):
+        return parsed.model_dump_json()
+    content = message.content or ""
+    if not content.strip():
+        raise LLMBadResponse("empty response from model")
+    return content
 
 
 def _classify_chunk(

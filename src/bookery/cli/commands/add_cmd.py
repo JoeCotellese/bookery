@@ -16,8 +16,8 @@ from bookery.cli._match_helpers import (
 from bookery.cli._pdf_support import (
     PdfPair,
     convert_pdf_to_pair,
-    place_kepubs_alongside_epubs,
-    wrap_match_fn_capturing_paths,
+    place_kepubs_via_catalog,
+    snapshot_epub_hashes,
 )
 from bookery.cli.options import db_option
 from bookery.convert.errors import ConvertError
@@ -139,18 +139,18 @@ def add_command(
                     f"Copying to [bold]{library_root}[/bold]…",
                 )
 
-        wrapped_match, captured = wrap_match_fn_capturing_paths(match_fn)
+        pdf_hashes = snapshot_epub_hashes(pdf_pairs)
 
         result = import_books(
             [epub_to_import], catalog,
             library_root=library_root,
-            match_fn=wrapped_match,
+            match_fn=match_fn,
             move=do_move,
             on_progress=on_progress,
         )
 
         if pdf_pairs:
-            place_kepubs_alongside_epubs(pdf_pairs, captured, console)
+            place_kepubs_via_catalog(pdf_pairs, pdf_hashes, catalog, console)
     finally:
         if temp_ctx is not None:
             temp_ctx.cleanup()
