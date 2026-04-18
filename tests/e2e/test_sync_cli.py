@@ -107,7 +107,7 @@ def test_sync_copies_kepub_to_target(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     expected = (
-        target / "Books" / "Some Author" / "Some Title" / "Some Title.kepub.epub"
+        target / "Bookery" / "Some Author" / "Some Title" / "Some Title.kepub.epub"
     )
     assert expected.exists()
     assert "Some Title" in result.output

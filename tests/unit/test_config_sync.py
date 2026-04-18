@@ -19,7 +19,7 @@ def _isolated_home(
 
 def test_defaults_when_no_sync_section(_isolated_home: Path) -> None:
     cfg = load_config()
-    assert cfg.sync.kobo.books_subdir == "Books"
+    assert cfg.sync.kobo.books_subdir == "Bookery"
     assert cfg.sync.kobo.auto_detect is True
 
 
@@ -39,4 +39,4 @@ def test_sync_kobo_overrides_parsed(_isolated_home: Path) -> None:
 
 def test_get_sync_config_shortcut(_isolated_home: Path) -> None:
     sync = get_sync_config()
-    assert sync.kobo.books_subdir == "Books"
+    assert sync.kobo.books_subdir == "Bookery"

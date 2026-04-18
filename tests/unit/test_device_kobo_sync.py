@@ -70,11 +70,13 @@ def _setup(tmp_path: Path) -> dict[str, Any]:
     target = tmp_path / "kobo"
     cache = KepubCache(tmp_path / "kepub.db")
     kepubify = StubKepubify()
+    workspace = tmp_path / "workspace"
     return {
         "library": library,
         "target": target,
         "cache": cache,
         "kepubify": kepubify,
+        "workspace": workspace,
     }
 
 
@@ -86,6 +88,7 @@ def test_empty_catalog_returns_zero_actions(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
     assert isinstance(report, SyncReport)
@@ -108,6 +111,7 @@ def test_single_book_first_sync_runs_kepubify_and_copies(tmp_path: Path) -> None
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -135,6 +139,7 @@ def test_resync_with_unchanged_files_skips_kepubify(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
     first_call_count = len(env["kepubify"].calls)
@@ -145,6 +150,7 @@ def test_resync_with_unchanged_files_skips_kepubify(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -169,6 +175,7 @@ def test_resync_with_missing_device_file_re_runs(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
     dest = first.copied[0]
@@ -180,6 +187,7 @@ def test_resync_with_missing_device_file_re_runs(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -200,6 +208,7 @@ def test_dry_run_makes_no_writes(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
         dry_run=True,
     )
@@ -228,6 +237,7 @@ def test_record_without_output_path_is_skipped(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -258,6 +268,7 @@ def test_unknown_author_path_component(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -279,6 +290,7 @@ def test_non_epub_output_path_is_skipped(tmp_path: Path) -> None:
         cache=env["cache"],
         run_kepubify=env["kepubify"].run,
         kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
         books_subdir="Books",
     )
 
@@ -304,6 +316,7 @@ def test_kepubify_failure_is_recorded_not_raised(tmp_path: Path) -> None:
             cache=env["cache"],
             run_kepubify=boom,
             kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
             books_subdir="Books",
         )
 

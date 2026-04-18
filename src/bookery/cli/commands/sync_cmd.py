@@ -75,6 +75,7 @@ def sync_kobo(
 
     data_dir = data_dir_override or get_data_dir()
     cache = KepubCache(data_dir / "kepub_cache.db")
+    workspace_dir = data_dir / "sync-workspace"
 
     conn = open_library(db_path or DEFAULT_DB_PATH)
     try:
@@ -86,6 +87,7 @@ def sync_kobo(
                 cache=cache,
                 run_kepubify=run_kepubify,
                 kepubify_version=kepubify_version,
+                workspace_dir=workspace_dir,
                 books_subdir=sync_cfg.kobo.books_subdir,
                 dry_run=dry_run,
             )

@@ -73,6 +73,7 @@ def test_two_pass_sync_uses_cache(tmp_path: Path) -> None:
                 cache=cache,
                 run_kepubify=run_kepubify,
                 kepubify_version=kepubify_version,
+                workspace_dir=tmp_path / "workspace",
                 books_subdir="Books",
             )
         finally:
@@ -93,6 +94,7 @@ def test_two_pass_sync_uses_cache(tmp_path: Path) -> None:
                 cache=cache,
                 run_kepubify=run_kepubify,
                 kepubify_version=kepubify_version,
+                workspace_dir=tmp_path / "workspace",
                 books_subdir="Books",
             )
         finally:
@@ -126,6 +128,7 @@ def test_missing_device_file_recopied(tmp_path: Path) -> None:
                 cache=cache,
                 run_kepubify=run_kepubify,
                 kepubify_version=kepubify_version,
+                workspace_dir=tmp_path / "workspace",
                 books_subdir="Books",
             )
         finally:
@@ -143,6 +146,7 @@ def test_missing_device_file_recopied(tmp_path: Path) -> None:
                 cache=cache,
                 run_kepubify=run_kepubify,
                 kepubify_version=kepubify_version,
+                workspace_dir=tmp_path / "workspace",
                 books_subdir="Books",
             )
         finally:

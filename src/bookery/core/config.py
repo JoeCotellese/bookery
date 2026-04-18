@@ -44,7 +44,7 @@ class ConvertConfig:
     semantic: SemanticConfig = field(default_factory=SemanticConfig)
 
 
-DEFAULT_KOBO_BOOKS_SUBDIR = "Books"
+DEFAULT_KOBO_BOOKS_SUBDIR = "Bookery"
 DEFAULT_KOBO_AUTO_DETECT = True
 
 

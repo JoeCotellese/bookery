@@ -149,9 +149,13 @@ bookery info 42
 | `sync kobo --dry-run` | Show what would be copied without touching the device |
 
 Requires the [`kepubify`](https://pgaskin.net/kepubify/) binary on `PATH`
-(`brew install kepubify` on macOS). A SQLite cache at
-`{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus the
-`kepubify` version makes re-syncs effectively free when nothing has
+(`brew install kepubify` on macOS). Files are written to
+`<kobo>/Bookery/Author/Title/Title.kepub.epub` — the dedicated `Bookery/`
+subdirectory keeps synced content visibly separate from Calibre
+sideloads, Kobo store purchases, and library borrows. Sync is currently
+**additive**: existing files on the device are never deleted. A SQLite
+cache at `{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus
+the `kepubify` version makes re-syncs effectively free when nothing has
 changed.
 
 ### The `match` workflow

@@ -3,14 +3,15 @@
 
 import contextlib
 import getpass
-import hashlib
 import platform
+import shutil
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from bookery.core.pathformat import sanitize_component
+from bookery.db.hashing import compute_file_hash
 from bookery.db.mapping import BookRecord
 
 KOBO_MARKER = ".kobo"
@@ -61,17 +62,6 @@ def detect_mounted_kobo(
     return None
 
 
-_HASH_CHUNK = 1024 * 1024
-
-
-def _hash_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(_HASH_CHUNK), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 @dataclass
 class SyncReport:
     copied: list[Path] = field(default_factory=list)
@@ -87,7 +77,11 @@ class _CacheProto(Protocol):
     def get(self, source_hash: str, kepubify_version: str) -> str | None: ...
 
     def put(
-        self, source_hash: str, kepubify_version: str, kepub_sha: str
+        self,
+        source_hash: str,
+        kepubify_version: str,
+        kepub_sha: str,
+        device_path: Path,
     ) -> None: ...
 
 
@@ -101,6 +95,68 @@ def _book_dest_dir(target: Path, books_subdir: str, record: BookRecord) -> Path:
     return target / books_subdir / author / title
 
 
+def _sync_record(
+    record: BookRecord,
+    *,
+    target: Path,
+    books_subdir: str,
+    cache: _CacheProto,
+    version: str,
+    run_kepubify: Callable[..., Path],
+    workspace: Path,
+    report: SyncReport,
+) -> None:
+    source = record.output_path
+    if source is None:
+        report.skipped.append(
+            (record.source_path, "no canonical EPUB in library")
+        )
+        return
+    if source.suffix.lower() != ".epub":
+        report.skipped.append((source, "output is not an EPUB"))
+        return
+    if not source.exists():
+        report.failed.append((source, f"source missing: {source}"))
+        return
+
+    dest_dir = _book_dest_dir(target, books_subdir, record)
+    title = sanitize_component(record.metadata.title, fallback="Untitled")
+    dest = dest_dir / f"{title}.kepub.epub"
+
+    try:
+        source_hash = compute_file_hash(source)
+    except OSError as exc:
+        report.failed.append((source, f"hash failed: {exc}"))
+        return
+
+    cached_kepub_sha = cache.get(source_hash, version)
+    if cached_kepub_sha is not None and dest.exists():
+        try:
+            if compute_file_hash(dest) == cached_kepub_sha:
+                report.skipped.append((dest, "already up to date"))
+                return
+        except OSError:
+            pass  # fall through to re-convert
+
+    try:
+        kepub_path = run_kepubify(source, out_dir=workspace)
+    except Exception as exc:
+        report.failed.append((source, f"kepubify error: {exc}"))
+        return
+
+    try:
+        kepub_sha = compute_file_hash(kepub_path)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        # shutil.move handles cross-device renames and streams large files.
+        shutil.move(str(kepub_path), str(dest))
+    except OSError as exc:
+        report.failed.append((source, f"copy failed: {exc}"))
+        return
+
+    cache.put(source_hash, version, kepub_sha, dest)
+    report.copied.append(dest)
+
+
 def sync_library_to_kobo(
     *,
     catalog: _CatalogProto,
@@ -108,82 +164,58 @@ def sync_library_to_kobo(
     cache: _CacheProto,
     run_kepubify: Callable[..., Path],
     kepubify_version: Callable[[], str],
-    books_subdir: str = "Books",
+    workspace_dir: Path,
+    books_subdir: str = "Bookery",
     dry_run: bool = False,
 ) -> SyncReport:
     """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
 
-    Cache semantics: row keyed on (source_sha256, kepubify_version) -> kepub_sha.
-    On re-sync we hash the on-device file; if it matches the cached kepub_sha
-    we skip kepubify entirely. Cache miss or device-file mismatch triggers a
-    fresh kepubify run.
+    Cache semantics: row keyed on (source_sha256, kepubify_version) -> kepub_sha
+    plus the device-side path that kepub was written to. On re-sync we hash
+    the on-device file; if it matches the cached kepub_sha we skip kepubify
+    entirely. Cache miss or device-file mismatch triggers a fresh run.
 
     Dependencies are injected so this function stays unit-testable; the CLI
     wires up the real KepubCache and the kepubify subprocess wrapper.
+    `workspace_dir` is where kepubify writes intermediate files before they
+    are moved onto the device; the CLI scopes it to the bookery data dir so
+    we never touch the device mount's parent (e.g. /Volumes itself).
     """
     report = SyncReport()
-    version = kepubify_version() if not dry_run else "dry-run"
-    workspace = target.parent / ".bookery-sync-tmp"
-    if not dry_run:
-        workspace.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        for record in catalog.list_all():
+            source = record.output_path
+            if source is None:
+                report.skipped.append(
+                    (record.source_path, "no canonical EPUB in library")
+                )
+                continue
+            if source.suffix.lower() != ".epub":
+                report.skipped.append((source, "output is not an EPUB"))
+                continue
+            dest_dir = _book_dest_dir(target, books_subdir, record)
+            title = sanitize_component(record.metadata.title, fallback="Untitled")
+            report.copied.append(dest_dir / f"{title}.kepub.epub")
+        return report
 
-    for record in catalog.list_all():
-        source = record.output_path
-        if source is None:
-            report.skipped.append(
-                (record.source_path, "no canonical EPUB in library")
+    version = kepubify_version()
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        for record in catalog.list_all():
+            _sync_record(
+                record,
+                target=target,
+                books_subdir=books_subdir,
+                cache=cache,
+                version=version,
+                run_kepubify=run_kepubify,
+                workspace=workspace_dir,
+                report=report,
             )
-            continue
-        if source.suffix.lower() != ".epub":
-            report.skipped.append((source, "output is not an EPUB"))
-            continue
-        if not source.exists():
-            report.failed.append((source, f"source missing: {source}"))
-            continue
-
-        dest_dir = _book_dest_dir(target, books_subdir, record)
-        title = sanitize_component(record.metadata.title, fallback="Untitled")
-        dest = dest_dir / f"{title}.kepub.epub"
-
-        if dry_run:
-            report.copied.append(dest)
-            continue
-
-        try:
-            source_hash = _hash_file(source)
-        except OSError as exc:
-            report.failed.append((source, f"hash failed: {exc}"))
-            continue
-
-        cached_kepub_sha = cache.get(source_hash, version)
-        if cached_kepub_sha is not None and dest.exists():
-            try:
-                if _hash_file(dest) == cached_kepub_sha:
-                    report.skipped.append((dest, "already up to date"))
-                    continue
-            except OSError:
-                pass  # fall through to re-convert
-
-        try:
-            kepub_path = run_kepubify(source, out_dir=workspace)
-        except Exception as exc:
-            report.failed.append((source, f"kepubify error: {exc}"))
-            continue
-
-        try:
-            kepub_sha = _hash_file(kepub_path)
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(kepub_path.read_bytes())
-            kepub_path.unlink(missing_ok=True)
-        except OSError as exc:
-            report.failed.append((source, f"copy failed: {exc}"))
-            continue
-
-        cache.put(source_hash, version, kepub_sha)
-        report.copied.append(dest)
-
-    if not dry_run and workspace.exists():
-        with contextlib.suppress(OSError):
-            workspace.rmdir()
+    finally:
+        if workspace_dir.exists():
+            with contextlib.suppress(OSError):
+                workspace_dir.rmdir()
 
     return report

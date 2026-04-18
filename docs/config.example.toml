@@ -74,8 +74,11 @@ max_tokens = 262144
 # so unchanged books are skipped on re-sync.
 
 [sync.kobo]
-# Subdirectory under the mount root where books are placed.
-# books_subdir = "Books"
+# Subdirectory under the mount root where books are placed. Default is
+# "Bookery" so synced files are obviously bookery-managed and never get
+# tangled up with Calibre sideloads or Kobo store purchases. Set to
+# "Books" for Calibre-style colocation if that's what you want.
+# books_subdir = "Bookery"
 
 # When true (default), bookery scans /Volumes (macOS) and /media/$USER
 # (Linux) for a `.kobo/` marker. Disable to require an explicit --target.
