@@ -7,7 +7,16 @@ from datetime import date
 from pathlib import Path
 
 import click
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from bookery.core.config import load_config
 from bookery.core.vault.assemble import assemble_vault
@@ -80,23 +89,26 @@ def vault_export(
     uuid_mode = (uuid_opt or cfg.uuid_mode).lower()
     version_label = version_label_opt or date.today().isoformat()
 
-    notes = walk_vault(vault_path, folders=folders or None)
-    if not notes:
-        raise click.UsageError(f"no markdown notes found in {vault_path}")
+    console.print(f"Exporting vault: [bold]{vault_path}[/bold]")
 
-    console.print(f"Walking vault: [bold]{vault_path}[/bold] → {len(notes)} note(s)")
-
-    assembled = assemble_vault(
-        notes,
-        vault_path=vault_path,
-        include_index=include_index,
-        index_exclude_prefixes=exclude_prefixes,
-        index_min_count=min_count,
+    overall = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        console=console,
     )
+    current = Progress(
+        SpinnerColumn(),
+        TextColumn("[dim]└─[/dim] {task.description}"),
+        console=console,
+    )
+    overall_task = overall.add_task("Walking vault", total=None)
+    current_task = current.add_task("(scanning…)", total=None)
 
     identifier = stable_uuid(vault_path) if uuid_mode == "stable" else random_uuid()
     title = title_opt or f"{vault_path.name} Vault"
-
     metadata = EpubMetadata(
         title=title,
         author=author,
@@ -104,12 +116,45 @@ def vault_export(
         version_label=version_label,
     )
 
-    try:
-        render_epub(assembled.markdown, assembled.asset_paths, metadata, output_path)
-    except PandocMissingError as exc:
-        raise click.ClickException(str(exc)) from exc
-    except PandocRenderError as exc:
-        raise click.ClickException(str(exc)) from exc
+    with Live(Group(overall, current), console=console, transient=True, refresh_per_second=10):
+
+        def _on_walk(idx: int, total: int, path: Path) -> None:
+            overall.update(overall_task, completed=idx, total=total)
+            current.update(current_task, description=path.name)
+
+        notes = walk_vault(vault_path, folders=folders or None, on_progress=_on_walk)
+        if not notes:
+            raise click.UsageError(f"no markdown notes found in {vault_path}")
+
+        overall.update(
+            overall_task,
+            description="Assembling notes",
+            completed=0,
+            total=len(notes),
+        )
+
+        def _on_assemble(idx: int, total: int, note_title: str) -> None:
+            overall.update(overall_task, completed=idx, total=total)
+            current.update(current_task, description=note_title[:60])
+
+        assembled = assemble_vault(
+            notes,
+            vault_path=vault_path,
+            include_index=include_index,
+            index_exclude_prefixes=exclude_prefixes,
+            index_min_count=min_count,
+            on_progress=_on_assemble,
+        )
+
+        overall.update(overall_task, description="Rendering EPUB (pandoc)", total=None)
+        current.update(current_task, description="invoking pandoc…")
+
+        try:
+            render_epub(assembled.markdown, assembled.asset_paths, metadata, output_path)
+        except PandocMissingError as exc:
+            raise click.ClickException(str(exc)) from exc
+        except PandocRenderError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     size = output_path.stat().st_size if output_path.exists() else 0
     console.print(f"[green]✓[/green] wrote [bold]{output_path}[/bold] ({size:,} bytes)")

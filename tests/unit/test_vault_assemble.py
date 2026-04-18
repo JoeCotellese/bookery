@@ -60,6 +60,19 @@ def test_index_appended_when_enabled(tmp_path: Path):
     assert "## topic" in result.markdown
 
 
+def test_on_progress_called_per_note(tmp_path: Path):
+    notes = [_note("A", "F", "a"), _note("B", "F", "b"), _note("C", "F", "c")]
+    seen: list[tuple[int, int, str]] = []
+
+    def cb(idx: int, total: int, title: str) -> None:
+        seen.append((idx, total, title))
+
+    assemble_vault(notes, vault_path=tmp_path, on_progress=cb)
+
+    assert [(i, t) for i, t, _ in seen] == [(1, 3), (2, 3), (3, 3)]
+    assert sorted(title for _, _, title in seen) == ["A", "B", "C"]
+
+
 def test_leading_duplicate_h1_stripped(tmp_path: Path):
     notes = [_note("Same Title", "F", "# Same Title\n\nreal body\n")]
     result = assemble_vault(notes, vault_path=tmp_path)

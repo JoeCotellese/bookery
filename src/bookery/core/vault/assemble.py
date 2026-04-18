@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from bookery.core.vault.image import build_asset_index, resolve_images
 from bookery.core.vault.index import build_tag_index
 from bookery.core.vault.note import Note
 from bookery.core.vault.wikilink import resolve_wikilinks
+
+AssembleProgressFn = Callable[[int, int, str], None]
 
 
 def _strip_leading_duplicate_h1(body: str, title: str) -> str:
@@ -38,6 +41,7 @@ def assemble_vault(
     include_index: bool = False,
     index_exclude_prefixes: list[str] | None = None,
     index_min_count: int = 1,
+    on_progress: AssembleProgressFn | None = None,
 ) -> AssembledVault:
     """Concatenate notes into a single markdown doc with resolved links and assets."""
     title_to_slug = {n.title: n.slug for n in notes}
@@ -52,10 +56,15 @@ def assemble_vault(
     seen_assets: set[Path] = set()
     chunks: list[str] = []
 
+    total = len(notes)
+    processed = 0
     for folder in sorted(folder_to_notes):
         label = folder if folder else "(root)"
         chunks.append(f"<!-- folder: {label} -->")
         for note in folder_to_notes[folder]:
+            processed += 1
+            if on_progress is not None:
+                on_progress(processed, total, note.title)
             body = _strip_leading_duplicate_h1(note.body, note.title)
             body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)

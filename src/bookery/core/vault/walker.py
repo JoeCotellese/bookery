@@ -3,15 +3,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from bookery.core.vault.frontmatter import parse_frontmatter
 from bookery.core.vault.note import Note, resolve_title, slugify
 
+WalkProgressFn = Callable[[int, int, Path], None]
+
 
 def walk_vault(
     vault_path: Path,
     folders: list[str] | None = None,
+    on_progress: WalkProgressFn | None = None,
 ) -> list[Note]:
     """Walk a vault and return Note objects for every markdown file found.
 
@@ -32,8 +36,11 @@ def walk_vault(
             md_files.append(p)
 
     md_files.sort()
+    total = len(md_files)
     notes: list[Note] = []
-    for md in md_files:
+    for idx, md in enumerate(md_files, start=1):
+        if on_progress is not None:
+            on_progress(idx, total, md)
         text = md.read_text(encoding="utf-8")
         body, fm, tags = parse_frontmatter(text)
         fm_title = fm.get("title") if isinstance(fm.get("title"), str) else None

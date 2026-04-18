@@ -69,6 +69,20 @@ def test_note_body_has_frontmatter_stripped(tmp_path: Path):
     assert notes[0].tags == ["x"]
 
 
+def test_on_progress_called_per_file(tmp_path: Path):
+    for n in ["a.md", "b.md", "c.md"]:
+        _write(tmp_path / n, f"# {n}\n")
+
+    calls: list[tuple[int, int, str]] = []
+
+    def cb(idx: int, total: int, path: Path) -> None:
+        calls.append((idx, total, path.name))
+
+    walk_vault(tmp_path, on_progress=cb)
+
+    assert calls == [(1, 3, "a.md"), (2, 3, "b.md"), (3, 3, "c.md")]
+
+
 def test_ordered_deterministically(tmp_path: Path):
     for name in ["c.md", "a.md", "b.md"]:
         _write(tmp_path / name, f"# {name}\n")
