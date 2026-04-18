@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,16 +16,50 @@ from bookery.core.vault.wikilink import resolve_wikilinks
 AssembleProgressFn = Callable[[int, int, str], None]
 
 
-def _strip_leading_duplicate_h1(body: str, title: str) -> str:
-    """Drop the body's leading H1 when it matches the resolved title (avoids TOC duplication)."""
-    stripped = body.lstrip("\n")
-    if not stripped.startswith("# "):
-        return body
-    first_line, _, rest = stripped.partition("\n")
-    heading = first_line[2:].strip()
-    if heading == title.strip():
-        return rest.lstrip("\n")
-    return body
+def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
+    """Return {id(note): (display_title, unique_slug)} ensuring unique anchor slugs.
+
+    Notes that share a title get a folder hint appended to their display title
+    (e.g. "References (Book A)") and incrementing suffixes on their slugs
+    (references, references-2, references-3). Single-occurrence notes keep
+    their original title and slug.
+    """
+    by_title: dict[str, list[Note]] = {}
+    for n in notes:
+        by_title.setdefault(n.title, []).append(n)
+
+    result: dict[int, tuple[str, str]] = {}
+    for title, group in by_title.items():
+        if len(group) == 1:
+            n = group[0]
+            result[id(n)] = (title, n.slug)
+            continue
+        # Prefer the folder name as the hint. If two notes in the group share
+        # a folder, fall back to the filename stem so every display is unique.
+        folder_hints = [n.relative_folder or "root" for n in group]
+        use_stem = len(set(folder_hints)) < len(group)
+        for i, n in enumerate(group, start=1):
+            hint = n.path.stem if use_stem else (n.relative_folder or "root")
+            display = f"{title} ({hint})"
+            slug = n.slug if i == 1 else f"{n.slug}-{i}"
+            result[id(n)] = (display, slug)
+    return result
+
+
+_H1_LINE_RE = re.compile(r"^# (.+)$", re.MULTILINE)
+
+
+def _demote_body_h1s(body: str) -> str:
+    """Demote every H1 in a note body to H2.
+
+    The assembler emits its own H1 per note as the chapter heading. If the
+    body contains any H1 — whether it duplicates the title or not, and
+    regardless of where it appears — pandoc with ``--toc-depth=1`` would pick
+    it up as a sibling chapter and pollute the TOC with ghost entries. Pushing
+    every body H1 down one level keeps all in-note headings as subsections of
+    the chapter while preserving their text.
+    """
+    return _H1_LINE_RE.sub(r"## \1", body)
 
 
 @dataclass(slots=True)
@@ -44,7 +79,12 @@ def assemble_vault(
     on_progress: AssembleProgressFn | None = None,
 ) -> AssembledVault:
     """Concatenate notes into a single markdown doc with resolved links and assets."""
-    title_to_slug = {n.title: n.slug for n in notes}
+    disambiguated = _disambiguate(notes)
+    # Wiki-link resolution: map the *original* title to the (first) unique slug,
+    # so `[[References]]` keeps landing on the first References note.
+    title_to_slug: dict[str, str] = {}
+    for n in notes:
+        title_to_slug.setdefault(n.title, disambiguated[id(n)][1])
     asset_index = build_asset_index(vault_path)
 
     folder_to_notes: dict[str, list[Note]] = {}
@@ -65,7 +105,8 @@ def assemble_vault(
             processed += 1
             if on_progress is not None:
                 on_progress(processed, total, note.title)
-            body = _strip_leading_duplicate_h1(note.body, note.title)
+            display_title, unique_slug = disambiguated[id(note)]
+            body = _demote_body_h1s(note.body)
             body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
             broken_total += broken
@@ -74,7 +115,7 @@ def assemble_vault(
                 if resolved not in seen_assets:
                     seen_assets.add(resolved)
                     all_assets.append(resolved)
-            chunks.append(f"# {note.title} {{#{note.slug}}}")
+            chunks.append(f"# {display_title} {{#{unique_slug}}}")
             chunks.append("")
             chunks.append(body.rstrip())
             chunks.append("")

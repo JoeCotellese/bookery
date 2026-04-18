@@ -73,18 +73,72 @@ def test_on_progress_called_per_note(tmp_path: Path):
     assert sorted(title for _, _, title in seen) == ["A", "B", "C"]
 
 
-def test_leading_duplicate_h1_stripped(tmp_path: Path):
-    notes = [_note("Same Title", "F", "# Same Title\n\nreal body\n")]
+def test_body_h1_demoted_to_h2(tmp_path: Path):
+    # Any H1 in the body — matching or not, at the start or buried after
+    # other content — must be demoted so pandoc's --toc-depth=1 never picks
+    # it up as a sibling chapter.
+    notes = [_note("Same Title", "F", "![cover](x.png)\n\n# Same Title\n\nbody\n")]
     result = assemble_vault(notes, vault_path=tmp_path)
-    # Only the assembler-emitted anchor-bearing H1 should remain.
-    assert result.markdown.count("# Same Title") == 1
-    assert "# Same Title {#same-title}" in result.markdown
+    md = result.markdown
+    # Exactly one top-level heading per note: the assembler's anchor-bearing H1.
+    h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
+    assert h1_lines == ["# Same Title {#same-title}"]
+    h2_lines = [ln for ln in md.splitlines() if ln.startswith("## ")]
+    assert "## Same Title" in h2_lines
 
 
-def test_non_matching_h1_preserved(tmp_path: Path):
+def test_non_matching_body_h1_also_demoted(tmp_path: Path):
     notes = [_note("Title", "F", "# Different Heading\n\nbody\n")]
     result = assemble_vault(notes, vault_path=tmp_path)
-    assert "# Different Heading" in result.markdown
+    md = result.markdown
+    h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
+    assert h1_lines == ["# Title {#title}"]
+    assert "## Different Heading" in md
+
+
+def test_duplicate_titles_in_same_folder_use_filename_hint(tmp_path: Path):
+    # Two "Reference" literature notes in the same folder — common in a real
+    # vault where every book note has its own References.md. The folder alone
+    # cannot disambiguate them, so fall back to the filename stem.
+    n1 = Note(
+        path=Path("book-a-references.md"),
+        relative_folder="Lit",
+        title="Reference",
+        slug="reference",
+        body="a",
+        frontmatter={},
+        tags=[],
+    )
+    n2 = Note(
+        path=Path("book-b-references.md"),
+        relative_folder="Lit",
+        title="Reference",
+        slug="reference",
+        body="b",
+        frontmatter={},
+        tags=[],
+    )
+    result = assemble_vault([n1, n2], vault_path=tmp_path)
+    md = result.markdown
+    assert "Reference (book-a-references)" in md
+    assert "Reference (book-b-references)" in md
+
+
+def test_duplicate_titles_get_unique_slugs(tmp_path: Path):
+    # Two separate notes both titled "References" — e.g. a per-book refs note
+    # repeated across many book notes in a real vault.
+    notes = [
+        _note("References", "Book A", "a refs"),
+        _note("References", "Book B", "b refs"),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Anchors must be unique so pandoc produces a valid EPUB.
+    assert md.count("{#references}") == 1
+    assert "{#references-2}" in md
+    # Display titles should include a folder hint so readers can tell them apart.
+    assert "References (Book A)" in md
+    assert "References (Book B)" in md
 
 
 def test_notes_without_tags_reported(tmp_path: Path):
