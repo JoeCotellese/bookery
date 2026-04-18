@@ -19,25 +19,39 @@ class FakeMessage:
 
 
 class FakeChoice:
-    def __init__(self, message: FakeMessage) -> None:
+    def __init__(
+        self, message: FakeMessage, finish_reason: str = "stop"
+    ) -> None:
         self.message = message
+        self.finish_reason = finish_reason
 
 
 class FakeResponse:
-    def __init__(self, message: FakeMessage) -> None:
-        self.choices = [FakeChoice(message)]
+    def __init__(
+        self, message: FakeMessage, finish_reason: str = "stop"
+    ) -> None:
+        self.choices = [FakeChoice(message, finish_reason)]
 
 
 class FakeCompletions:
-    def __init__(self, messages: list[FakeMessage]) -> None:
+    def __init__(
+        self,
+        messages: list[FakeMessage],
+        finish_reasons: list[str] | None = None,
+    ) -> None:
         self.messages = list(messages)
+        self.finish_reasons = list(finish_reasons) if finish_reasons else []
         self.calls = 0
+        self.last_kwargs: dict[str, Any] | None = None
 
-    def parse(self, **_kwargs: Any) -> FakeResponse:
+    def parse(self, **kwargs: Any) -> FakeResponse:
         self.calls += 1
+        self.last_kwargs = kwargs
         if not self.messages:
             raise RuntimeError("no more fake responses")
-        return FakeResponse(self.messages.pop(0))
+        msg = self.messages.pop(0)
+        finish = self.finish_reasons.pop(0) if self.finish_reasons else "stop"
+        return FakeResponse(msg, finish_reason=finish)
 
 
 class FakeBetaChat:
@@ -51,8 +65,12 @@ class FakeBeta:
 
 
 class FakeClient:
-    def __init__(self, messages: list[FakeMessage]) -> None:
-        self._completions = FakeCompletions(messages)
+    def __init__(
+        self,
+        messages: list[FakeMessage],
+        finish_reasons: list[str] | None = None,
+    ) -> None:
+        self._completions = FakeCompletions(messages, finish_reasons)
         self.beta = FakeBeta(self._completions)
 
 
@@ -154,6 +172,103 @@ def test_empty_content_raises_after_retries(
     )
     with pytest.raises(LLMBadResponse):
         extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+
+
+def test_truncated_response_raises(cache: LLMCache, cfg: SemanticConfig) -> None:
+    """finish_reason=='length' means the model hit max_tokens mid-output."""
+    raw = _raw_doc(["x"])
+    doc = _doc()
+    fake = FakeClient(
+        [FakeMessage(parsed=doc), FakeMessage(parsed=doc)],
+        finish_reasons=["length", "length"],
+    )
+    with pytest.raises(LLMBadResponse, match="truncated"):
+        extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+
+
+def test_truncated_error_mentions_max_tokens(
+    cache: LLMCache, cfg: SemanticConfig
+) -> None:
+    raw = _raw_doc(["x"])
+    doc = _doc()
+    fake = FakeClient(
+        [FakeMessage(parsed=doc)], finish_reasons=["length"]
+    )
+    cfg_once = SemanticConfig(
+        provider="lm-studio",
+        model="test-model",
+        base_url="http://localhost:1234/v1",
+        llm_max_retries=1,
+    )
+    with pytest.raises(LLMBadResponse) as exc_info:
+        extract_semantic(raw, cfg_once, cache, client_factory=lambda _c: fake)
+    assert "max_tokens" in str(exc_info.value)
+
+
+def test_cache_key_varies_with_max_tokens(
+    cache: LLMCache, cfg: SemanticConfig
+) -> None:
+    """Changing max_tokens must invalidate the cached response."""
+    raw = _raw_doc(["x"])
+    doc = _doc()
+
+    # First call with max_tokens=0 (unset) → cache miss, populates.
+    cfg_a = SemanticConfig(
+        provider="lm-studio",
+        model="test-model",
+        base_url="http://localhost:1234/v1",
+        llm_max_retries=2,
+        max_tokens=0,
+    )
+    fake_a = FakeClient([FakeMessage(parsed=doc)])
+    extract_semantic(raw, cfg_a, cache, client_factory=lambda _c: fake_a)
+    assert fake_a._completions.calls == 1
+
+    # Same config: cache hit.
+    fake_a2 = FakeClient([])
+    extract_semantic(raw, cfg_a, cache, client_factory=lambda _c: fake_a2)
+    assert fake_a2._completions.calls == 0
+
+    # Different max_tokens: cache miss, real call.
+    cfg_b = SemanticConfig(
+        provider="lm-studio",
+        model="test-model",
+        base_url="http://localhost:1234/v1",
+        llm_max_retries=2,
+        max_tokens=4096,
+    )
+    fake_b = FakeClient([FakeMessage(parsed=doc)])
+    extract_semantic(raw, cfg_b, cache, client_factory=lambda _c: fake_b)
+    assert fake_b._completions.calls == 1
+
+
+def test_max_tokens_sent_to_client_when_set(
+    cache: LLMCache, cfg: SemanticConfig
+) -> None:
+    raw = _raw_doc(["x"])
+    doc = _doc()
+    cfg_big = SemanticConfig(
+        provider="lm-studio",
+        model="test-model",
+        base_url="http://localhost:1234/v1",
+        llm_max_retries=2,
+        max_tokens=262144,
+    )
+    fake = FakeClient([FakeMessage(parsed=doc)])
+    extract_semantic(raw, cfg_big, cache, client_factory=lambda _c: fake)
+    assert fake._completions.last_kwargs is not None
+    assert fake._completions.last_kwargs.get("max_tokens") == 262144
+
+
+def test_max_tokens_omitted_when_zero(
+    cache: LLMCache, cfg: SemanticConfig
+) -> None:
+    raw = _raw_doc(["x"])
+    doc = _doc()
+    fake = FakeClient([FakeMessage(parsed=doc)])
+    extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+    assert fake._completions.last_kwargs is not None
+    assert "max_tokens" not in fake._completions.last_kwargs
 
 
 def test_content_json_fallback_parses(cache: LLMCache, cfg: SemanticConfig) -> None:

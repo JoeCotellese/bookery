@@ -67,7 +67,17 @@ def _call_llm(client: Any, cfg: SemanticConfig, text_blob: str) -> MagazineDoc:
     if cfg.max_tokens > 0:
         kwargs["max_tokens"] = cfg.max_tokens
     response = client.beta.chat.completions.parse(**kwargs)
-    message = response.choices[0].message
+    choice = response.choices[0]
+    # When the model hits max_tokens mid-generation it returns finish_reason
+    # "length" with a partial (sometimes still-parseable) payload. Refuse it —
+    # silently caching a truncated MagazineDoc makes the bug invisible.
+    finish_reason = getattr(choice, "finish_reason", None)
+    if finish_reason == "length":
+        raise LLMBadResponse(
+            "response truncated by max_tokens; "
+            "increase [convert.semantic] max_tokens"
+        )
+    message = choice.message
     parsed = getattr(message, "parsed", None)
     if isinstance(parsed, MagazineDoc):
         return parsed
@@ -90,7 +100,10 @@ def extract_semantic(
 ) -> MagazineDoc:
     """Run one LLM call over the full extracted text; return a validated MagazineDoc."""
     text_blob = _serialize_raw(raw)
-    key = make_key(cfg.prompt_version, cfg.model, text_blob)
+    # Include max_tokens in the key: changing it changes whether the response
+    # can be truncated, so a cached reply under one cap isn't valid under another.
+    keyed_text = f"max_tokens={cfg.max_tokens}\n{text_blob}"
+    key = make_key(cfg.prompt_version, cfg.model, keyed_text)
 
     cached = cache.get(key)
     if cached is not None:
