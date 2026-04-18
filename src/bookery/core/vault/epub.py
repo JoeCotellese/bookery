@@ -75,6 +75,9 @@ def render_epub(
             "-t",
             "epub",
             "--toc",
+            # One TOC entry per note; in-body H2/H3 subheadings stay in the
+            # note text but do not clutter the top-level table of contents.
+            "--toc-depth=1",
             "--metadata",
             f"title={title}",
             "--metadata",

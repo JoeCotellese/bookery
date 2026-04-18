@@ -15,6 +15,32 @@ from bookery.core.vault.wikilink import resolve_wikilinks
 AssembleProgressFn = Callable[[int, int, str], None]
 
 
+def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
+    """Return {id(note): (display_title, unique_slug)} ensuring unique anchor slugs.
+
+    Notes that share a title get a folder hint appended to their display title
+    (e.g. "References (Book A)") and incrementing suffixes on their slugs
+    (references, references-2, references-3). Single-occurrence notes keep
+    their original title and slug.
+    """
+    by_title: dict[str, list[Note]] = {}
+    for n in notes:
+        by_title.setdefault(n.title, []).append(n)
+
+    result: dict[int, tuple[str, str]] = {}
+    for title, group in by_title.items():
+        if len(group) == 1:
+            n = group[0]
+            result[id(n)] = (title, n.slug)
+            continue
+        for i, n in enumerate(group, start=1):
+            hint = n.relative_folder or "root"
+            display = f"{title} ({hint})"
+            slug = n.slug if i == 1 else f"{n.slug}-{i}"
+            result[id(n)] = (display, slug)
+    return result
+
+
 def _strip_leading_duplicate_h1(body: str, title: str) -> str:
     """Drop the body's leading H1 when it matches the resolved title (avoids TOC duplication)."""
     stripped = body.lstrip("\n")
@@ -44,7 +70,12 @@ def assemble_vault(
     on_progress: AssembleProgressFn | None = None,
 ) -> AssembledVault:
     """Concatenate notes into a single markdown doc with resolved links and assets."""
-    title_to_slug = {n.title: n.slug for n in notes}
+    disambiguated = _disambiguate(notes)
+    # Wiki-link resolution: map the *original* title to the (first) unique slug,
+    # so `[[References]]` keeps landing on the first References note.
+    title_to_slug: dict[str, str] = {}
+    for n in notes:
+        title_to_slug.setdefault(n.title, disambiguated[id(n)][1])
     asset_index = build_asset_index(vault_path)
 
     folder_to_notes: dict[str, list[Note]] = {}
@@ -65,6 +96,7 @@ def assemble_vault(
             processed += 1
             if on_progress is not None:
                 on_progress(processed, total, note.title)
+            display_title, unique_slug = disambiguated[id(note)]
             body = _strip_leading_duplicate_h1(note.body, note.title)
             body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
@@ -74,7 +106,7 @@ def assemble_vault(
                 if resolved not in seen_assets:
                     seen_assets.add(resolved)
                     all_assets.append(resolved)
-            chunks.append(f"# {note.title} {{#{note.slug}}}")
+            chunks.append(f"# {display_title} {{#{unique_slug}}}")
             chunks.append("")
             chunks.append(body.rstrip())
             chunks.append("")

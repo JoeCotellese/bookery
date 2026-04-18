@@ -87,6 +87,23 @@ def test_non_matching_h1_preserved(tmp_path: Path):
     assert "# Different Heading" in result.markdown
 
 
+def test_duplicate_titles_get_unique_slugs(tmp_path: Path):
+    # Two separate notes both titled "References" — e.g. a per-book refs note
+    # repeated across many book notes in a real vault.
+    notes = [
+        _note("References", "Book A", "a refs"),
+        _note("References", "Book B", "b refs"),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Anchors must be unique so pandoc produces a valid EPUB.
+    assert md.count("{#references}") == 1
+    assert "{#references-2}" in md
+    # Display titles should include a folder hint so readers can tell them apart.
+    assert "References (Book A)" in md
+    assert "References (Book B)" in md
+
+
 def test_notes_without_tags_reported(tmp_path: Path):
     notes = [_note("Tagged", "P", "x", tags=["t"]), _note("Untagged", "P", "y")]
     result = assemble_vault(notes, vault_path=tmp_path, include_index=True)
