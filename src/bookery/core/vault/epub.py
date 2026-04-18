@@ -65,10 +65,13 @@ def render_epub(
         if metadata.version_label:
             title = f"{title} — {metadata.version_label}"
 
+        # Disable the yaml_metadata_block extension so stray `---` lines in
+        # note bodies (frontmatter remnants, horizontal rules) do not get
+        # interpreted as document metadata and fail the YAML parser.
         cmd = [
             pandoc,
             "-f",
-            "markdown",
+            "markdown-yaml_metadata_block",
             "-t",
             "epub",
             "--toc",
