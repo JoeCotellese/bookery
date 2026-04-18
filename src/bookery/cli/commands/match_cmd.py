@@ -17,6 +17,7 @@ from rich.progress import (
 )
 
 from bookery.cli.review import ReviewSession
+from bookery.core.config import get_library_root
 from bookery.core.pathformat import is_processed
 from bookery.core.pipeline import match_one
 from bookery.metadata.http import BookeryHttpClient
@@ -73,7 +74,7 @@ def _make_progress(console: Console) -> Progress:
     "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
-    help="Directory for modified copies (default: ./bookery-output).",
+    help="Directory for modified copies (default: configured library_root).",
 )
 @click.option(
     "-q",
@@ -105,7 +106,7 @@ def match(
     console = Console()
 
     if output_dir is None:
-        output_dir = Path("bookery-output")
+        output_dir = get_library_root()
 
     provider = _create_provider()
     review = ReviewSession(

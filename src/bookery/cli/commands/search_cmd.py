@@ -34,14 +34,14 @@ def search(query: str, db_path: Path | None) -> None:
     table.add_column("ID", style="dim", width=4)
     table.add_column("Title", style="bold")
     table.add_column("Author")
-    table.add_column("Lang", width=5)
+    table.add_column("Output Path", overflow="fold")
 
     for record in results:
         table.add_row(
             str(record.id),
             record.metadata.title,
             record.metadata.author or "[dim]unknown[/dim]",
-            record.metadata.language or "?",
+            str(record.output_path) if record.output_path else "[dim]—[/dim]",
         )
 
     console.print(table)

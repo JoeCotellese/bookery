@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 
 from bookery.cli.options import db_option
+from bookery.core.config import get_library_root
 from bookery.core.dedup import filter_redundant_mobis
 from bookery.core.importer import ImportResult, MatchFn, MatchResult, ProgressFn, import_books
 from bookery.db.catalog import LibraryCatalog
@@ -38,7 +39,7 @@ def _convert_mobis(
     """
     from bookery.core.converter import convert_one
 
-    resolved_output = output_dir or Path("bookery-output")
+    resolved_output = output_dir or get_library_root()
     total = len(mobi_files)
     converted = 0
     skipped = 0
@@ -206,7 +207,7 @@ def _build_progress_fn() -> ProgressFn:
     "-o", "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
-    help="Directory for modified copies (default: ./bookery-output).",
+    help="Directory for modified copies (default: configured library_root).",
 )
 @click.option(
     "-q", "--quiet",
@@ -279,7 +280,7 @@ def import_command(
     match_fn: MatchFn | None = None
     if do_match:
         match_fn = _build_match_fn(
-            output_dir=output_dir or Path("bookery-output"),
+            output_dir=output_dir or get_library_root(),
             quiet=quiet,
             threshold=threshold,
         )
