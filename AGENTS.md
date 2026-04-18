@@ -8,14 +8,15 @@ CLI-first ebook library manager. EPUB-focused, metadata-first, non-destructive.
 - **`MetadataProvider`** protocol (`metadata/provider.py`) — implement this to add new sources
 - **`MetadataCandidate`** wraps metadata + confidence + source for the review pipeline
 - Pipeline: extract → normalize → search → score → review → write copy
-- Non-destructive: originals are never modified, always copy-then-write
+- Non-destructive (contents): metadata writes always go to a copy; original file bytes are never modified
+- Library-canonical: `import` and `add` copy sources into `library_root` by default. `--move` deletes the source after a successful catalog insert.
 
 ## Key Conventions
 
 - All code files start with two `# ABOUTME:` comment lines describing the file's purpose
 - Tests are mandatory: unit, integration, and e2e for every feature
 - TDD: write failing test first, then minimal code to pass
-- Never modify original EPUB files — work on copies in output directory
+- Never modify original EPUB file contents — work on copies in the library
 
 ## Package Layout
 

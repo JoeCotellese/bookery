@@ -303,6 +303,61 @@ class TestImportCommand:
         assert "EPUB exists" not in result.output
 
 
+class TestImportCopyByDefaultCli:
+    """E2E tests for copy-by-default import behavior (#63)."""
+
+    def test_cli_import_copies_into_library_root(
+        self, sample_epub: Path, tmp_path: Path, _isolate_library_root: Path,
+    ) -> None:
+        """import (no flags) copies source into library_root."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        source = scan_dir / "rose.epub"
+        shutil.copy(sample_epub, source)
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--db", str(db_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert source.exists()  # preserved
+        library_copies = list(_isolate_library_root.rglob("*.epub"))
+        assert len(library_copies) == 1
+
+    def test_cli_import_move_removes_source(
+        self, sample_epub: Path, tmp_path: Path, _isolate_library_root: Path,
+    ) -> None:
+        """--move deletes source after successful copy."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        source = scan_dir / "rose.epub"
+        shutil.copy(sample_epub, source)
+
+        db_path = tmp_path / "test.db"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path), "--move"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert not source.exists()
+        assert len(list(_isolate_library_root.rglob("*.epub"))) == 1
+
+    def test_cli_import_rejects_in_place_flag(self, tmp_path: Path) -> None:
+        """Regression guard: --in-place is not an accepted flag."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["import", str(scan_dir), "--in-place"],
+        )
+        assert result.exit_code != 0
+        assert "no such option" in result.output.lower()
+
+
 class TestImportMetadataDedupCli:
     """E2E tests for metadata-level dedup in CLI output."""
 

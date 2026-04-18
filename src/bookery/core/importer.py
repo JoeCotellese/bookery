@@ -5,6 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bookery.core.filecopy import copy_file
+from bookery.core.pathformat import build_output_path, resolve_collision
 from bookery.db.catalog import DuplicateBookError, LibraryCatalog
 from bookery.db.hashing import compute_file_hash
 from bookery.formats.epub import EpubReadError, read_epub_metadata
@@ -56,30 +58,43 @@ MatchFn = Callable[[BookMetadata, Path], MatchResult | None]
 ProgressFn = Callable[[Path, str, str, str, str | None, int | None], None]
 
 
+def _is_inside(path: Path, root: Path) -> bool:
+    """Return True if path resolves inside root."""
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+
+
 def import_books(
     paths: list[Path],
     catalog: LibraryCatalog,
     *,
+    library_root: Path,
     match_fn: MatchFn | None = None,
+    move: bool = False,
     force_duplicates: bool = False,
     on_progress: ProgressFn | None = None,
 ) -> ImportResult:
     """Import EPUB files into the library catalog.
 
-    For each file: extracts metadata, computes SHA-256 hash, and adds to
-    the catalog. Duplicate files (same hash) are skipped. Metadata-level
-    duplicates (same ISBN or same title+author) are also skipped unless
-    force_duplicates is True.
+    For each file: extracts metadata, computes SHA-256 hash, copies the file
+    into library_root (unless already inside it, or the match pipeline
+    already produced a copy), and adds a record to the catalog. Duplicate
+    files (same hash) are skipped. Metadata-level duplicates (same ISBN or
+    same title+author) are also skipped unless force_duplicates is True.
 
     When match_fn is provided, it is called with (extracted_metadata, epub_path)
-    after extraction. If it returns a MatchResult, the matched metadata and
-    output_path are used for the catalog entry. If it returns None (user
-    skipped), the original metadata is cataloged without an output_path.
+    after extraction. If it returns a MatchResult with an output_path, that
+    path is used as the catalog output_path and no additional copy is made.
 
     Args:
         paths: List of EPUB file paths to import.
         catalog: The library catalog to add books to.
+        library_root: Directory into which sources are copied.
         match_fn: Optional callback to run the match pipeline per file.
+        move: If True, delete source file after successful catalog insert.
+            Sources already inside library_root are never deleted.
         force_duplicates: If True, import metadata duplicates with a warning.
         on_progress: Optional callback fired per-file with status info.
 
@@ -122,6 +137,7 @@ def import_books(
         metadata.source_path = epub_path
 
         output_path: Path | None = None
+        copied_to_library = False
 
         if match_fn is not None:
             match_result = match_fn(metadata, epub_path)
@@ -129,6 +145,29 @@ def import_books(
                 metadata = match_result.metadata
                 metadata.source_path = epub_path
                 output_path = match_result.output_path
+                if output_path is not None:
+                    copied_to_library = True
+
+        # If no output_path yet, either use the source (idempotent) or copy into library_root.
+        if output_path is None:
+            if _is_inside(epub_path, library_root):
+                output_path = epub_path
+            else:
+                try:
+                    dest = resolve_collision(build_output_path(metadata, library_root))
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    copy_file(epub_path, dest)
+                except OSError as exc:
+                    result.errors += 1
+                    result.error_details.append((epub_path, f"copy failed: {exc}"))
+                    if on_progress:
+                        on_progress(
+                            epub_path, metadata.title, metadata.author,
+                            "error", f"copy failed: {exc}", None,
+                        )
+                    continue
+                output_path = dest
+                copied_to_library = True
 
         # Metadata-level duplicate check (ISBN, then title+author)
         dup_match = catalog.find_duplicate(metadata)
@@ -175,6 +214,16 @@ def import_books(
                 SkipDetail(path=epub_path, reason="hash"),
             )
             continue
+
+        if move and copied_to_library:
+            try:
+                epub_path.unlink()
+            except OSError as exc:
+                if on_progress:
+                    on_progress(
+                        epub_path, metadata.title, metadata.author,
+                        "move_failed", str(exc), None,
+                    )
 
         # Auto-assign genres from subjects
         if metadata.subjects:

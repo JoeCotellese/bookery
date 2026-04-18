@@ -47,7 +47,7 @@ class TestDbCrossReference:
         db_path = tmp_path / "test.db"
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
-        import_books(epub_paths, catalog)
+        import_books(epub_paths, catalog, library_root=tmp_path / "lib")
         return catalog
 
     def test_cataloged_book_found(self, tmp_path: Path):

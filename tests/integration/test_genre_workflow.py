@@ -86,7 +86,10 @@ class TestImportGenreIntegration:
     """Integration test for import with genre auto-assignment."""
 
     def test_import_assigns_genres_from_subjects(
-        self, catalog: LibraryCatalog, sample_epub: Path
+        self,
+        catalog: LibraryCatalog,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import pipeline auto-assigns genres from subject metadata."""
         from bookery.core.importer import MatchResult, import_books
@@ -96,7 +99,9 @@ class TestImportGenreIntegration:
             meta.subjects = ["mystery", "detective fiction", "fiction"]
             return MatchResult(metadata=meta)
 
-        result = import_books([sample_epub], catalog, match_fn=match_fn)
+        result = import_books(
+            [sample_epub], catalog, library_root=tmp_path / "lib", match_fn=match_fn
+        )
         assert result.added == 1
 
         # Genres auto-assigned

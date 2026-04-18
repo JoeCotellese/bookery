@@ -18,7 +18,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
 - **Smart normalization** — splits mangled filenames like `SteveBerry-TheTemplarLegacy` into clean search queries, detects embedded author names
 - **SQLite catalog** — imports books into a local database for querying, tagging, and integrity checks
-- **Non-destructive** — never modifies your original files; writes corrected copies to an output directory
+- **Non-destructive** — metadata writes always go to a copy; original file contents are never modified. `import` copies each source into your library by default (`--move` deletes the source after a successful catalog insert)
 
 ## Installation
 
@@ -49,8 +49,11 @@ bookery match ~/Books/ -o ~/Books-fixed/
 # Auto-accept high-confidence matches (no prompts)
 bookery match ~/Books/ -o ~/Books-fixed/ --quiet
 
-# Import matched EPUBs into the catalog
-bookery import ~/Books-fixed/ --db ~/library.db
+# Import EPUBs into the catalog (copies into ~/.library/ by default)
+bookery import ~/Books/ --db ~/library.db
+
+# Import and remove the sources after they land in the library
+bookery import ~/Downloads/ --db ~/library.db --move
 
 # Search and browse the catalog
 bookery search "martian"
@@ -78,7 +81,7 @@ bookery info 42
 
 | Command | Description |
 |---------|-------------|
-| `import <dir>` | Scan for EPUBs and catalog them in the library (supports `--match` to match first) |
+| `import <dir>` | Scan for EPUBs, copy into `library_root`, and catalog them (supports `--match`, `--move`) |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |
 | `info <id>` | Show detailed metadata for a book by ID |
 | `search <query>` | Search the catalog by title, author, or description |
@@ -159,7 +162,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed checklists.
 ## Design Principles
 
 - **Metadata-first** — get the data right before organizing files
-- **Non-destructive** — original files are never modified
+- **Non-destructive** — original file contents are never modified; metadata writes go to a copy in the library
 - **CLI-first** — every feature is a terminal command; no GUI required
 - **Extensible** — providers, formats, and devices will be pluggable
 - **Respectful** — rate-limited API usage, no scraping

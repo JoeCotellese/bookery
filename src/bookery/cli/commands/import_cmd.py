@@ -186,6 +186,11 @@ def _build_progress_fn() -> ProgressFn:
             )
         elif status == "error":
             console.print(f"  [red]✗[/red] {path.name} — [red]{reason}[/red]")
+        elif status == "move_failed":
+            console.print(
+                f"  [yellow]⚠[/yellow] {path.name} — "
+                f"[dim]cataloged but source not removed: {reason}[/dim]"
+            )
 
     return on_progress
 
@@ -233,6 +238,13 @@ def _build_progress_fn() -> ProgressFn:
     default=False,
     help="Import metadata duplicates (same ISBN or title+author) instead of skipping.",
 )
+@click.option(
+    "--move",
+    "do_move",
+    is_flag=True,
+    default=False,
+    help="Delete source file after successful catalog (library copy is preserved).",
+)
 def import_command(
     directory: Path,
     db_path: Path | None,
@@ -242,6 +254,7 @@ def import_command(
     threshold: float,
     do_convert: bool,
     force_duplicates: bool,
+    do_move: bool,
 ) -> None:
     """Scan a directory for EPUB files and catalog them in the library."""
     epub_files = _find_epubs(directory)
@@ -277,10 +290,11 @@ def import_command(
     conn = open_library(db_path or DEFAULT_DB_PATH)
     catalog = LibraryCatalog(conn)
 
+    library_root = output_dir or get_library_root()
     match_fn: MatchFn | None = None
     if do_match:
         match_fn = _build_match_fn(
-            output_dir=output_dir or get_library_root(),
+            output_dir=library_root,
             quiet=quiet,
             threshold=threshold,
         )
@@ -289,7 +303,9 @@ def import_command(
 
     result = import_books(
         epub_files, catalog,
+        library_root=library_root,
         match_fn=match_fn,
+        move=do_move,
         force_duplicates=force_duplicates,
         on_progress=on_progress,
     )
