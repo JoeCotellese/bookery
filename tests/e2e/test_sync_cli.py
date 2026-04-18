@@ -47,11 +47,9 @@ def _fake_kepubify(returncode: int = 0, stderr: str = "", payload: bytes = b"FAK
             return subprocess.CompletedProcess(
                 args=cmd, returncode=0, stdout="kepubify v4.4.0\n", stderr=""
             )
-        # `kepubify -o <out> <epub>` form
-        out_dir = Path(cmd[cmd.index("-o") + 1])
-        epub = Path(cmd[-1])
-        out = out_dir / f"{epub.stem}.kepub.epub"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        # `kepubify -o <out_path> <epub>` form (we pass the full filename).
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.parent.mkdir(parents=True, exist_ok=True)
         if returncode == 0:
             out.write_bytes(payload)
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")

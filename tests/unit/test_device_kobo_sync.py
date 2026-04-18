@@ -300,6 +300,65 @@ def test_non_epub_output_path_is_skipped(tmp_path: Path) -> None:
     assert "not an EPUB" in reason or "epub" in reason.lower()
 
 
+def test_on_progress_callback_invoked_per_record(tmp_path: Path) -> None:
+    env = _setup(tmp_path)
+    epubs = []
+    records = []
+    for i in range(3):
+        epub = env["library"] / f"A{i}" / f"T{i}" / f"T{i}.epub"
+        _write_epub(epub)
+        epubs.append(epub)
+        records.append(_make_record(rec_id=i, title=f"T{i}", author=f"A{i}", epub_path=epub))
+
+    seen: list[tuple[int, int, str]] = []
+
+    def cb(idx: int, total: int, record):  # type: ignore[no-untyped-def]
+        seen.append((idx, total, record.metadata.title))
+
+    sync_library_to_kobo(
+        catalog=StubCatalog(records=records),
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_progress=cb,
+    )
+
+    assert seen == [
+        (1, 3, "T0"),
+        (2, 3, "T1"),
+        (3, 3, "T2"),
+    ]
+
+
+def test_on_progress_callback_invoked_in_dry_run(tmp_path: Path) -> None:
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+
+    seen: list[int] = []
+
+    def cb(idx: int, total: int, _record) -> None:  # type: ignore[no-untyped-def]
+        seen.append(idx)
+        assert total == 1
+
+    sync_library_to_kobo(
+        catalog=StubCatalog(records=[record]),
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        dry_run=True,
+        on_progress=cb,
+    )
+    assert seen == [1]
+
+
 def test_kepubify_failure_is_recorded_not_raised(tmp_path: Path) -> None:
     env = _setup(tmp_path)
     epub = env["library"] / "A" / "T" / "T.epub"

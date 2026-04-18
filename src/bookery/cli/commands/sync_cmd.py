@@ -5,6 +5,14 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from bookery.cli.options import db_option
 from bookery.core.config import get_data_dir, get_sync_config
@@ -80,20 +88,40 @@ def sync_kobo(
     conn = open_library(db_path or DEFAULT_DB_PATH)
     try:
         catalog = LibraryCatalog(conn)
-        try:
-            report = sync_library_to_kobo(
-                catalog=catalog,
-                target=resolved_target,
-                cache=cache,
-                run_kepubify=run_kepubify,
-                kepubify_version=kepubify_version,
-                workspace_dir=workspace_dir,
-                books_subdir=sync_cfg.kobo.books_subdir,
-                dry_run=dry_run,
-            )
-        except DeviceError as exc:
-            console.print(f"[red]{exc}[/red]")
-            raise SystemExit(exc.exit_code) from exc
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task_id = progress.add_task("Syncing", total=None)
+
+            def _on_progress(idx: int, total: int, record) -> None:  # type: ignore[no-untyped-def]
+                progress.update(
+                    task_id,
+                    completed=idx - 1,
+                    total=total,
+                    description=record.metadata.title[:50],
+                )
+
+            try:
+                report = sync_library_to_kobo(
+                    catalog=catalog,
+                    target=resolved_target,
+                    cache=cache,
+                    run_kepubify=run_kepubify,
+                    kepubify_version=kepubify_version,
+                    workspace_dir=workspace_dir,
+                    books_subdir=sync_cfg.kobo.books_subdir,
+                    dry_run=dry_run,
+                    on_progress=_on_progress,
+                )
+            except DeviceError as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise SystemExit(exc.exit_code) from exc
     finally:
         conn.close()
 

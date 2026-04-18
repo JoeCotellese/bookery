@@ -157,6 +157,9 @@ def _sync_record(
     report.copied.append(dest)
 
 
+ProgressCallback = Callable[[int, int, BookRecord], None]
+
+
 def sync_library_to_kobo(
     *,
     catalog: _CatalogProto,
@@ -167,6 +170,7 @@ def sync_library_to_kobo(
     workspace_dir: Path,
     books_subdir: str = "Bookery",
     dry_run: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> SyncReport:
     """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
 
@@ -182,8 +186,12 @@ def sync_library_to_kobo(
     we never touch the device mount's parent (e.g. /Volumes itself).
     """
     report = SyncReport()
+    records = catalog.list_all()
+    total = len(records)
     if dry_run:
-        for record in catalog.list_all():
+        for idx, record in enumerate(records, 1):
+            if on_progress is not None:
+                on_progress(idx, total, record)
             source = record.output_path
             if source is None:
                 report.skipped.append(
@@ -202,7 +210,9 @@ def sync_library_to_kobo(
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        for record in catalog.list_all():
+        for idx, record in enumerate(records, 1):
+            if on_progress is not None:
+                on_progress(idx, total, record)
             _sync_record(
                 record,
                 target=target,

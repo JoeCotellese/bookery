@@ -18,10 +18,9 @@ def _fake_subprocess(cmd, **_kwargs):
         return subprocess.CompletedProcess(
             args=cmd, returncode=0, stdout="kepubify v4.4.0\n", stderr=""
         )
-    out_dir = Path(cmd[cmd.index("-o") + 1])
+    out = Path(cmd[cmd.index("-o") + 1])
     epub = Path(cmd[-1])
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{epub.stem}.kepub.epub"
+    out.parent.mkdir(parents=True, exist_ok=True)
     # Make payload deterministic-but-source-dependent so cache lookups behave.
     out.write_bytes(b"KEPUB:" + epub.read_bytes())
     return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
