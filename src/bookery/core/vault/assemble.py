@@ -34,8 +34,12 @@ def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
             n = group[0]
             result[id(n)] = (title, n.slug)
             continue
+        # Prefer the folder name as the hint. If two notes in the group share
+        # a folder, fall back to the filename stem so every display is unique.
+        folder_hints = [n.relative_folder or "root" for n in group]
+        use_stem = len(set(folder_hints)) < len(group)
         for i, n in enumerate(group, start=1):
-            hint = n.relative_folder or "root"
+            hint = n.path.stem if use_stem else (n.relative_folder or "root")
             display = f"{title} ({hint})"
             slug = n.slug if i == 1 else f"{n.slug}-{i}"
             result[id(n)] = (display, slug)

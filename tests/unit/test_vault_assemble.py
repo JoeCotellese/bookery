@@ -96,6 +96,34 @@ def test_non_matching_body_h1_also_demoted(tmp_path: Path):
     assert "## Different Heading" in md
 
 
+def test_duplicate_titles_in_same_folder_use_filename_hint(tmp_path: Path):
+    # Two "Reference" literature notes in the same folder — common in a real
+    # vault where every book note has its own References.md. The folder alone
+    # cannot disambiguate them, so fall back to the filename stem.
+    n1 = Note(
+        path=Path("book-a-references.md"),
+        relative_folder="Lit",
+        title="Reference",
+        slug="reference",
+        body="a",
+        frontmatter={},
+        tags=[],
+    )
+    n2 = Note(
+        path=Path("book-b-references.md"),
+        relative_folder="Lit",
+        title="Reference",
+        slug="reference",
+        body="b",
+        frontmatter={},
+        tags=[],
+    )
+    result = assemble_vault([n1, n2], vault_path=tmp_path)
+    md = result.markdown
+    assert "Reference (book-a-references)" in md
+    assert "Reference (book-b-references)" in md
+
+
 def test_duplicate_titles_get_unique_slugs(tmp_path: Path):
     # Two separate notes both titled "References" — e.g. a per-book refs note
     # repeated across many book notes in a real vault.
