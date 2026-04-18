@@ -16,6 +16,7 @@ from rich.progress import (
 )
 
 from bookery.cli.review import ReviewSession
+from bookery.core.config import get_library_root
 from bookery.core.converter import convert_one
 from bookery.core.pipeline import match_one
 from bookery.metadata.http import BookeryHttpClient
@@ -59,7 +60,7 @@ def _make_progress(console: Console) -> Progress:
     "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
-    help="Directory for converted EPUBs (default: ./bookery-output).",
+    help="Directory for converted EPUBs (default: configured library_root).",
 )
 @click.option(
     "--match",
@@ -100,7 +101,7 @@ def convert(
     console = Console()
 
     if output_dir is None:
-        output_dir = Path("bookery-output")
+        output_dir = get_library_root()
 
     mobis = _find_mobis(path)
     if not mobis:

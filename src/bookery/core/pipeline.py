@@ -2,6 +2,7 @@
 # ABOUTME: Copies EPUB to output directory then writes updated metadata to the copy.
 
 import logging
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,6 +105,24 @@ def _cleanup_dest(dest: Path) -> None:
         dest.unlink()
 
 
+def _copy_file(source: Path, dest: Path) -> None:
+    """Copy file preserving mtime, tolerant of cross-filesystem metadata quirks.
+
+    shutil.copy2 preserves BSD file flags via chflags, which fails with
+    PermissionError when copying from some network mounts on macOS. Fall back
+    to a plain copy + best-effort mtime preservation when that happens.
+    """
+    try:
+        shutil.copy2(source, dest)
+    except PermissionError:
+        shutil.copyfile(source, dest)
+        try:
+            st = source.stat()
+            os.utime(dest, ns=(st.st_atime_ns, st.st_mtime_ns))
+        except OSError:
+            pass
+
+
 def apply_metadata_safely(
     source: Path, metadata: BookMetadata, output_dir: Path
 ) -> WriteResult:
@@ -127,7 +146,7 @@ def apply_metadata_safely(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     logger.debug("apply_metadata_safely: copying %s -> %s", source.name, dest)
-    shutil.copy2(source, dest)
+    _copy_file(source, dest)
 
     # Write metadata to the copy
     try:
@@ -247,7 +266,7 @@ def match_one(
         return MatchOneResult(status="skipped", normalization=norm_result)
 
     # Review: let the user (or auto-accept logic) pick a candidate
-    selected = review_session.review(extracted, candidates)
+    selected = review_session.review(extracted, candidates)  # type: ignore[attr-defined]
     if selected is None:
         logger.info("match_one: skipped (user declined) %s", epub_path.name)
         return MatchOneResult(status="skipped", normalization=norm_result)

@@ -111,8 +111,12 @@ class TestMatchCommand:
         assert result.exit_code == 0
         assert "2 matched" in result.output
 
-    def test_match_output_dir_default(self, sample_epub: Path, tmp_path: Path) -> None:
-        """Without -o, output directory defaults to ./bookery-output."""
+    def test_match_output_dir_default(
+        self, sample_epub: Path, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Without -o, output directory defaults to configured library_root."""
+        library_root = tmp_path / "custom-library"
+        monkeypatch.setenv("BOOKERY_LIBRARY_ROOT", str(library_root))
         candidate = _make_candidate("Matched", 0.95)
 
         with (
@@ -137,10 +141,9 @@ class TestMatchCommand:
             result = runner.invoke(cli, ["match", str(sample_epub), "-q"])
 
         assert result.exit_code == 0
-        # apply_metadata_safely should have been called with a Path ending in bookery-output
         call_args = mock_apply.call_args
         output_dir_used = call_args[0][2]
-        assert "bookery-output" in str(output_dir_used)
+        assert Path(str(output_dir_used)) == library_root
 
 
 class TestThresholdOption:
