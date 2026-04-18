@@ -162,6 +162,57 @@ def test_kepubify_missing_exits_3(tmp_path: Path) -> None:
     assert "kepubify" in result.output.lower()
 
 
+def test_per_book_failure_does_not_fail_command(tmp_path: Path) -> None:
+    """A single bad book (missing source, kepubify error, etc.) should be
+    reported as a warning but not exit non-zero — otherwise one stale
+    catalog entry blocks a sync of hundreds of healthy books."""
+    db_path = tmp_path / "lib.db"
+    library = tmp_path / "library"
+    target = _make_kobo_root(tmp_path)
+
+    # Seed two books: one whose source file actually exists, one whose
+    # output_path points at a missing file (simulates a stale catalog row).
+    good_epub = library / "Good Author" / "Good" / "Good.epub"
+    good_epub.parent.mkdir(parents=True, exist_ok=True)
+    good_epub.write_bytes(b"GOOD-EPUB")
+    missing_epub = library / "Stale" / "Gone" / "Gone.epub"  # never created
+
+    conn = open_library(db_path)
+    try:
+        catalog = LibraryCatalog(conn)
+        catalog.add_book(
+            BookMetadata(title="Good", authors=["Good Author"], source_path=good_epub),
+            file_hash="good",
+            output_path=good_epub,
+        )
+        catalog.add_book(
+            BookMetadata(title="Gone", authors=["Stale"], source_path=missing_epub),
+            file_hash="gone",
+            output_path=missing_epub,
+        )
+    finally:
+        conn.close()
+
+    runner = CliRunner()
+    with (
+        patch("bookery.device.kepubify.shutil.which", return_value="/usr/bin/kepubify"),
+        patch("bookery.device.kepubify.subprocess.run", side_effect=_fake_kepubify()),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "sync", "kobo",
+                "--target", str(target),
+                "--db", str(db_path),
+                "--data-dir", str(tmp_path / "data"),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Warnings" in result.output
+    assert "Gone.epub" in result.output
+
+
 def test_no_target_and_no_detection_fails(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "lib.db"
     open_library(db_path).close()

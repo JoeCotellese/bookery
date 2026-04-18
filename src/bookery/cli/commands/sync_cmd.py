@@ -4,7 +4,8 @@
 from pathlib import Path
 
 import click
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -85,28 +86,58 @@ def sync_kobo(
     cache = KepubCache(data_dir / "kepub_cache.db")
     workspace_dir = data_dir / "sync-workspace"
 
+    _stage_label = {
+        "hash": "hashing",
+        "convert": "converting",
+        "copy": "copying",
+        "cached": "cached",
+        "done": "done",
+    }
+
+    overall = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        console=console,
+    )
+    current = Progress(
+        SpinnerColumn(),
+        TextColumn("[dim]└─[/dim] {task.description}"),
+        console=console,
+    )
+    overall_task = overall.add_task("Syncing", total=None)
+    current_task = current.add_task("(starting…)", total=None)
+    current_state: dict[str, str] = {"title": "", "stage": ""}
+
+    def _redraw_current() -> None:
+        title = current_state["title"]
+        stage = current_state["stage"]
+        if title and stage:
+            current.update(current_task, description=f"{title}  [dim][{stage}][/dim]")
+        elif title:
+            current.update(current_task, description=title)
+
+    def _on_progress(idx: int, total: int, record) -> None:  # type: ignore[no-untyped-def]
+        overall.update(overall_task, completed=idx - 1, total=total)
+        current_state["title"] = record.metadata.title[:60]
+        current_state["stage"] = ""
+        _redraw_current()
+
+    def _on_stage(stage: str) -> None:
+        current_state["stage"] = _stage_label.get(stage, stage)
+        _redraw_current()
+
     conn = open_library(db_path or DEFAULT_DB_PATH)
     try:
         catalog = LibraryCatalog(conn)
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
+        with Live(
+            Group(overall, current),
             console=console,
             transient=True,
-        ) as progress:
-            task_id = progress.add_task("Syncing", total=None)
-
-            def _on_progress(idx: int, total: int, record) -> None:  # type: ignore[no-untyped-def]
-                progress.update(
-                    task_id,
-                    completed=idx - 1,
-                    total=total,
-                    description=record.metadata.title[:50],
-                )
-
+            refresh_per_second=10,
+        ):
             try:
                 report = sync_library_to_kobo(
                     catalog=catalog,
@@ -118,7 +149,9 @@ def sync_kobo(
                     books_subdir=sync_cfg.kobo.books_subdir,
                     dry_run=dry_run,
                     on_progress=_on_progress,
+                    on_stage=_on_stage,
                 )
+                overall.update(overall_task, completed=overall.tasks[0].total or 0)
             except DeviceError as exc:
                 console.print(f"[red]{exc}[/red]")
                 raise SystemExit(exc.exit_code) from exc
@@ -139,7 +172,13 @@ def sync_kobo(
         for path, reason in report.skipped:
             console.print(f"  [dim]- {path.name}: {reason}[/dim]")
     if report.failed:
-        console.print(f"[red]Failed {len(report.failed)}:[/red]")
+        # Per-book failures are reported but don't fail the command — a stale
+        # catalog entry or a single un-convertible EPUB shouldn't block a sync
+        # of hundreds of other books. Hard errors (missing kepubify, no Kobo
+        # detected) still exit non-zero from earlier branches.
+        console.print(
+            f"[yellow]Warnings: {len(report.failed)} book(s) could not be "
+            "synced (catalog or EPUB issue):[/yellow]"
+        )
         for path, reason in report.failed:
-            console.print(f"  [red]- {path.name}: {reason}[/red]")
-        raise SystemExit(1)
+            console.print(f"  [yellow]- {path.name}: {reason}[/yellow]")

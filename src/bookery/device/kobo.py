@@ -85,6 +85,10 @@ class _CacheProto(Protocol):
     ) -> None: ...
 
 
+ProgressCallback = Callable[[int, int, BookRecord], None]
+StageCallback = Callable[[str], None]
+
+
 def _book_dest_dir(target: Path, books_subdir: str, record: BookRecord) -> Path:
     author_raw = (
         record.metadata.authors[0] if record.metadata.authors else "Unknown Author"
@@ -105,7 +109,12 @@ def _sync_record(
     run_kepubify: Callable[..., Path],
     workspace: Path,
     report: SyncReport,
+    on_stage: StageCallback | None = None,
 ) -> None:
+    def stage(name: str) -> None:
+        if on_stage is not None:
+            on_stage(name)
+
     source = record.output_path
     if source is None:
         report.skipped.append(
@@ -123,6 +132,7 @@ def _sync_record(
     title = sanitize_component(record.metadata.title, fallback="Untitled")
     dest = dest_dir / f"{title}.kepub.epub"
 
+    stage("hash")
     try:
         source_hash = compute_file_hash(source)
     except OSError as exc:
@@ -133,17 +143,20 @@ def _sync_record(
     if cached_kepub_sha is not None and dest.exists():
         try:
             if compute_file_hash(dest) == cached_kepub_sha:
+                stage("cached")
                 report.skipped.append((dest, "already up to date"))
                 return
         except OSError:
             pass  # fall through to re-convert
 
+    stage("convert")
     try:
         kepub_path = run_kepubify(source, out_dir=workspace)
     except Exception as exc:
         report.failed.append((source, f"kepubify error: {exc}"))
         return
 
+    stage("copy")
     try:
         kepub_sha = compute_file_hash(kepub_path)
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -154,10 +167,8 @@ def _sync_record(
         return
 
     cache.put(source_hash, version, kepub_sha, dest)
+    stage("done")
     report.copied.append(dest)
-
-
-ProgressCallback = Callable[[int, int, BookRecord], None]
 
 
 def sync_library_to_kobo(
@@ -171,6 +182,7 @@ def sync_library_to_kobo(
     books_subdir: str = "Bookery",
     dry_run: bool = False,
     on_progress: ProgressCallback | None = None,
+    on_stage: StageCallback | None = None,
 ) -> SyncReport:
     """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
 
@@ -222,6 +234,7 @@ def sync_library_to_kobo(
                 run_kepubify=run_kepubify,
                 workspace=workspace_dir,
                 report=report,
+                on_stage=on_stage,
             )
     finally:
         if workspace_dir.exists():

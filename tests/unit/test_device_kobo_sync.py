@@ -300,6 +300,66 @@ def test_non_epub_output_path_is_skipped(tmp_path: Path) -> None:
     assert "not an EPUB" in reason or "epub" in reason.lower()
 
 
+def test_on_stage_emits_full_lifecycle(tmp_path: Path) -> None:
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+    catalog = StubCatalog(records=[record])
+
+    stages: list[str] = []
+
+    def on_stage(stage: str) -> None:
+        stages.append(stage)
+
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_stage=on_stage,
+    )
+
+    # First sync: full pipeline.
+    assert stages == ["hash", "convert", "copy", "done"]
+
+
+def test_on_stage_emits_cached_when_skipping(tmp_path: Path) -> None:
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+    catalog = StubCatalog(records=[record])
+
+    # Prime the cache with a successful sync.
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+    )
+
+    stages: list[str] = []
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_stage=stages.append,
+    )
+
+    assert stages == ["hash", "cached"]
+
+
 def test_on_progress_callback_invoked_per_record(tmp_path: Path) -> None:
     env = _setup(tmp_path)
     epubs = []
