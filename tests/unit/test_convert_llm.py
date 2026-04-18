@@ -141,6 +141,28 @@ def test_invalid_kind_coerced_to_p(cache: LLMCache, cfg: ConvertConfig) -> None:
     assert result.chapters[0].blocks[0].kind == "p"
 
 
+def test_short_response_padded_with_p(
+    cache: LLMCache, cfg: ConvertConfig
+) -> None:
+    doc, plan = _doc_and_plan(["A.", "B.", "C.", "D.", "E."])
+    response = json.dumps({"classifications": ["h1", "p"]})
+    fake = FakeClient([response])
+    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
+    kinds = [b.kind for b in result.chapters[0].blocks]
+    assert kinds == ["h1", "p", "p", "p", "p"]
+
+
+def test_long_response_truncated(
+    cache: LLMCache, cfg: ConvertConfig
+) -> None:
+    doc, plan = _doc_and_plan(["A.", "B."])
+    response = json.dumps({"classifications": ["h1", "h2", "p", "p", "li"]})
+    fake = FakeClient([response])
+    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
+    kinds = [b.kind for b in result.chapters[0].blocks]
+    assert kinds == ["h1", "h2"]
+
+
 def test_empty_plan_returns_empty_doc(cache: LLMCache, cfg: ConvertConfig) -> None:
     empty = CleanDoc(blocks=(), outline=())
     empty_plan = plan_chapters(empty)

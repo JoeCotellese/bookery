@@ -98,16 +98,18 @@ def _parse_response(raw: str, expected: int) -> list[str]:
     classifications = data.get("classifications")
     if not isinstance(classifications, list):
         raise LLMBadResponse("missing 'classifications' list")
-    if len(classifications) != expected:
-        raise LLMBadResponse(
-            f"expected {expected} classifications, got {len(classifications)}"
-        )
     out: list[str] = []
     for item in classifications:
         kind = str(item).lower()
         if kind not in VALID_KINDS:
             kind = "p"
         out.append(kind)
+    # Many local models summarize/merge/split inputs and return a different count.
+    # Don't burn retries on this — pad with 'p' or truncate to the expected length.
+    if len(out) < expected:
+        out.extend(["p"] * (expected - len(out)))
+    elif len(out) > expected:
+        out = out[:expected]
     return out
 
 
