@@ -57,6 +57,8 @@ def resolve_images(
         assets.append(candidate)
         return f"![{alt}]({candidate.name})"
 
-    body = _OBSIDIAN_EMBED_RE.sub(_sub_obsidian, body)
+    # Process standard markdown images first so the output of the Obsidian
+    # pass (which produces `![alt](filename)`) is not re-matched.
     body = _MD_IMAGE_RE.sub(_sub_md, body)
+    body = _OBSIDIAN_EMBED_RE.sub(_sub_obsidian, body)
     return body, assets
