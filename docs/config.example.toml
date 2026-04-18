@@ -52,6 +52,24 @@ max_tokens = 262144
 #   prompt_version = 1
 
 # ---------------------------------------------------------------------------
+# Obsidian vault → EPUB export (bookery vault-export)
+#
+# Set defaults so `bookery vault-export -o vault.epub` works without flags.
+# Every value here is overridable on the command line.
+# ---------------------------------------------------------------------------
+#
+#   [vault_export]
+#   vault_path = "~/obsidian-vault"
+#   folders = ["3_Permanent Notes", "2_Literature Notes"]
+#   include_index = false
+#   index_exclude_prefixes = ["type/"]
+#   index_min_count = 1
+#   default_author = "Joe Cotellese"
+#   uuid_mode = "stable"        # "stable" reuses the dc:identifier across
+#                               # exports so re-sync to Kobo updates the book
+#                               # in place; "random" produces a fresh id.
+
+# ---------------------------------------------------------------------------
 # Notes
 # ---------------------------------------------------------------------------
 #
