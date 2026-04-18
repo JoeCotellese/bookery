@@ -2,11 +2,10 @@
 # ABOUTME: Copies EPUB to output directory then writes updated metadata to the copy.
 
 import logging
-import os
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bookery.core.filecopy import copy_file
 from bookery.core.pathformat import build_output_path, record_processed, resolve_collision
 from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
 from bookery.metadata.normalizer import NormalizationResult, normalize_metadata
@@ -105,24 +104,6 @@ def _cleanup_dest(dest: Path) -> None:
         dest.unlink()
 
 
-def _copy_file(source: Path, dest: Path) -> None:
-    """Copy file preserving mtime, tolerant of cross-filesystem metadata quirks.
-
-    shutil.copy2 preserves BSD file flags via chflags, which fails with
-    PermissionError when copying from some network mounts on macOS. Fall back
-    to a plain copy + best-effort mtime preservation when that happens.
-    """
-    try:
-        shutil.copy2(source, dest)
-    except PermissionError:
-        shutil.copyfile(source, dest)
-        try:
-            st = source.stat()
-            os.utime(dest, ns=(st.st_atime_ns, st.st_mtime_ns))
-        except OSError:
-            pass
-
-
 def apply_metadata_safely(
     source: Path, metadata: BookMetadata, output_dir: Path
 ) -> WriteResult:
@@ -146,7 +127,7 @@ def apply_metadata_safely(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     logger.debug("apply_metadata_safely: copying %s -> %s", source.name, dest)
-    _copy_file(source, dest)
+    copy_file(source, dest)
 
     # Write metadata to the copy
     try:
