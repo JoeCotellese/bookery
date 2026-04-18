@@ -1,0 +1,65 @@
+# Example bookery configuration. Copy to ~/.bookery/config.toml and edit.
+#
+# The library_root is where bookery stores canonical copies of your books.
+# Everything cataloged lives under this directory, organized by author.
+library_root = "/Users/you/.library"
+
+# ---------------------------------------------------------------------------
+# PDF → EPUB semantic conversion
+#
+# `bookery add` / `bookery import` pipe PDFs through a single LLM call that
+# reassembles articles/chapters into a clean EPUB. Any OpenAI-compatible
+# endpoint works — LM Studio, OpenAI, Moonshot/Kimi, Anthropic-via-proxy, etc.
+# ---------------------------------------------------------------------------
+
+# Option A — Local via LM Studio (no cost, slower, private).
+# Load a long-context instruct model with ≥16k context, enable the local
+# server, then:
+#
+#   [convert.semantic]
+#   provider = "lm-studio"
+#   model = "qwen2.5-7b-instruct-1m"
+#   base_url = "http://localhost:1234/v1"
+#   api_key_env = ""           # empty = no key needed
+#   prompt_version = 1
+#   llm_max_retries = 2
+
+# Option B — Moonshot Kimi (recommended for magazines; 256k context, fast).
+# Create an API key at https://platform.moonshot.ai, then:
+#
+#   export MOONSHOT_API_KEY=sk-...
+#
+[convert.semantic]
+provider = "openai"
+model = "kimi-k2-turbo-preview"
+base_url = "https://api.moonshot.ai/v1"
+api_key_env = "MOONSHOT_API_KEY"
+prompt_version = 1
+llm_max_retries = 2
+# Kimi caps conservatively by default, which truncates long magazines.
+# Set this high; Kimi supports up to 262144.
+max_tokens = 262144
+
+# Option C — OpenAI.
+#
+#   export OPENAI_API_KEY=sk-...
+#
+#   [convert.semantic]
+#   provider = "openai"
+#   model = "gpt-5.4-nano"
+#   base_url = "https://api.openai.com/v1"
+#   api_key_env = "OPENAI_API_KEY"
+#   prompt_version = 1
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+#
+# - Never put API keys directly in this file. `api_key_env` names the env
+#   var bookery reads at use time.
+# - `prompt_version` is an invalidation token for the response cache at
+#   ~/.bookery/data/convert_cache.db. Bump it when you want to force a
+#   re-extraction (or just delete the cache file).
+# - `max_tokens = 0` (the default) means "don't send max_tokens" and lets
+#   the server choose. Only set it explicitly when a provider's default
+#   truncates long outputs (Moonshot's Kimi, notably).

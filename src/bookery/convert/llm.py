@@ -56,14 +56,17 @@ def _serialize_raw(raw: RawDoc) -> str:
 
 
 def _call_llm(client: Any, cfg: SemanticConfig, text_blob: str) -> MagazineDoc:
-    response = client.beta.chat.completions.parse(
-        model=cfg.model,
-        response_format=MagazineDoc,
-        messages=[
+    kwargs: dict[str, Any] = {
+        "model": cfg.model,
+        "response_format": MagazineDoc,
+        "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": text_blob},
         ],
-    )
+    }
+    if cfg.max_tokens > 0:
+        kwargs["max_tokens"] = cfg.max_tokens
+    response = client.beta.chat.completions.parse(**kwargs)
     message = response.choices[0].message
     parsed = getattr(message, "parsed", None)
     if isinstance(parsed, MagazineDoc):

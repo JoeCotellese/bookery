@@ -67,6 +67,9 @@ api_key_env = "OPENAI_API_KEY"
 prompt_version = 1
 ```
 
+See [`docs/config.example.toml`](docs/config.example.toml) for a fully
+annotated config with LM Studio, Moonshot/Kimi, and OpenAI examples.
+
 Semantic responses are cached under `~/.bookery/data/convert_cache.db`
 so re-runs on the same PDF skip the LLM. Safe to delete at any time;
 bumping `prompt_version` invalidates only stale entries.

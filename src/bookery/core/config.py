@@ -19,6 +19,7 @@ DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_API_KEY_ENV = ""
 DEFAULT_PROMPT_VERSION = 1
 DEFAULT_LLM_MAX_RETRIES = 2
+DEFAULT_MAX_TOKENS = 0  # 0 = don't send max_tokens; let the server decide
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,7 @@ class SemanticConfig:
     api_key_env: str = DEFAULT_API_KEY_ENV    # env var name; "" for local
     prompt_version: int = DEFAULT_PROMPT_VERSION
     llm_max_retries: int = DEFAULT_LLM_MAX_RETRIES
+    max_tokens: int = DEFAULT_MAX_TOKENS
 
     def resolve_api_key(self) -> str:
         """Resolve api_key_env to the actual key at use time. '' for local endpoints."""
@@ -76,6 +78,7 @@ def _parse_semantic(section: dict[str, Any] | None) -> SemanticConfig:
         api_key_env=str(section.get("api_key_env", DEFAULT_API_KEY_ENV)),
         prompt_version=int(section.get("prompt_version", DEFAULT_PROMPT_VERSION)),
         llm_max_retries=int(section.get("llm_max_retries", DEFAULT_LLM_MAX_RETRIES)),
+        max_tokens=int(section.get("max_tokens", DEFAULT_MAX_TOKENS)),
     )
 
 
