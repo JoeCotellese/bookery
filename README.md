@@ -14,6 +14,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
+- **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB plus a Kobo `.kepub.epub` variant. Scanned PDFs are refused (OCR not yet supported).
 - **Open Library matching** — searches by ISBN (precise) or title/author (fuzzy), with confidence scoring
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
 - **Smart normalization** — splits mangled filenames like `SteveBerry-TheTemplarLegacy` into clean search queries, detects embedded author names
@@ -30,6 +31,48 @@ git clone https://github.com/joecotellese/bookery.git
 cd bookery
 uv sync
 ```
+
+### Optional: PDF conversion
+
+The PDF path in `bookery add` / `bookery import` routes the document
+through a single semantic LLM call that reassembles articles/chapters
+into a clean EPUB. You'll need an OpenAI-compatible endpoint with a
+model strong enough to return structured JSON.
+
+**Local (default)** — [LM Studio](https://lmstudio.ai) with a long-
+context instruct model (known-good: **Qwen 2.5 7B Instruct 1M**).
+Load the model with ≥16k context, enable the local server, then point
+bookery at it via `~/.bookery/config.toml`:
+
+```toml
+[convert.semantic]
+provider = "lm-studio"
+model = "qwen2.5-7b-instruct-1m"
+base_url = "http://localhost:1234/v1"
+api_key_env = ""             # empty for local; no key needed
+prompt_version = 1
+llm_max_retries = 2
+```
+
+**Cloud** — swap `provider`, `model`, `base_url`, and point
+`api_key_env` at the env var holding your key. Never write the key
+into `config.toml`:
+
+```toml
+[convert.semantic]
+provider = "openai"
+model = "gpt-5.4-nano"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+prompt_version = 1
+```
+
+See [`docs/config.example.toml`](docs/config.example.toml) for a fully
+annotated config with LM Studio, Moonshot/Kimi, and OpenAI examples.
+
+Semantic responses are cached under `~/.bookery/data/convert_cache.db`
+so re-runs on the same PDF skip the LLM. Safe to delete at any time;
+bumping `prompt_version` invalidates only stale entries.
 
 ## Quick Start
 
