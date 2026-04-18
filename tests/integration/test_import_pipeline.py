@@ -26,12 +26,12 @@ def _make_epub(path: Path, title: str, author: str | None = None) -> Path:
         book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
-        b"<html><body><h1>Chapter 1</h1>"
-        b"<p>Content for " + title.encode() + b".</p>"
-        b"</body></html>"
+        b"<html><body><h1>Chapter 1</h1><p>Content for " + title.encode() + b".</p></body></html>"
     )
     book.add_item(chapter)
     book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
@@ -58,7 +58,7 @@ class TestImportPipelineIntegration:
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         paths = sorted(books_dir.glob("*.epub"))
-        result = import_books(paths, catalog)
+        result = import_books(paths, catalog, library_root=tmp_path / "lib")
 
         assert result.added == 2
         records = catalog.list_all()
@@ -81,10 +81,10 @@ class TestImportPipelineIntegration:
         catalog = LibraryCatalog(conn)
         paths = sorted(books_dir.glob("*.epub"))
 
-        result1 = import_books(paths, catalog)
+        result1 = import_books(paths, catalog, library_root=tmp_path / "lib")
         assert result1.added == 2
 
-        result2 = import_books(paths, catalog)
+        result2 = import_books(paths, catalog, library_root=tmp_path / "lib")
         assert result2.added == 0
         assert result2.skipped == 2
         conn.close()
@@ -103,10 +103,10 @@ class TestImportPipelineIntegration:
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
 
-        result1 = import_books([dir_a / "book.epub"], catalog)
+        result1 = import_books([dir_a / "book.epub"], catalog, library_root=tmp_path / "lib")
         assert result1.added == 1
 
-        result2 = import_books([dir_b / "book_copy.epub"], catalog)
+        result2 = import_books([dir_b / "book_copy.epub"], catalog, library_root=tmp_path / "lib")
         assert result2.added == 0
         assert result2.skipped == 1
         conn.close()
@@ -122,7 +122,8 @@ class TestFindDuplicate:
 
         # Insert a book with ISBN
         existing = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
             isbn="9780151446476",
         )
         existing.source_path = tmp_path / "rose.epub"
@@ -130,7 +131,8 @@ class TestFindDuplicate:
 
         # Search with same ISBN, different format
         candidate = BookMetadata(
-            title="Name of the Rose", authors=["Eco, Umberto"],
+            title="Name of the Rose",
+            authors=["Eco, Umberto"],
             isbn="978-0-15-144647-6",
         )
         result = catalog.find_duplicate(candidate)
@@ -146,14 +148,16 @@ class TestFindDuplicate:
         catalog = LibraryCatalog(conn)
 
         existing = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
             isbn="9780151446476",
         )
         existing.source_path = tmp_path / "rose.epub"
         catalog.add_book(existing, file_hash="abc123")
 
         candidate = BookMetadata(
-            title="Whatever", authors=["Whatever"],
+            title="Whatever",
+            authors=["Whatever"],
             isbn="0151446474",
         )
         result = catalog.find_duplicate(candidate)
@@ -168,14 +172,16 @@ class TestFindDuplicate:
         catalog = LibraryCatalog(conn)
 
         existing = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
         )
         existing.source_path = tmp_path / "rose.epub"
         catalog.add_book(existing, file_hash="abc123")
 
         # Different article, different author format
         candidate = BookMetadata(
-            title="  The  Name of the  Rose  ", authors=["Eco, Umberto"],
+            title="  The  Name of the  Rose  ",
+            authors=["Eco, Umberto"],
         )
         result = catalog.find_duplicate(candidate)
 
@@ -189,14 +195,16 @@ class TestFindDuplicate:
         catalog = LibraryCatalog(conn)
 
         existing = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
             isbn="9780151446476",
         )
         existing.source_path = tmp_path / "rose.epub"
         catalog.add_book(existing, file_hash="abc123")
 
         candidate = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
             isbn="978-0-15-144647-6",
         )
         result = catalog.find_duplicate(candidate)
@@ -211,13 +219,15 @@ class TestFindDuplicate:
         catalog = LibraryCatalog(conn)
 
         existing = BookMetadata(
-            title="The Name of the Rose", authors=["Umberto Eco"],
+            title="The Name of the Rose",
+            authors=["Umberto Eco"],
         )
         existing.source_path = tmp_path / "rose.epub"
         catalog.add_book(existing, file_hash="abc123")
 
         candidate = BookMetadata(
-            title="Dune", authors=["Frank Herbert"],
+            title="Dune",
+            authors=["Frank Herbert"],
         )
         result = catalog.find_duplicate(candidate)
 
@@ -230,7 +240,8 @@ class TestFindDuplicate:
         catalog = LibraryCatalog(conn)
 
         candidate = BookMetadata(
-            title="Dune", authors=["Frank Herbert"],
+            title="Dune",
+            authors=["Frank Herbert"],
         )
         result = catalog.find_duplicate(candidate)
 
@@ -247,18 +258,24 @@ class TestImportMetadataDedup:
         catalog = LibraryCatalog(conn)
 
         epub1 = _make_epub_with_isbn(
-            tmp_path / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", "9780151446476", content_marker="edition-1",
+            tmp_path / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            "9780151446476",
+            content_marker="edition-1",
         )
         epub2 = _make_epub_with_isbn(
-            tmp_path / "rose_v2.epub", "Name of the Rose",
-            "Eco, Umberto", "978-0-15-144647-6", content_marker="edition-2",
+            tmp_path / "rose_v2.epub",
+            "Name of the Rose",
+            "Eco, Umberto",
+            "978-0-15-144647-6",
+            content_marker="edition-2",
         )
 
-        result1 = import_books([epub1], catalog)
+        result1 = import_books([epub1], catalog, library_root=tmp_path / "lib")
         assert result1.added == 1
 
-        result2 = import_books([epub2], catalog)
+        result2 = import_books([epub2], catalog, library_root=tmp_path / "lib")
         assert result2.added == 0
         assert result2.skipped == 1
         assert result2.skipped_metadata == 1
@@ -272,18 +289,22 @@ class TestImportMetadataDedup:
         catalog = LibraryCatalog(conn)
 
         epub1 = _make_epub_unique(
-            tmp_path / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="version-1",
+            tmp_path / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="version-1",
         )
         epub2 = _make_epub_unique(
-            tmp_path / "rose_v2.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="version-2",
+            tmp_path / "rose_v2.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="version-2",
         )
 
-        result1 = import_books([epub1], catalog)
+        result1 = import_books([epub1], catalog, library_root=tmp_path / "lib")
         assert result1.added == 1
 
-        result2 = import_books([epub2], catalog)
+        result2 = import_books([epub2], catalog, library_root=tmp_path / "lib")
         assert result2.added == 0
         assert result2.skipped == 1
         assert result2.skipped_metadata == 1
@@ -297,16 +318,22 @@ class TestImportMetadataDedup:
         catalog = LibraryCatalog(conn)
 
         epub1 = _make_epub_unique(
-            tmp_path / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="version-1",
+            tmp_path / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="version-1",
         )
         epub2 = _make_epub_unique(
-            tmp_path / "rose_v2.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="version-2",
+            tmp_path / "rose_v2.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="version-2",
         )
 
-        import_books([epub1], catalog)
-        result = import_books([epub2], catalog, force_duplicates=True)
+        import_books([epub1], catalog, library_root=tmp_path / "lib")
+        result = import_books(
+            [epub2], catalog, library_root=tmp_path / "lib", force_duplicates=True
+        )
 
         assert result.added == 1
         assert result.forced == 1
@@ -317,7 +344,11 @@ class TestImportMetadataDedup:
 
 
 def _make_epub_unique(
-    path: Path, title: str, author: str, *, content_marker: str = "",
+    path: Path,
+    title: str,
+    author: str,
+    *,
+    content_marker: str = "",
 ) -> Path:
     """Create a minimal EPUB with unique content to produce distinct hashes."""
     book = epub.EpubBook()
@@ -327,7 +358,9 @@ def _make_epub_unique(
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
         b"<html><body><h1>Chapter 1</h1>"
@@ -345,8 +378,12 @@ def _make_epub_unique(
 
 
 def _make_epub_with_isbn(
-    path: Path, title: str, author: str, isbn: str,
-    *, content_marker: str = "",
+    path: Path,
+    title: str,
+    author: str,
+    isbn: str,
+    *,
+    content_marker: str = "",
 ) -> Path:
     """Create a minimal EPUB with title, author, ISBN, and unique content.
 
@@ -361,7 +398,9 @@ def _make_epub_with_isbn(
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
         b"<html><body><h1>Chapter 1</h1>"
@@ -398,7 +437,9 @@ class TestImportConvertIntegration:
 
         # Create another real EPUB that convert_one will "produce"
         converted_epub = _make_epub(
-            tmp_path / "converted.epub", "Converted Book", "Author B",
+            tmp_path / "converted.epub",
+            "Converted Book",
+            "Author B",
         )
         fake_result = ConvertResult(
             source=mobi_path,

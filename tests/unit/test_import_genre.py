@@ -28,12 +28,12 @@ def _make_epub(path: Path, title: str, *, author: str | None = None) -> Path:
         book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
-        b"<html><body><h1>Chapter 1</h1>"
-        b"<p>Content for " + title.encode() + b".</p>"
-        b"</body></html>"
+        b"<html><body><h1>Chapter 1</h1><p>Content for " + title.encode() + b".</p></body></html>"
     )
     book.add_item(chapter)
     book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
@@ -61,7 +61,9 @@ class TestImportWithGenres:
             meta.subjects = ["fiction", "mystery", "detective stories"]
             return MatchResult(metadata=meta)
 
-        result = import_books([epub_path], catalog, match_fn=match_fn)
+        result = import_books(
+            [epub_path], catalog, library_root=tmp_path / "lib", match_fn=match_fn
+        )
         assert result.added == 1
 
         # Check genres were assigned
@@ -80,7 +82,7 @@ class TestImportWithGenres:
         """Import without subjects assigns no genres."""
         epub_path = _make_epub(tmp_path / "plain.epub", "Plain Book")
 
-        result = import_books([epub_path], catalog)
+        result = import_books([epub_path], catalog, library_root=tmp_path / "lib")
         assert result.added == 1
 
         genres = catalog.get_genres_for_book(1)
@@ -99,7 +101,9 @@ class TestImportWithGenres:
             meta.subjects = ["xyzzy", "basket weaving"]
             return MatchResult(metadata=meta)
 
-        result = import_books([epub_path], catalog, match_fn=match_fn)
+        result = import_books(
+            [epub_path], catalog, library_root=tmp_path / "lib", match_fn=match_fn
+        )
         assert result.added == 1
 
         # Subjects stored
