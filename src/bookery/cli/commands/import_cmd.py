@@ -1,6 +1,7 @@
 # ABOUTME: The `bookery import` command for scanning and cataloging EPUBs.
 # ABOUTME: Walks a directory, extracts metadata, and stores records in the library DB.
 
+import tempfile
 from pathlib import Path
 
 import click
@@ -11,7 +12,14 @@ from bookery.cli._match_helpers import (
     build_progress_fn,
     format_skip_breakdown,
 )
+from bookery.cli._pdf_support import (
+    PdfPair,
+    convert_pdf_to_pair,
+    place_kepubs_alongside_epubs,
+    wrap_match_fn_capturing_paths,
+)
 from bookery.cli.options import db_option
+from bookery.convert.errors import ConvertError
 from bookery.core.config import get_library_root
 from bookery.core.dedup import filter_redundant_mobis
 from bookery.core.importer import MatchFn, import_books
@@ -29,6 +37,34 @@ def _find_epubs(directory: Path) -> list[Path]:
 def _find_mobis(directory: Path) -> list[Path]:
     """Recursively find all .mobi files in a directory."""
     return sorted(directory.rglob("*.mobi"))
+
+
+def _find_pdfs(directory: Path) -> list[Path]:
+    """Recursively find all .pdf files in a directory."""
+    return sorted(directory.rglob("*.pdf"))
+
+
+def _convert_pdfs(
+    pdf_files: list[Path],
+    tempdir: Path,
+) -> tuple[list[PdfPair], list[tuple[Path, str]]]:
+    """Convert PDFs to EPUB+KEPUB pairs under tempdir; return pairs + per-file errors."""
+    pairs: list[PdfPair] = []
+    failures: list[tuple[Path, str]] = []
+    total = len(pdf_files)
+    console.print(f"Converting [bold]{total}[/bold] PDF file(s)…\n")
+    for i, pdf in enumerate(pdf_files, 1):
+        console.print(f"  [{i}/{total}] {pdf.name}… ", end="")
+        try:
+            pair_dir = tempdir / f"pdf_{i:04d}"
+            pair_dir.mkdir(parents=True, exist_ok=True)
+            pair = convert_pdf_to_pair(pdf, pair_dir, console=console)
+            pairs.append(pair)
+            console.print("[green]done[/green]")
+        except ConvertError as exc:
+            failures.append((pdf, str(exc)))
+            console.print(f"[red]failed:[/red] {exc}")
+    return pairs, failures
 
 
 def _convert_mobis(
@@ -152,6 +188,8 @@ def import_command(
 ) -> None:
     """Scan a directory for EPUB files and catalog them in the library."""
     epub_files = _find_epubs(directory)
+    pdf_pairs: list[PdfPair] = []
+    pdf_tempdir_ctx: tempfile.TemporaryDirectory[str] | None = None
 
     if do_convert:
         mobi_files = _find_mobis(directory)
@@ -167,6 +205,19 @@ def import_command(
         if mobi_files:
             epub_files = _convert_mobis(mobi_files, epub_files, output_dir)
 
+    pdf_files = _find_pdfs(directory)
+    if pdf_files:
+        if do_move:
+            console.print(
+                "[yellow]warning:[/yellow] --move ignored for PDF inputs — "
+                "source PDFs are preserved.\n"
+            )
+        pdf_tempdir_ctx = tempfile.TemporaryDirectory(prefix="bookery-pdf-")
+        tempdir = Path(pdf_tempdir_ctx.name)
+        pairs, _ = _convert_pdfs(pdf_files, tempdir)
+        pdf_pairs = pairs
+        epub_files.extend(pair.epub for pair in pairs)
+
     if not epub_files:
         if do_convert:
             console.print(
@@ -176,6 +227,8 @@ def import_command(
             console.print(
                 f"[yellow]No EPUB files found in {directory}[/yellow]",
             )
+        if pdf_tempdir_ctx is not None:
+            pdf_tempdir_ctx.cleanup()
         return
 
     console.print(f"Found [bold]{len(epub_files)}[/bold] EPUB file(s)\n")
@@ -196,14 +249,23 @@ def import_command(
 
     on_progress = build_progress_fn(console)
 
+    # PDFs were converted from preserved sources; never attempt to delete the temp EPUBs.
+    pdf_epub_set = {pair.epub for pair in pdf_pairs}
+    effective_move = do_move and not pdf_epub_set
+
+    wrapped_match, captured = wrap_match_fn_capturing_paths(match_fn)
+
     result = import_books(
         epub_files, catalog,
         library_root=library_root,
-        match_fn=match_fn,
-        move=do_move,
+        match_fn=wrapped_match,
+        move=effective_move,
         force_duplicates=force_duplicates,
         on_progress=on_progress,
     )
+
+    if pdf_pairs:
+        place_kepubs_alongside_epubs(pdf_pairs, captured, console)
 
     # Summary
     console.print()  # blank line before summary
@@ -227,3 +289,6 @@ def import_command(
             console.print(f"  [dim]{path.name}:[/dim] {msg}")
 
     conn.close()
+
+    if pdf_tempdir_ctx is not None:
+        pdf_tempdir_ctx.cleanup()
