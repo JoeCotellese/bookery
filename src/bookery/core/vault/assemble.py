@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,16 +42,20 @@ def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
     return result
 
 
-def _strip_leading_duplicate_h1(body: str, title: str) -> str:
-    """Drop the body's leading H1 when it matches the resolved title (avoids TOC duplication)."""
-    stripped = body.lstrip("\n")
-    if not stripped.startswith("# "):
-        return body
-    first_line, _, rest = stripped.partition("\n")
-    heading = first_line[2:].strip()
-    if heading == title.strip():
-        return rest.lstrip("\n")
-    return body
+_H1_LINE_RE = re.compile(r"^# (.+)$", re.MULTILINE)
+
+
+def _demote_body_h1s(body: str) -> str:
+    """Demote every H1 in a note body to H2.
+
+    The assembler emits its own H1 per note as the chapter heading. If the
+    body contains any H1 — whether it duplicates the title or not, and
+    regardless of where it appears — pandoc with ``--toc-depth=1`` would pick
+    it up as a sibling chapter and pollute the TOC with ghost entries. Pushing
+    every body H1 down one level keeps all in-note headings as subsections of
+    the chapter while preserving their text.
+    """
+    return _H1_LINE_RE.sub(r"## \1", body)
 
 
 @dataclass(slots=True)
@@ -97,7 +102,7 @@ def assemble_vault(
             if on_progress is not None:
                 on_progress(processed, total, note.title)
             display_title, unique_slug = disambiguated[id(note)]
-            body = _strip_leading_duplicate_h1(note.body, note.title)
+            body = _demote_body_h1s(note.body)
             body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
             broken_total += broken

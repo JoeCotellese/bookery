@@ -73,18 +73,27 @@ def test_on_progress_called_per_note(tmp_path: Path):
     assert sorted(title for _, _, title in seen) == ["A", "B", "C"]
 
 
-def test_leading_duplicate_h1_stripped(tmp_path: Path):
-    notes = [_note("Same Title", "F", "# Same Title\n\nreal body\n")]
+def test_body_h1_demoted_to_h2(tmp_path: Path):
+    # Any H1 in the body — matching or not, at the start or buried after
+    # other content — must be demoted so pandoc's --toc-depth=1 never picks
+    # it up as a sibling chapter.
+    notes = [_note("Same Title", "F", "![cover](x.png)\n\n# Same Title\n\nbody\n")]
     result = assemble_vault(notes, vault_path=tmp_path)
-    # Only the assembler-emitted anchor-bearing H1 should remain.
-    assert result.markdown.count("# Same Title") == 1
-    assert "# Same Title {#same-title}" in result.markdown
+    md = result.markdown
+    # Exactly one top-level heading per note: the assembler's anchor-bearing H1.
+    h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
+    assert h1_lines == ["# Same Title {#same-title}"]
+    h2_lines = [ln for ln in md.splitlines() if ln.startswith("## ")]
+    assert "## Same Title" in h2_lines
 
 
-def test_non_matching_h1_preserved(tmp_path: Path):
+def test_non_matching_body_h1_also_demoted(tmp_path: Path):
     notes = [_note("Title", "F", "# Different Heading\n\nbody\n")]
     result = assemble_vault(notes, vault_path=tmp_path)
-    assert "# Different Heading" in result.markdown
+    md = result.markdown
+    h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
+    assert h1_lines == ["# Title {#title}"]
+    assert "## Different Heading" in md
 
 
 def test_duplicate_titles_get_unique_slugs(tmp_path: Path):
