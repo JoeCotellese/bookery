@@ -1,44 +1,43 @@
-# ABOUTME: Unit tests for convert.llm — mocked openai client, cache hit/miss, retry, fallback.
+# ABOUTME: Unit tests for convert.llm — mocked openai client, cache hit/miss, retry, bad-response.
 
-import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from bookery.convert.cache import LLMCache
-from bookery.convert.chapters import plan_chapters
-from bookery.convert.llm import classify
-from bookery.convert.types import ChapterPlan, ChapterSpan, CleanBlock, CleanDoc
-from bookery.core.config import ConvertConfig
+from bookery.convert.errors import LLMBadResponse
+from bookery.convert.llm import extract_semantic
+from bookery.convert.types import Article, MagazineDoc, RawBlock, RawDoc, RawPage
+from bookery.core.config import SemanticConfig
 
 
 class FakeMessage:
-    def __init__(self, content: str) -> None:
+    def __init__(self, parsed: MagazineDoc | None = None, content: str = "") -> None:
         self.content = content
-        self.parsed = None
+        self.parsed = parsed
 
 
 class FakeChoice:
-    def __init__(self, content: str) -> None:
-        self.message = FakeMessage(content)
+    def __init__(self, message: FakeMessage) -> None:
+        self.message = message
 
 
 class FakeResponse:
-    def __init__(self, content: str) -> None:
-        self.choices = [FakeChoice(content)]
+    def __init__(self, message: FakeMessage) -> None:
+        self.choices = [FakeChoice(message)]
 
 
 class FakeCompletions:
-    def __init__(self, responses: list[str]) -> None:
-        self.responses = list(responses)
+    def __init__(self, messages: list[FakeMessage]) -> None:
+        self.messages = list(messages)
         self.calls = 0
 
     def parse(self, **_kwargs: Any) -> FakeResponse:
         self.calls += 1
-        if not self.responses:
+        if not self.messages:
             raise RuntimeError("no more fake responses")
-        return FakeResponse(self.responses.pop(0))
+        return FakeResponse(self.messages.pop(0))
 
 
 class FakeBetaChat:
@@ -52,8 +51,8 @@ class FakeBeta:
 
 
 class FakeClient:
-    def __init__(self, responses: list[str]) -> None:
-        self._completions = FakeCompletions(responses)
+    def __init__(self, messages: list[FakeMessage]) -> None:
+        self._completions = FakeCompletions(messages)
         self.beta = FakeBeta(self._completions)
 
 
@@ -63,108 +62,107 @@ def cache(tmp_path: Path) -> LLMCache:
 
 
 @pytest.fixture
-def cfg() -> ConvertConfig:
-    return ConvertConfig(llm_max_retries=3, prompt_version=1, llm_model="test-model")
-
-
-def _doc_and_plan(texts: list[str]) -> tuple[CleanDoc, ChapterPlan]:
-    doc = CleanDoc(
-        blocks=tuple(CleanBlock(text=t, page=1, font_size=11.0) for t in texts),
-        outline=(),
+def cfg() -> SemanticConfig:
+    return SemanticConfig(
+        provider="lm-studio",
+        model="test-model",
+        base_url="http://localhost:1234/v1",
+        llm_max_retries=2,
     )
-    plan = ChapterPlan(
-        spans=(ChapterSpan(title="Chapter One", start=0, end=len(texts)),),
-        source="heuristic",
+
+
+def _raw_doc(texts: list[str]) -> RawDoc:
+    blocks = tuple(
+        RawBlock(text=t, page=1, bbox=(0, 0, 100, 20), font_size=11.0)
+        for t in texts
     )
-    return doc, plan
+    page = RawPage(number=1, width=600, height=800, blocks=blocks)
+    return RawDoc(pages=(page,), outline=())
 
 
-def test_classify_happy_path(cache: LLMCache, cfg: ConvertConfig) -> None:
-    doc, plan = _doc_and_plan(["Title heading", "A paragraph.", "Another paragraph."])
-    response = json.dumps({"classifications": ["h1", "p", "p"]})
-    fake = FakeClient([response])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    assert len(result.chapters) == 1
-    kinds = [b.kind for b in result.chapters[0].blocks]
-    assert kinds == ["h1", "p", "p"]
+def _doc() -> MagazineDoc:
+    return MagazineDoc(
+        publication="The New Yorker",
+        issue="April 13, 2026",
+        articles=[
+            Article(title="Piece One", body="Paragraph one.\n\nParagraph two."),
+            Article(title="Piece Two", section="BOOKS", body="Body here."),
+        ],
+    )
 
 
-def test_cache_hit_skips_llm(cache: LLMCache, cfg: ConvertConfig) -> None:
-    doc, plan = _doc_and_plan(["A.", "B."])
-    response = json.dumps({"classifications": ["p", "p"]})
-    fake1 = FakeClient([response])
-    classify(doc, plan, cache, cfg, client_factory=lambda _c: fake1)
+def test_extract_happy_path(cache: LLMCache, cfg: SemanticConfig) -> None:
+    raw = _raw_doc(["Some title", "Some paragraph."])
+    doc = _doc()
+    fake = FakeClient([FakeMessage(parsed=doc)])
+    result = extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+    assert len(result.articles) == 2
+    assert result.publication == "The New Yorker"
+    assert fake._completions.calls == 1
+
+
+def test_cache_hit_skips_llm(cache: LLMCache, cfg: SemanticConfig) -> None:
+    raw = _raw_doc(["A", "B"])
+    doc = _doc()
+    fake1 = FakeClient([FakeMessage(parsed=doc)])
+    extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake1)
     assert fake1._completions.calls == 1
 
     fake2 = FakeClient([])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake2)
+    result = extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake2)
     assert fake2._completions.calls == 0
-    assert [b.kind for b in result.chapters[0].blocks] == ["p", "p"]
+    assert len(result.articles) == 2
+
+
+def test_empty_articles_retries_then_raises(
+    cache: LLMCache, cfg: SemanticConfig
+) -> None:
+    raw = _raw_doc(["garbled"])
+    empty = MagazineDoc(articles=[])
+    fake = FakeClient([FakeMessage(parsed=empty), FakeMessage(parsed=empty)])
+    with pytest.raises(LLMBadResponse):
+        extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+    assert fake._completions.calls == 2
 
 
 def test_malformed_json_retries_then_succeeds(
-    cache: LLMCache, cfg: ConvertConfig
+    cache: LLMCache, cfg: SemanticConfig
 ) -> None:
-    doc, plan = _doc_and_plan(["X.", "Y."])
-    good = json.dumps({"classifications": ["p", "p"]})
-    fake = FakeClient(["not json at all", good])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    assert fake._completions.calls == 2
-    assert [b.kind for b in result.chapters[0].blocks] == ["p", "p"]
-
-
-def test_all_retries_fail_falls_back_to_heuristic(
-    cache: LLMCache, cfg: ConvertConfig
-) -> None:
-    doc, plan = _doc_and_plan(["Big Heading", "body text here."])
-    # Make the first block significantly larger → heuristic should emit h2 for it.
-    doc = CleanDoc(
-        blocks=(
-            CleanBlock(text="Big Heading", page=1, font_size=18.0),
-            CleanBlock(text="body text here.", page=1, font_size=11.0),
-        ),
-        outline=(),
+    raw = _raw_doc(["x"])
+    good = _doc()
+    # First response: no parsed, invalid content → LLMBadResponse. Second: valid parsed.
+    fake = FakeClient(
+        [
+            FakeMessage(parsed=None, content="not valid json"),
+            FakeMessage(parsed=good),
+        ]
     )
-    fake = FakeClient(["bad", "still bad", "also bad"])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    kinds = [b.kind for b in result.chapters[0].blocks]
-    assert kinds[0] == "h2"
-    assert kinds[1] == "p"
-    assert any("heuristic" in w for w in result.warnings)
+    result = extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+    assert fake._completions.calls == 2
+    assert len(result.articles) == 2
 
 
-def test_invalid_kind_coerced_to_p(cache: LLMCache, cfg: ConvertConfig) -> None:
-    doc, plan = _doc_and_plan(["X."])
-    response = json.dumps({"classifications": ["bogus"]})
-    fake = FakeClient([response])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    assert result.chapters[0].blocks[0].kind == "p"
-
-
-def test_short_response_padded_with_p(
-    cache: LLMCache, cfg: ConvertConfig
+def test_empty_content_raises_after_retries(
+    cache: LLMCache, cfg: SemanticConfig
 ) -> None:
-    doc, plan = _doc_and_plan(["A.", "B.", "C.", "D.", "E."])
-    response = json.dumps({"classifications": ["h1", "p"]})
-    fake = FakeClient([response])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    kinds = [b.kind for b in result.chapters[0].blocks]
-    assert kinds == ["h1", "p", "p", "p", "p"]
+    raw = _raw_doc(["x"])
+    fake = FakeClient(
+        [
+            FakeMessage(parsed=None, content=""),
+            FakeMessage(parsed=None, content=""),
+        ]
+    )
+    with pytest.raises(LLMBadResponse):
+        extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
 
 
-def test_long_response_truncated(
-    cache: LLMCache, cfg: ConvertConfig
-) -> None:
-    doc, plan = _doc_and_plan(["A.", "B."])
-    response = json.dumps({"classifications": ["h1", "h2", "p", "p", "li"]})
-    fake = FakeClient([response])
-    result = classify(doc, plan, cache, cfg, client_factory=lambda _c: fake)
-    kinds = [b.kind for b in result.chapters[0].blocks]
-    assert kinds == ["h1", "h2"]
-
-
-def test_empty_plan_returns_empty_doc(cache: LLMCache, cfg: ConvertConfig) -> None:
-    empty = CleanDoc(blocks=(), outline=())
-    empty_plan = plan_chapters(empty)
-    result = classify(empty, empty_plan, cache, cfg, client_factory=lambda _c: FakeClient([]))
-    assert result.chapters == ()
+def test_content_json_fallback_parses(cache: LLMCache, cfg: SemanticConfig) -> None:
+    raw = _raw_doc(["x"])
+    payload = MagazineDoc(
+        articles=[Article(title="Only", body="Body.")],
+    ).model_dump_json()
+    # parsed is None, but content carries the JSON — should parse and succeed.
+    fake = FakeClient([FakeMessage(parsed=None, content=payload)])
+    result = extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
+    assert len(result.articles) == 1
+    assert result.articles[0].title == "Only"

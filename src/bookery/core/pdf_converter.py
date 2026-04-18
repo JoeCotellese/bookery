@@ -1,4 +1,4 @@
-# ABOUTME: Orchestrates the PDF→EPUB→KEPUB pipeline end to end.
+# ABOUTME: Orchestrates the PDF→EPUB pipeline: extract → semantic LLM pass → assemble.
 # ABOUTME: Returns a PdfConvertResult the CLI hands to core.pipeline.match_one.
 
 from collections.abc import Callable
@@ -9,25 +9,21 @@ from typing import Any
 from rich.console import Console
 
 from bookery.convert import assemble as assemble_mod
-from bookery.convert import chapters as chapters_mod
-from bookery.convert import clean as clean_mod
 from bookery.convert import extract as extract_mod
-from bookery.convert import kepub as kepub_mod
 from bookery.convert import llm as llm_mod
 from bookery.convert import preflight as preflight_mod
 from bookery.convert.cache import LLMCache
-from bookery.core.config import ConvertConfig, load_config
+from bookery.core.config import ConvertConfig, SemanticConfig, load_config
 
 
 @dataclass(frozen=True)
 class PdfConvertResult:
     source: Path
     epub_path: Path
-    kepub_path: Path
     warnings: tuple[str, ...]
 
 
-ClientFactory = Callable[[ConvertConfig], Any]
+ClientFactory = Callable[[SemanticConfig], Any]
 
 
 def convert_pdf(
@@ -39,7 +35,7 @@ def convert_pdf(
     console: Console | None = None,
     client_factory: ClientFactory | None = None,
 ) -> PdfConvertResult:
-    """Run the full PDF→EPUB→KEPUB pipeline; raises convert.errors on failure.
+    """Run the full PDF→EPUB pipeline; raises convert.errors on failure.
 
     The caller owns `out_dir` (typically a tempdir) and is responsible for cleanup.
     Preflight runs first so missing dependencies fail fast before any heavy work.
@@ -48,35 +44,27 @@ def convert_pdf(
     resolved_cfg = cfg or resolved.convert
     resolved_data = data_dir or resolved.data_dir
 
-    preflight_mod.check_kepubify()
-    preflight_mod.check_llm(resolved_cfg.llm_base_url)
+    preflight_mod.check_llm(resolved_cfg.semantic.base_url)
     preflight_mod.check_pdf(src)
 
     raw = extract_mod.extract(src)
-    cleaned = clean_mod.clean(
-        raw, header_footer_threshold=resolved_cfg.header_footer_threshold
-    )
-    plan = chapters_mod.plan_chapters(cleaned)
 
     cache = LLMCache(resolved_data / "convert_cache.db")
-    classified = llm_mod.classify(
-        cleaned,
-        plan,
+    doc = llm_mod.extract_semantic(
+        raw,
+        resolved_cfg.semantic,
         cache,
-        resolved_cfg,
-        client_factory=client_factory,
         console=console,
+        client_factory=client_factory,
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     epub_path = assemble_mod.assemble(
-        classified, out_dir, stem=src.stem, title_hint=src.stem
+        doc, out_dir, stem=src.stem, title_hint=src.stem
     )
-    kepub_path = kepub_mod.run_kepubify(epub_path, out_dir=out_dir)
 
     return PdfConvertResult(
         source=src,
         epub_path=epub_path,
-        kepub_path=kepub_path,
-        warnings=classified.warnings,
+        warnings=(),
     )

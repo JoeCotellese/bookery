@@ -13,12 +13,7 @@ from bookery.cli._match_helpers import (
     build_progress_fn,
     format_skip_breakdown,
 )
-from bookery.cli._pdf_support import (
-    PdfPair,
-    convert_pdf_to_pair,
-    place_kepubs_via_catalog,
-    snapshot_epub_hashes,
-)
+from bookery.cli._pdf_support import convert_pdf_to_epub
 from bookery.cli.options import db_option
 from bookery.convert.errors import ConvertError
 from bookery.core.config import get_library_root
@@ -110,7 +105,6 @@ def add_command(
 
     on_progress = build_progress_fn(console)
 
-    pdf_pairs: list[PdfPair] = []
     temp_ctx: tempfile.TemporaryDirectory[str] | None = None
 
     try:
@@ -124,13 +118,11 @@ def add_command(
             temp_ctx = tempfile.TemporaryDirectory(prefix="bookery-pdf-")
             tempdir = Path(temp_ctx.name)
             try:
-                pair = convert_pdf_to_pair(file, tempdir, console=console)
+                epub_to_import = convert_pdf_to_epub(file, tempdir, console=console)
             except ConvertError as exc:
                 console.print(f"[red]error:[/red] {exc}")
                 conn.close()
                 raise click.exceptions.Exit(exc.exit_code) from exc
-            pdf_pairs.append(pair)
-            epub_to_import = pair.epub
         else:
             epub_to_import = file
             idempotent = _is_inside(file, library_root)
@@ -139,8 +131,6 @@ def add_command(
                     f"Copying to [bold]{library_root}[/bold]…",
                 )
 
-        pdf_hashes = snapshot_epub_hashes(pdf_pairs)
-
         result = import_books(
             [epub_to_import], catalog,
             library_root=library_root,
@@ -148,9 +138,6 @@ def add_command(
             move=do_move,
             on_progress=on_progress,
         )
-
-        if pdf_pairs:
-            place_kepubs_via_catalog(pdf_pairs, pdf_hashes, catalog, console)
     finally:
         if temp_ctx is not None:
             temp_ctx.cleanup()

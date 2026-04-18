@@ -1,232 +1,130 @@
-# ABOUTME: LLM-assisted structural classification of CleanBlocks into h1/h2/h3/p/blockquote/li.
-# ABOUTME: Talks to LM Studio via the OpenAI SDK, with retry-on-bad-JSON and SQLite cache.
+# ABOUTME: Single-call semantic extraction — turns extracted PDF text into a MagazineDoc via LLM.
+# ABOUTME: Uses the openai SDK (LM Studio and OpenAI both implement the same API) + SQLite cache.
 
-import json
-from collections.abc import Callable, Iterable, Sequence
-from statistics import median
-from typing import Any, Literal
+from collections.abc import Callable
+from typing import Any
 
-from pydantic import BaseModel
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeRemainingColumn,
-)
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from bookery.convert.cache import LLMCache, make_key
 from bookery.convert.errors import LLMBadResponse
-from bookery.convert.types import (
-    ChapterPlan,
-    ChapterSpan,
-    ClassifiedBlock,
-    ClassifiedChapter,
-    ClassifiedDoc,
-    CleanBlock,
-    CleanDoc,
-)
-from bookery.core.config import ConvertConfig
+from bookery.convert.types import MagazineDoc, RawDoc
+from bookery.core.config import SemanticConfig
 
-BlockKind = Literal["h1", "h2", "h3", "p", "blockquote", "li"]
-VALID_KINDS: set[str] = {"h1", "h2", "h3", "p", "blockquote", "li"}
-CHUNK_SIZE = 15  # blocks per LLM call — keep well under typical 4K-token windows
+SYSTEM_PROMPT = """You extract the substantive articles from a PDF magazine or book.
+The input text was machine-extracted and may contain interleaved columns, page
+numbers, running headers, and advertisements.
 
-
-class Classifications(BaseModel):
-    """Structured output schema for a single LLM classification chunk."""
-
-    classifications: list[BlockKind]
-
-SYSTEM_PROMPT = (
-    "You classify paragraph blocks from a book PDF into structural tags. "
-    "Respond with JSON of shape "
-    '{"classifications": ["p", "h2", "li", ...]} '
-    "containing one entry per input block in the same order. "
-    "Allowed tags: h1, h2, h3, p, blockquote, li."
-)
+Your job:
+1. Identify the publication title and issue (if applicable).
+2. Extract each coherent article/chapter. Skip advertisements, house ads,
+   subscription pitches, cover-art descriptions, and incidental marginalia.
+3. For each article/chapter: title, section (if present), byline (if present),
+   dek/subhead (if present), and complete body text with paragraphs in correct
+   reading order. Reassemble prose from interleaved columns. Use the source
+   wording verbatim — do not summarize or paraphrase.
+4. Return JSON matching the schema.
+"""
 
 
-ClientFactory = Callable[[ConvertConfig], Any]
+ClientFactory = Callable[[SemanticConfig], Any]
 
 
-def _default_client_factory(cfg: ConvertConfig) -> Any:
+def _default_client_factory(cfg: SemanticConfig) -> Any:
     # Lazy import so tests that mock this factory don't pay the openai import cost.
     from openai import OpenAI
 
-    return OpenAI(base_url=cfg.llm_base_url, api_key=cfg.llm_api_key)
+    return OpenAI(base_url=cfg.base_url, api_key=cfg.resolve_api_key() or "placeholder")
 
 
-def _chunks(blocks: Sequence[CleanBlock], size: int) -> Iterable[Sequence[CleanBlock]]:
-    for i in range(0, len(blocks), size):
-        yield blocks[i : i + size]
+def _serialize_raw(raw: RawDoc) -> str:
+    """Serialize RawDoc into a single text blob with page markers for the LLM."""
+    chunks: list[str] = []
+    for page in raw.pages:
+        chunks.append(f"--- PAGE {page.number} ---")
+        for block in page.blocks:
+            text = block.text.strip()
+            if text:
+                chunks.append(text)
+    if raw.outline:
+        chunks.append("--- OUTLINE ---")
+        for entry in raw.outline:
+            indent = "  " * max(0, entry.level - 1)
+            chunks.append(f"{indent}{entry.title} (p.{entry.page})")
+    return "\n".join(chunks)
 
 
-def _chunk_text(chunk: Sequence[CleanBlock]) -> str:
-    lines = [f"{i + 1}. {b.text}" for i, b in enumerate(chunk)]
-    return "\n".join(lines)
-
-
-def _heuristic_kinds(chunk: Sequence[CleanBlock], is_first_chunk: bool) -> list[str]:
-    if not chunk:
-        return []
-    baseline = median(b.font_size for b in chunk)
-    kinds: list[str] = []
-    for idx, block in enumerate(chunk):
-        heading_leader = (
-            idx == 0 and is_first_chunk and block.font_size >= baseline * 1.1
-        )
-        heading_inline = (
-            block.font_size >= baseline * 1.3 and len(block.text) <= 120
-        )
-        if heading_leader or heading_inline:
-            kinds.append("h2")
-        else:
-            kinds.append("p")
-    return kinds
-
-
-def _parse_response(raw: str, expected: int) -> list[str]:
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise LLMBadResponse(f"invalid JSON: {exc}") from exc
-    if not isinstance(data, dict):
-        raise LLMBadResponse("top-level JSON is not an object")
-    classifications = data.get("classifications")
-    if not isinstance(classifications, list):
-        raise LLMBadResponse("missing 'classifications' list")
-    out: list[str] = []
-    for item in classifications:
-        kind = str(item).lower()
-        if kind not in VALID_KINDS:
-            kind = "p"
-        out.append(kind)
-    # Many local models summarize/merge/split inputs and return a different count.
-    # Don't burn retries on this — pad with 'p' or truncate to the expected length.
-    if len(out) < expected:
-        out.extend(["p"] * (expected - len(out)))
-    elif len(out) > expected:
-        out = out[:expected]
-    return out
-
-
-def _call_llm(client: Any, cfg: ConvertConfig, prompt_text: str) -> str:
-    """Ask the LLM to classify blocks; returns raw JSON text matching Classifications."""
+def _call_llm(client: Any, cfg: SemanticConfig, text_blob: str) -> MagazineDoc:
     response = client.beta.chat.completions.parse(
-        model=cfg.llm_model,
-        response_format=Classifications,
+        model=cfg.model,
+        response_format=MagazineDoc,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt_text},
+            {"role": "user", "content": text_blob},
         ],
     )
     message = response.choices[0].message
     parsed = getattr(message, "parsed", None)
-    if isinstance(parsed, Classifications):
-        return parsed.model_dump_json()
+    if isinstance(parsed, MagazineDoc):
+        return parsed
     content = message.content or ""
     if not content.strip():
         raise LLMBadResponse("empty response from model")
-    return content
+    try:
+        return MagazineDoc.model_validate_json(content)
+    except Exception as exc:
+        raise LLMBadResponse(f"could not parse MagazineDoc: {exc}") from exc
 
 
-def _classify_chunk(
-    chunk: Sequence[CleanBlock],
-    *,
-    client: Any,
+def extract_semantic(
+    raw: RawDoc,
+    cfg: SemanticConfig,
     cache: LLMCache,
-    cfg: ConvertConfig,
-    warnings: list[str],
-    is_first_chunk: bool,
-) -> list[str]:
-    if not chunk:
-        return []
-    prompt_text = _chunk_text(chunk)
-    key = make_key(cfg.prompt_version, cfg.llm_model, prompt_text)
-    cached = cache.get(key)
-    if cached is not None:
-        try:
-            return _parse_response(cached, expected=len(chunk))
-        except LLMBadResponse:
-            pass  # fall through to re-query on corrupt cache entry
-
-    last_err: Exception | None = None
-    for _ in range(max(1, cfg.llm_max_retries)):
-        try:
-            raw = _call_llm(client, cfg, prompt_text)
-            kinds = _parse_response(raw, expected=len(chunk))
-            cache.put(key, raw)
-            return kinds
-        except LLMBadResponse as exc:
-            last_err = exc
-            continue
-        except Exception as exc:  # network/timeout/etc — retry, then fall back
-            last_err = exc
-            continue
-
-    warnings.append(
-        f"LLM classification failed after retries ({last_err}); using heuristic."
-    )
-    return _heuristic_kinds(chunk, is_first_chunk=is_first_chunk)
-
-
-def _chapter_blocks(doc: CleanDoc, span: ChapterSpan) -> Sequence[CleanBlock]:
-    return doc.blocks[span.start : span.end]
-
-
-def classify(
-    doc: CleanDoc,
-    plan: ChapterPlan,
-    cache: LLMCache,
-    cfg: ConvertConfig,
     *,
     client_factory: ClientFactory | None = None,
     console: Console | None = None,
-) -> ClassifiedDoc:
-    """Classify each CleanBlock into h1/h2/h3/p/blockquote/li via LM Studio + cache."""
-    if not plan.spans:
-        return ClassifiedDoc(chapters=())
+) -> MagazineDoc:
+    """Run one LLM call over the full extracted text; return a validated MagazineDoc."""
+    text_blob = _serialize_raw(raw)
+    key = make_key(cfg.prompt_version, cfg.model, text_blob)
+
+    cached = cache.get(key)
+    if cached is not None:
+        try:
+            return MagazineDoc.model_validate_json(cached)
+        except Exception:
+            pass  # corrupt entry — refetch
 
     factory = client_factory or _default_client_factory
     client = factory(cfg)
-    warnings: list[str] = []
-    chapters: list[ClassifiedChapter] = []
 
     columns = (
         SpinnerColumn(),
         TextColumn("[bold]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeRemainingColumn(),
+        TimeElapsedColumn(),
     )
     progress = Progress(*columns, console=console, transient=True, disable=console is None)
 
+    last_err: Exception | None = None
     with progress:
-        task_id = progress.add_task("Classifying chapters", total=len(plan.spans))
-        for span in plan.spans:
-            blocks = _chapter_blocks(doc, span)
-            chapter_classified: list[ClassifiedBlock] = []
-            for chunk_idx, chunk in enumerate(_chunks(blocks, CHUNK_SIZE)):
-                kinds = _classify_chunk(
-                    chunk,
-                    client=client,
-                    cache=cache,
-                    cfg=cfg,
-                    warnings=warnings,
-                    is_first_chunk=(chunk_idx == 0),
-                )
-                for block, kind in zip(chunk, kinds, strict=True):
-                    chapter_classified.append(
-                        ClassifiedBlock(text=block.text, kind=kind)
-                    )
-            chapters.append(
-                ClassifiedChapter(
-                    title=span.title, blocks=tuple(chapter_classified)
-                )
-            )
-            progress.advance(task_id)
+        progress.add_task("Classifying document…", total=None)
+        for _ in range(max(1, cfg.llm_max_retries)):
+            try:
+                doc = _call_llm(client, cfg, text_blob)
+            except LLMBadResponse as exc:
+                last_err = exc
+                continue
+            except Exception as exc:
+                last_err = exc
+                continue
+            if not doc.articles:
+                last_err = LLMBadResponse("model returned zero articles")
+                continue
+            cache.put(key, doc.model_dump_json())
+            return doc
 
-    return ClassifiedDoc(chapters=tuple(chapters), warnings=tuple(warnings))
+    if isinstance(last_err, LLMBadResponse):
+        raise last_err
+    detail = str(last_err) if last_err else "unknown error"
+    raise LLMBadResponse(f"LLM call failed after retries: {detail}")

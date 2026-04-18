@@ -1,7 +1,9 @@
-# ABOUTME: Frozen dataclass hierarchy for PDF conversion stages.
-# ABOUTME: RawDoc -> CleanDoc -> ClassifiedDoc; immutable snapshots between pipeline stages.
+# ABOUTME: Types for PDF conversion — raw extraction dataclasses and semantic pydantic models.
+# ABOUTME: RawDoc feeds the LLM; MagazineDoc is the validated semantic response used by assemble.
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,48 +38,15 @@ class RawDoc:
     outline: tuple[OutlineEntry, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class CleanBlock:
-    text: str
-    page: int
-    font_size: float
-
-
-@dataclass(frozen=True, slots=True)
-class CleanDoc:
-    blocks: tuple[CleanBlock, ...]
-    outline: tuple[OutlineEntry, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ChapterSpan:
+class Article(BaseModel):
     title: str
-    # Inclusive start, exclusive end, indexing into CleanDoc.blocks
-    start: int
-    end: int
+    section: str | None = None
+    byline: str | None = None
+    dek: str | None = None
+    body: str
 
 
-@dataclass(frozen=True, slots=True)
-class ChapterPlan:
-    spans: tuple[ChapterSpan, ...]
-    # "outline" when derived from PDF outline, "heuristic" when inferred from font sizes
-    source: str
-
-
-@dataclass(frozen=True, slots=True)
-class ClassifiedBlock:
-    text: str
-    # One of: h1, h2, h3, p, blockquote, li
-    kind: str
-
-
-@dataclass(frozen=True, slots=True)
-class ClassifiedChapter:
-    title: str
-    blocks: tuple[ClassifiedBlock, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ClassifiedDoc:
-    chapters: tuple[ClassifiedChapter, ...]
-    warnings: tuple[str, ...] = field(default_factory=tuple)
+class MagazineDoc(BaseModel):
+    publication: str | None = None
+    issue: str | None = None
+    articles: list[Article]

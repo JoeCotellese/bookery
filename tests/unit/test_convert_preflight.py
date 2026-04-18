@@ -8,22 +8,11 @@ import pytest
 
 from bookery.convert import preflight
 from bookery.convert.errors import (
-    KepubifyMissing,
     LLMUnreachable,
     PdfEncrypted,
     PdfScanned,
 )
 from tests.fixtures.pdf_factory import write_blank_pdf, write_text_pdf
-
-
-def test_check_kepubify_found() -> None:
-    path = preflight.check_kepubify(which=lambda name: "/usr/local/bin/" + name)
-    assert path == "/usr/local/bin/kepubify"
-
-
-def test_check_kepubify_missing() -> None:
-    with pytest.raises(KepubifyMissing):
-        preflight.check_kepubify(which=lambda _name: None)
 
 
 def test_check_llm_reachable(monkeypatch: pytest.MonkeyPatch) -> None:

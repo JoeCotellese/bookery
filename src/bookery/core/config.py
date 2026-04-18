@@ -13,22 +13,33 @@ DEFAULT_LIBRARY_DIR_NAME = ".library"
 DEFAULT_DATA_DIR_NAME = "data"
 ENV_LIBRARY_ROOT = "BOOKERY_LIBRARY_ROOT"
 
-DEFAULT_LLM_BASE_URL = "http://localhost:1234/v1"
-DEFAULT_LLM_MODEL = "qwen2.5-7b-instruct"
-DEFAULT_LLM_API_KEY = "lm-studio"
-DEFAULT_LLM_MAX_RETRIES = 3
+DEFAULT_PROVIDER = "lm-studio"
+DEFAULT_MODEL = "qwen2.5-7b-instruct-1m"
+DEFAULT_BASE_URL = "http://localhost:1234/v1"
+DEFAULT_API_KEY_ENV = ""
 DEFAULT_PROMPT_VERSION = 1
-DEFAULT_HEADER_FOOTER_THRESHOLD = 0.6
+DEFAULT_LLM_MAX_RETRIES = 2
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticConfig:
+    provider: str = DEFAULT_PROVIDER          # "lm-studio" | "openai" | "anthropic"
+    model: str = DEFAULT_MODEL
+    base_url: str = DEFAULT_BASE_URL
+    api_key_env: str = DEFAULT_API_KEY_ENV    # env var name; "" for local
+    prompt_version: int = DEFAULT_PROMPT_VERSION
+    llm_max_retries: int = DEFAULT_LLM_MAX_RETRIES
+
+    def resolve_api_key(self) -> str:
+        """Resolve api_key_env to the actual key at use time. '' for local endpoints."""
+        if not self.api_key_env:
+            return "lm-studio"  # placeholder required by openai SDK; LM Studio ignores
+        return os.environ.get(self.api_key_env, "")
 
 
 @dataclass(frozen=True, slots=True)
 class ConvertConfig:
-    llm_base_url: str = DEFAULT_LLM_BASE_URL
-    llm_model: str = DEFAULT_LLM_MODEL
-    llm_api_key: str = DEFAULT_LLM_API_KEY
-    llm_max_retries: int = DEFAULT_LLM_MAX_RETRIES
-    prompt_version: int = DEFAULT_PROMPT_VERSION
-    header_footer_threshold: float = DEFAULT_HEADER_FOOTER_THRESHOLD
+    semantic: SemanticConfig = field(default_factory=SemanticConfig)
 
 
 @dataclass(frozen=True)
@@ -55,19 +66,23 @@ def _write_default_config(path: Path, library_root: Path) -> None:
     path.write_text(f'library_root = "{library_root}"\n', encoding="utf-8")
 
 
+def _parse_semantic(section: dict[str, Any] | None) -> SemanticConfig:
+    if not section:
+        return SemanticConfig()
+    return SemanticConfig(
+        provider=str(section.get("provider", DEFAULT_PROVIDER)),
+        model=str(section.get("model", DEFAULT_MODEL)),
+        base_url=str(section.get("base_url", DEFAULT_BASE_URL)),
+        api_key_env=str(section.get("api_key_env", DEFAULT_API_KEY_ENV)),
+        prompt_version=int(section.get("prompt_version", DEFAULT_PROMPT_VERSION)),
+        llm_max_retries=int(section.get("llm_max_retries", DEFAULT_LLM_MAX_RETRIES)),
+    )
+
+
 def _parse_convert(section: dict[str, Any] | None) -> ConvertConfig:
     if not section:
         return ConvertConfig()
-    return ConvertConfig(
-        llm_base_url=str(section.get("llm_base_url", DEFAULT_LLM_BASE_URL)),
-        llm_model=str(section.get("llm_model", DEFAULT_LLM_MODEL)),
-        llm_api_key=str(section.get("llm_api_key", DEFAULT_LLM_API_KEY)),
-        llm_max_retries=int(section.get("llm_max_retries", DEFAULT_LLM_MAX_RETRIES)),
-        prompt_version=int(section.get("prompt_version", DEFAULT_PROMPT_VERSION)),
-        header_footer_threshold=float(
-            section.get("header_footer_threshold", DEFAULT_HEADER_FOOTER_THRESHOLD)
-        ),
-    )
+    return ConvertConfig(semantic=_parse_semantic(section.get("semantic")))
 
 
 def load_config() -> Config:

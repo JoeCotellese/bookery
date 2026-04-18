@@ -34,28 +34,40 @@ uv sync
 
 ### Optional: PDF conversion
 
-The PDF path in `bookery add` / `bookery import` is opt-in on your
-machine and needs two extra pieces wired up once:
+The PDF path in `bookery add` / `bookery import` routes the document
+through a single semantic LLM call that reassembles articles/chapters
+into a clean EPUB. You'll need an OpenAI-compatible endpoint with a
+model strong enough to return structured JSON.
 
-1. **`kepubify`** on your `PATH` — produces the `.kepub.epub` variant:
-   ```bash
-   brew install pgaskin/kepubify/kepubify
-   ```
-2. **LM Studio** (or any OpenAI-compatible endpoint) running locally
-   with a model that follows JSON-mode instructions well. Known-good
-   default: **Qwen 2.5 7B Instruct**. Point bookery at it via
-   `~/.bookery/config.toml`:
-   ```toml
-   [convert]
-   llm_base_url = "http://localhost:1234/v1"
-   llm_model = "qwen2.5-7b-instruct"
-   llm_api_key = "lm-studio"
-   llm_max_retries = 3
-   prompt_version = 1
-   header_footer_threshold = 0.6
-   ```
+**Local (default)** — [LM Studio](https://lmstudio.ai) with a long-
+context instruct model (known-good: **Qwen 2.5 7B Instruct 1M**).
+Load the model with ≥16k context, enable the local server, then point
+bookery at it via `~/.bookery/config.toml`:
 
-Response chunks are cached under `~/.bookery/data/convert_cache.db`
+```toml
+[convert.semantic]
+provider = "lm-studio"
+model = "qwen2.5-7b-instruct-1m"
+base_url = "http://localhost:1234/v1"
+api_key_env = ""             # empty for local; no key needed
+prompt_version = 1
+llm_max_retries = 2
+```
+
+**Cloud** — swap `provider`, `model`, `base_url`, and point
+`api_key_env` at the env var holding your key. Never write the key
+into `config.toml`:
+
+```toml
+[convert.semantic]
+provider = "openai"
+model = "gpt-5.4-nano"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+prompt_version = 1
+```
+
+Semantic responses are cached under `~/.bookery/data/convert_cache.db`
 so re-runs on the same PDF skip the LLM. Safe to delete at any time;
 bumping `prompt_version` invalidates only stale entries.
 

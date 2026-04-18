@@ -1,8 +1,6 @@
-# ABOUTME: Pre-conversion gates — kepubify presence, LM Studio reachability, PDF sanity.
+# ABOUTME: Pre-conversion gates — LLM reachability and PDF sanity.
 # ABOUTME: Runs before any extraction work so users fail fast with actionable messages.
 
-import shutil
-from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -10,7 +8,6 @@ import pdfplumber
 import pypdf
 
 from bookery.convert.errors import (
-    KepubifyMissing,
     LLMUnreachable,
     PdfEncrypted,
     PdfScanned,
@@ -18,20 +15,6 @@ from bookery.convert.errors import (
 
 SCANNED_CHAR_THRESHOLD = 50  # chars/page average, below which we assume image-only
 SCANNED_SAMPLE_PAGES = 5
-
-WhichFn = Callable[[str], str | None]
-
-
-def _default_which(name: str) -> str | None:
-    return shutil.which(name)
-
-
-def check_kepubify(which: WhichFn = _default_which) -> str:
-    """Raise KepubifyMissing if kepubify is not on PATH; return resolved path."""
-    path = which("kepubify")
-    if path is None:
-        raise KepubifyMissing()
-    return path
 
 
 def check_llm(base_url: str, *, timeout: float = 2.0) -> None:

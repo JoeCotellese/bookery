@@ -28,15 +28,6 @@ class PdfScanned(ConvertError):
         self.path = path
 
 
-class KepubifyMissing(ConvertError):
-    exit_code = 3
-
-    def __init__(self) -> None:
-        super().__init__(
-            "kepubify not found. Install with: brew install pgaskin/kepubify/kepubify"
-        )
-
-
 class LLMUnreachable(ConvertError):
     exit_code = 3
 
@@ -53,9 +44,3 @@ class LLMBadResponse(ConvertError):
         self.detail = detail
 
 
-class KepubifyFailed(ConvertError):
-    exit_code = 1
-
-    def __init__(self, detail: str) -> None:
-        super().__init__(f"kepubify failed: {detail}")
-        self.detail = detail
