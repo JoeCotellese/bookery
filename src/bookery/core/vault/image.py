@@ -47,13 +47,13 @@ def resolve_images(
         src = match.group(2).strip()
         if src.startswith(("http://", "https://", "/")):
             return match.group(0)
-        # Resolve relative to the note's directory.
+        # Resolve relative to the note's directory; fall back to flat asset lookup.
         candidate = (note_path.parent / src).resolve()
         if not candidate.exists():
-            # Fall back to flat asset lookup by filename.
-            candidate = asset_index.get(Path(src).name)  # type: ignore[assignment]
-            if candidate is None:
+            fallback = asset_index.get(Path(src).name)
+            if fallback is None:
                 return match.group(0)
+            candidate = fallback
         assets.append(candidate)
         return f"![{alt}]({candidate.name})"
 
