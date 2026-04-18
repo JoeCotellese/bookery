@@ -7,6 +7,17 @@ import pytest
 from ebooklib import epub
 
 
+@pytest.fixture(autouse=True)
+def _isolate_library_root(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Point BOOKERY_LIBRARY_ROOT at a per-test tmp dir so tests never touch ~/.library/."""
+    root = tmp_path_factory.mktemp("library_root")
+    monkeypatch.setenv("BOOKERY_LIBRARY_ROOT", str(root))
+    return root
+
+
 @pytest.fixture
 def fixtures_dir() -> Path:
     """Path to the test fixtures directory."""
