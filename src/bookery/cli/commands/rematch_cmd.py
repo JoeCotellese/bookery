@@ -9,6 +9,7 @@ from rich.console import Console
 
 from bookery.cli.options import db_option
 from bookery.cli.review import ReviewSession
+from bookery.core.config import get_library_root
 from bookery.core.pipeline import match_one
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
@@ -104,7 +105,7 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
     "-o", "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
-    help="Directory for modified copies (default: ./bookery-output).",
+    help="Directory for modified copies (default: configured library_root).",
 )
 @click.option(
     "-q", "--quiet",
@@ -139,7 +140,7 @@ def rematch(
     _validate_selectors(book_id, match_all, tag_name)
 
     if output_dir is None:
-        output_dir = Path("bookery-output")
+        output_dir = get_library_root()
 
     conn = open_library(db_path or DEFAULT_DB_PATH)
     try:
@@ -210,6 +211,7 @@ def rematch(
                 )
 
             if result.status == "matched":
+                assert result.metadata is not None
                 fields = _metadata_to_update_fields(result.metadata)
                 catalog.update_book(record.id, **fields)
                 if result.output_path:
