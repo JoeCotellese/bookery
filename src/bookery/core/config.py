@@ -44,11 +44,27 @@ class ConvertConfig:
     semantic: SemanticConfig = field(default_factory=SemanticConfig)
 
 
+DEFAULT_KOBO_BOOKS_SUBDIR = "Books"
+DEFAULT_KOBO_AUTO_DETECT = True
+
+
+@dataclass(frozen=True, slots=True)
+class SyncKoboConfig:
+    books_subdir: str = DEFAULT_KOBO_BOOKS_SUBDIR
+    auto_detect: bool = DEFAULT_KOBO_AUTO_DETECT
+
+
+@dataclass(frozen=True, slots=True)
+class SyncConfig:
+    kobo: SyncKoboConfig = field(default_factory=SyncKoboConfig)
+
+
 @dataclass(frozen=True)
 class Config:
     library_root: Path
     data_dir: Path
     convert: ConvertConfig = field(default_factory=ConvertConfig)
+    sync: SyncConfig = field(default_factory=SyncConfig)
 
 
 def _config_path() -> Path:
@@ -86,6 +102,21 @@ def _parse_convert(section: dict[str, Any] | None) -> ConvertConfig:
     if not section:
         return ConvertConfig()
     return ConvertConfig(semantic=_parse_semantic(section.get("semantic")))
+
+
+def _parse_sync_kobo(section: dict[str, Any] | None) -> SyncKoboConfig:
+    if not section:
+        return SyncKoboConfig()
+    return SyncKoboConfig(
+        books_subdir=str(section.get("books_subdir", DEFAULT_KOBO_BOOKS_SUBDIR)),
+        auto_detect=bool(section.get("auto_detect", DEFAULT_KOBO_AUTO_DETECT)),
+    )
+
+
+def _parse_sync(section: dict[str, Any] | None) -> SyncConfig:
+    if not section:
+        return SyncConfig()
+    return SyncConfig(kobo=_parse_sync_kobo(section.get("kobo")))
 
 
 def load_config() -> Config:
@@ -128,7 +159,10 @@ def load_config() -> Config:
         data_dir = data_dir.resolve()
 
     convert = _parse_convert(data.get("convert"))
-    return Config(library_root=library_root, data_dir=data_dir, convert=convert)
+    sync = _parse_sync(data.get("sync"))
+    return Config(
+        library_root=library_root, data_dir=data_dir, convert=convert, sync=sync
+    )
 
 
 def get_library_root() -> Path:
@@ -144,3 +178,8 @@ def get_data_dir() -> Path:
 def get_convert_config() -> ConvertConfig:
     """Return the [convert] configuration block."""
     return load_config().convert
+
+
+def get_sync_config() -> SyncConfig:
+    """Return the [sync] configuration block."""
+    return load_config().sync
