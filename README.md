@@ -14,7 +14,8 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
-- **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB plus a Kobo `.kepub.epub` variant. Scanned PDFs are refused (OCR not yet supported).
+- **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
+- **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
 - **Open Library matching** — searches by ISBN (precise) or title/author (fuzzy), with confidence scoring
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
 - **Smart normalization** — splits mangled filenames like `SteveBerry-TheTemplarLegacy` into clean search queries, detects embedded author names
@@ -138,6 +139,24 @@ bookery info 42
 | `tag rm <id> <tag>` | Remove a tag from a book |
 | `tag ls` | List all tags with book counts |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
+
+### Device sync
+
+| Command | Description |
+|---------|-------------|
+| `sync kobo` | Convert library EPUBs to `.kepub.epub` and copy to a mounted Kobo |
+| `sync kobo --target <path>` | Override auto-detection with an explicit mount point |
+| `sync kobo --dry-run` | Show what would be copied without touching the device |
+
+Requires the [`kepubify`](https://pgaskin.net/kepubify/) binary on `PATH`
+(`brew install kepubify` on macOS). Files are written to
+`<kobo>/Bookery/Author/Title/Title.kepub.epub` — the dedicated `Bookery/`
+subdirectory keeps synced content visibly separate from Calibre
+sideloads, Kobo store purchases, and library borrows. Sync is currently
+**additive**: existing files on the device are never deleted. A SQLite
+cache at `{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus
+the `kepubify` version makes re-syncs effectively free when nothing has
+changed.
 
 ### The `match` workflow
 

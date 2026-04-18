@@ -63,3 +63,23 @@ max_tokens = 262144
 # - `max_tokens = 0` (the default) means "don't send max_tokens" and lets
 #   the server choose. Only set it explicitly when a provider's default
 #   truncates long outputs (Moonshot's Kimi, notably).
+
+# ---------------------------------------------------------------------------
+# DEVICE SYNC: Kobo
+# ---------------------------------------------------------------------------
+#
+# `bookery sync kobo` walks the catalog and copies a `.kepub.epub` for each
+# book to the mounted Kobo. The library itself stays canonical EPUB; kepub
+# is generated on demand at sync time and cached in {data_dir}/kepub_cache.db
+# so unchanged books are skipped on re-sync.
+
+[sync.kobo]
+# Subdirectory under the mount root where books are placed. Default is
+# "Bookery" so synced files are obviously bookery-managed and never get
+# tangled up with Calibre sideloads or Kobo store purchases. Set to
+# "Books" for Calibre-style colocation if that's what you want.
+# books_subdir = "Bookery"
+
+# When true (default), bookery scans /Volumes (macOS) and /media/$USER
+# (Linux) for a `.kobo/` marker. Disable to require an explicit --target.
+# auto_detect = true
