@@ -65,13 +65,17 @@ def render_epub(
         if metadata.version_label:
             title = f"{title} — {metadata.version_label}"
 
-        # Disable the yaml_metadata_block extension so stray `---` lines in
-        # note bodies (frontmatter remnants, horizontal rules) do not get
-        # interpreted as document metadata and fail the YAML parser.
+        # Disable yaml_metadata_block so stray `---` lines in note bodies
+        # (frontmatter remnants, horizontal rules) do not get interpreted as
+        # document metadata. Disable multiline_tables because it greedily
+        # consumes subsequent `# Heading` lines into a single sprawling table
+        # once any note body contains a `---` thematic break, which dropped
+        # hundreds of chapters and broke every cross-note link in real-world
+        # vault exports.
         cmd = [
             pandoc,
             "-f",
-            "markdown-yaml_metadata_block",
+            "markdown-yaml_metadata_block-multiline_tables",
             "-t",
             "epub",
             "--toc",

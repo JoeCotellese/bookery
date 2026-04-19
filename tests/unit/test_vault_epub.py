@@ -25,6 +25,42 @@ def test_pandoc_missing_raises(monkeypatch, tmp_path: Path):
         )
 
 
+def test_render_disables_multiline_tables_extension(monkeypatch, tmp_path: Path):
+    """Pandoc's ``multiline_tables`` extension greedily consumes H1 headings as
+    table rows whenever a note body contains a ``---`` thematic break, dropping
+    hundreds of chapters from large vault exports and leaving cross-note links
+    as bare ``#slug`` fragments that never navigate. The extension must be
+    disabled via the input format spec.
+    """
+    captured: dict[str, list[str]] = {}
+
+    class _Result:
+        returncode = 0
+        stderr = ""
+
+    def _fake_run(cmd, capture_output, text, cwd):
+        captured["cmd"] = cmd
+        # Produce an empty file so downstream code does not blow up.
+        out_idx = cmd.index("-o") + 1
+        Path(cmd[out_idx]).write_bytes(b"")
+        return _Result()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/pandoc")
+    render_epub(
+        "# One {#one}\n",
+        [],
+        EpubMetadata(title="T", author="A", identifier=stable_uuid(tmp_path)),
+        tmp_path / "x.epub",
+    )
+    fmt = captured["cmd"][captured["cmd"].index("-f") + 1]
+    assert "-multiline_tables" in fmt, (
+        f"expected multiline_tables extension to be disabled; got -f {fmt!r}"
+    )
+
+
 @pandoc_required
 def test_render_produces_epub_with_identifier(tmp_path: Path):
     out = tmp_path / "v.epub"

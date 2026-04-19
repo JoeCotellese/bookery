@@ -68,6 +68,11 @@ max_tokens = 262144
 #   uuid_mode = "stable"        # "stable" reuses the dc:identifier across
 #                               # exports so re-sync to Kobo updates the book
 #                               # in place; "random" produces a fresh id.
+#   exclude_tags = ["type/meeting", "type/daily"]
+#                               # Skip any note whose frontmatter tags include
+#                               # one of these exact strings. Useful for
+#                               # keeping ephemeral notes (meetings, dailies)
+#                               # out of an archive export.
 
 # ---------------------------------------------------------------------------
 # Notes

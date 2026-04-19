@@ -159,6 +159,42 @@ cache at `{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus
 the `kepubify` version makes re-syncs effectively free when nothing has
 changed.
 
+### The `vault-export` workflow
+
+Turn an Obsidian vault into a single EPUB — one chapter per note, with a
+clickable TOC, resolved `[[wiki-links]]` and `![[image]]` embeds, and an
+optional tag index at the end. Requires [pandoc](https://pandoc.org)
+(`brew install pandoc` on macOS).
+
+Run with flags:
+
+```bash
+bookery vault-export --vault ~/obsidian-vault -o vault.epub \
+  --folder "3_Permanent Notes" --folder "2_Literature Notes" \
+  --index --exclude-tag type/meeting
+```
+
+Or set defaults once in `~/.bookery/config.toml` and just run
+`bookery vault-export -o vault.epub`:
+
+```toml
+[vault_export]
+vault_path = "~/obsidian-vault"
+folders = ["3_Permanent Notes", "2_Literature Notes"]
+include_index = true
+index_exclude_prefixes = ["type/"]   # hide tags like `type/permanent` from index
+index_min_count = 1
+exclude_tags = ["type/meeting"]      # drop notes with these exact frontmatter tags
+default_author = "Your Name"
+uuid_mode = "stable"                 # "stable" keeps the same dc:identifier
+                                     # across re-exports so Kobo updates in place
+```
+
+`exclude_tags` matches the full tag string exactly (`type/meeting` skips
+notes tagged `type/meeting` but not `type/permanent`). Callouts, block
+references, note embeds (`![[note]]`), and Dataview queries are **not**
+resolved in this version.
+
 ### The `match` workflow
 
 When you run `bookery match`, Bookery will:
