@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date
 from pathlib import Path
 
@@ -200,6 +201,22 @@ def vault_export(
         conn = open_library(db_path or DEFAULT_DB_PATH)
         try:
             catalog = LibraryCatalog(conn)
+            # A vault export is a point-in-time snapshot — only one version
+            # should exist in the catalog at a time. Drop any prior row whose
+            # title starts with the un-versioned vault title (the version
+            # label is appended by `render_epub`, e.g. "Foo Vault — 2026-…").
+            removed_ids: list[int] = []
+            for record in catalog.list_all():
+                if record.metadata.title.startswith(title):
+                    if record.output_path and Path(record.output_path).exists():
+                        with contextlib.suppress(OSError):
+                            Path(record.output_path).unlink()
+                    catalog.delete_book(record.id)
+                    removed_ids.append(record.id)
+            if removed_ids:
+                console.print(
+                    f"[dim]replacing {len(removed_ids)} prior vault export(s)[/dim]"
+                )
             result = import_books(
                 [output_path],
                 catalog,

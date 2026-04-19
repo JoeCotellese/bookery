@@ -199,9 +199,9 @@ resolved in this version.
 
 With `catalog = true` (or `--catalog` on the command line), the export is
 imported into the library and then deployed to your reader on the next
-`bookery sync kobo` — no separate `bookery add` step. Re-running the export
-will add a new catalog row each time the vault content changes (import
-dedupes on file hash, not on EPUB identifier).
+`bookery sync kobo` — no separate `bookery add` step. A vault export is a
+point-in-time snapshot, so re-running replaces the prior catalog row and
+EPUB rather than piling up a new copy each day.
 
 ### The `match` workflow
 

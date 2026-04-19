@@ -80,6 +80,49 @@ def test_vault_export_catalog_flag_imports_into_library(
     assert library_copies, f"no EPUB found in library root: {result.output}"
 
 
+def test_vault_export_catalog_replaces_prior_export(
+    tmp_path: Path, _isolate_library_root: Path,
+) -> None:
+    """A vault export is a point-in-time snapshot — running `--catalog` twice
+    must leave exactly one row in the catalog and one EPUB on disk, even when
+    the version label (or pandoc's `dc:date`) differs between runs.
+    """
+    from bookery.db.catalog import LibraryCatalog
+    from bookery.db.connection import open_library
+
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    db = tmp_path / "library.db"
+
+    args = [
+        "vault-export", "--vault", str(FIXTURE),
+        "-o", str(out),
+        "--catalog", "--db", str(db),
+    ]
+
+    first = runner.invoke(
+        cli, [*args, "--version-label", "v1"], catch_exceptions=False,
+    )
+    assert first.exit_code == 0, first.output
+
+    second = runner.invoke(
+        cli, [*args, "--version-label", "v2"], catch_exceptions=False,
+    )
+    assert second.exit_code == 0, second.output
+    assert "replacing 1 prior vault export" in second.output
+
+    conn = open_library(db)
+    try:
+        records = LibraryCatalog(conn).list_all()
+    finally:
+        conn.close()
+    assert len(records) == 1, [r.metadata.title for r in records]
+    assert records[0].metadata.title.endswith("v2")
+
+    library_epubs = list(_isolate_library_root.rglob("*.epub"))
+    assert len(library_epubs) == 1, library_epubs
+
+
 def test_vault_export_rejects_missing_vault(tmp_path: Path):
     runner = CliRunner()
     bad = tmp_path / "does-not-exist"
