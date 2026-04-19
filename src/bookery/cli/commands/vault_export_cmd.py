@@ -47,6 +47,9 @@ console = Console()
               help="Suppress tags starting with this prefix from the index (repeatable).")
 @click.option("--index-min-count", "index_min_count_opt", type=int, default=None,
               help="Hide tags with fewer than N notes in the index.")
+@click.option("--exclude-tag", "exclude_tags_opt", multiple=True,
+              help="Skip any note whose frontmatter tags include this exact tag "
+                   "(repeatable). Overrides vault_export.exclude_tags in config.")
 @click.option("--title", "title_opt", default=None, help="EPUB title metadata.")
 @click.option("--author", "author_opt", default=None, help="EPUB author metadata.")
 @click.option("--uuid", "uuid_opt",
@@ -61,6 +64,7 @@ def vault_export(
     index_opt: bool | None,
     index_exclude_opt: tuple[str, ...],
     index_min_count_opt: int | None,
+    exclude_tags_opt: tuple[str, ...],
     title_opt: str | None,
     author_opt: str | None,
     uuid_opt: str | None,
@@ -85,6 +89,7 @@ def vault_export(
     include_index = cfg.include_index if index_opt is None else index_opt
     exclude_prefixes = list(index_exclude_opt) if index_exclude_opt else cfg.index_exclude_prefixes
     min_count = index_min_count_opt if index_min_count_opt is not None else cfg.index_min_count
+    exclude_tags = list(exclude_tags_opt) if exclude_tags_opt else cfg.exclude_tags
     author = author_opt or cfg.default_author
     uuid_mode = (uuid_opt or cfg.uuid_mode).lower()
     version_label = version_label_opt or date.today().isoformat()
@@ -122,7 +127,12 @@ def vault_export(
             overall.update(overall_task, completed=idx, total=total)
             current.update(current_task, description=path.name)
 
-        notes = walk_vault(vault_path, folders=folders or None, on_progress=_on_walk)
+        notes = walk_vault(
+            vault_path,
+            folders=folders or None,
+            on_progress=_on_walk,
+            exclude_tags=exclude_tags or None,
+        )
         if not notes:
             raise click.UsageError(f"no markdown notes found in {vault_path}")
 

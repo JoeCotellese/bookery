@@ -43,6 +43,7 @@ index_exclude_prefixes = ["type/"]
 index_min_count = 2
 default_author = "Joe"
 uuid_mode = "random"
+exclude_tags = ["type/meeting", "type/daily"]
 """,
     )
     cfg = load_config()
@@ -55,3 +56,4 @@ uuid_mode = "random"
     assert ve.index_min_count == 2
     assert ve.default_author == "Joe"
     assert ve.uuid_mode == "random"
+    assert ve.exclude_tags == ["type/meeting", "type/daily"]

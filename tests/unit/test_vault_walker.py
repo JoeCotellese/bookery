@@ -22,6 +22,42 @@ def test_walks_entire_vault_when_no_folders(tmp_path: Path):
     assert titles == ["A", "B", "C-heading"]
 
 
+def test_exclude_tags_drops_notes_with_matching_frontmatter_tag(tmp_path: Path):
+    _write(
+        tmp_path / "meeting.md",
+        "---\ntags:\n  - type/meeting\n  - nextgres\n---\n# Meeting\n",
+    )
+    _write(
+        tmp_path / "idea.md",
+        "---\ntags:\n  - type/permanent\n---\n# Idea\n",
+    )
+    _write(tmp_path / "untagged.md", "# Untagged\n")
+
+    notes = walk_vault(tmp_path, exclude_tags=["type/meeting"])
+
+    titles = sorted(n.title for n in notes)
+    assert titles == ["Idea", "Untagged"]
+
+
+def test_exclude_tags_empty_list_keeps_all_notes(tmp_path: Path):
+    _write(tmp_path / "a.md", "---\ntags:\n  - foo\n---\n# A\n")
+    _write(tmp_path / "b.md", "# B\n")
+
+    notes = walk_vault(tmp_path, exclude_tags=[])
+
+    assert sorted(n.title for n in notes) == ["A", "B"]
+
+
+def test_exclude_tags_matches_any_of_several_excluded(tmp_path: Path):
+    _write(tmp_path / "m.md", "---\ntags:\n  - type/meeting\n---\n# M\n")
+    _write(tmp_path / "d.md", "---\ntags:\n  - type/daily\n---\n# D\n")
+    _write(tmp_path / "p.md", "---\ntags:\n  - type/permanent\n---\n# P\n")
+
+    notes = walk_vault(tmp_path, exclude_tags=["type/meeting", "type/daily"])
+
+    assert [n.title for n in notes] == ["P"]
+
+
 def test_folder_whitelist_filters_other_dirs(tmp_path: Path):
     _write(tmp_path / "Permanent/x.md", "# X\n")
     _write(tmp_path / "Literature/y.md", "# Y\n")

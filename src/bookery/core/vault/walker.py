@@ -16,13 +16,17 @@ def walk_vault(
     vault_path: Path,
     folders: list[str] | None = None,
     on_progress: WalkProgressFn | None = None,
+    exclude_tags: list[str] | None = None,
 ) -> list[Note]:
     """Walk a vault and return Note objects for every markdown file found.
 
     Hidden directories (dotfiles like `.obsidian`) and hidden files are skipped.
     Non-`.md` files are ignored. When `folders` is provided, only descendants of
-    those top-level folders are included.
+    those top-level folders are included. When `exclude_tags` is provided, any
+    note whose frontmatter `tags` list contains one of those exact tag strings
+    is dropped from the result.
     """
+    excluded = set(exclude_tags or [])
     vault_path = vault_path.expanduser()
     roots = [vault_path / f for f in folders] if folders else [vault_path]
 
@@ -43,6 +47,8 @@ def walk_vault(
             on_progress(idx, total, md)
         text = md.read_text(encoding="utf-8")
         body, fm, tags = parse_frontmatter(text)
+        if excluded and any(t in excluded for t in tags):
+            continue
         fm_title = fm.get("title") if isinstance(fm.get("title"), str) else None
         title = resolve_title(fm_title, body, md)
         rel_folder = _relative_folder(md, vault_path)
