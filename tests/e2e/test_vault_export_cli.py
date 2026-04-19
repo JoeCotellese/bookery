@@ -56,6 +56,30 @@ def test_vault_export_stable_identifier_across_runs(tmp_path: Path):
     assert ids1 == ids2
 
 
+def test_vault_export_catalog_flag_imports_into_library(
+    tmp_path: Path, _isolate_library_root: Path,
+) -> None:
+    """`--catalog` should append the produced EPUB into the bookery catalog so
+    it ships on the next `bookery sync kobo` without a separate `bookery add`.
+    """
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    db = tmp_path / "library.db"
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--catalog", "--db", str(db),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "added" in result.output
+    library_copies = list(_isolate_library_root.rglob("*.epub"))
+    assert library_copies, f"no EPUB found in library root: {result.output}"
+
+
 def test_vault_export_rejects_missing_vault(tmp_path: Path):
     runner = CliRunner()
     bad = tmp_path / "does-not-exist"

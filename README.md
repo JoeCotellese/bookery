@@ -188,12 +188,20 @@ exclude_tags = ["type/meeting"]      # drop notes with these exact frontmatter t
 default_author = "Your Name"
 uuid_mode = "stable"                 # "stable" keeps the same dc:identifier
                                      # across re-exports so Kobo updates in place
+catalog = true                       # auto-add the EPUB to the bookery library
+                                     # so it ships on the next `sync kobo`
 ```
 
 `exclude_tags` matches the full tag string exactly (`type/meeting` skips
 notes tagged `type/meeting` but not `type/permanent`). Callouts, block
 references, note embeds (`![[note]]`), and Dataview queries are **not**
 resolved in this version.
+
+With `catalog = true` (or `--catalog` on the command line), the export is
+imported into the library and then deployed to your reader on the next
+`bookery sync kobo` — no separate `bookery add` step. Re-running the export
+will add a new catalog row each time the vault content changes (import
+dedupes on file hash, not on EPUB identifier).
 
 ### The `match` workflow
 

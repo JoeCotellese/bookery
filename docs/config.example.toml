@@ -73,6 +73,10 @@ max_tokens = 262144
 #                               # one of these exact strings. Useful for
 #                               # keeping ephemeral notes (meetings, dailies)
 #                               # out of an archive export.
+#   catalog = true              # After a successful export, add the EPUB to
+#                               # the bookery library so it ships on the next
+#                               # `bookery sync kobo`. Override per-run with
+#                               # `--catalog` / `--no-catalog`.
 
 # ---------------------------------------------------------------------------
 # Notes

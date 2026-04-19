@@ -18,7 +18,10 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from bookery.core.config import load_config
+from bookery.cli._match_helpers import build_progress_fn
+from bookery.cli.options import db_option
+from bookery.core.config import get_library_root, load_config
+from bookery.core.importer import import_books
 from bookery.core.vault.assemble import assemble_vault
 from bookery.core.vault.epub import (
     EpubMetadata,
@@ -29,6 +32,8 @@ from bookery.core.vault.epub import (
     stable_uuid,
 )
 from bookery.core.vault.walker import walk_vault
+from bookery.db.catalog import LibraryCatalog
+from bookery.db.connection import DEFAULT_DB_PATH, open_library
 
 console = Console()
 
@@ -57,6 +62,10 @@ console = Console()
               help="EPUB identifier strategy. stable=deterministic for re-sync.")
 @click.option("--version-label", "version_label_opt", default=None,
               help="Version label injected into the EPUB title (default: today's date).")
+@click.option("--catalog/--no-catalog", "catalog_opt", default=None,
+              help="Add the exported EPUB to the bookery library so it syncs on the "
+                   "next `sync kobo`. Overrides vault_export.catalog in config.")
+@db_option
 def vault_export(
     vault_opt: Path | None,
     folders_opt: tuple[str, ...],
@@ -69,6 +78,8 @@ def vault_export(
     author_opt: str | None,
     uuid_opt: str | None,
     version_label_opt: str | None,
+    catalog_opt: bool | None,
+    db_path: Path | None,
 ) -> None:
     """Export an Obsidian vault to a single EPUB with a clickable TOC.
 
@@ -90,6 +101,7 @@ def vault_export(
     exclude_prefixes = list(index_exclude_opt) if index_exclude_opt else cfg.index_exclude_prefixes
     min_count = index_min_count_opt if index_min_count_opt is not None else cfg.index_min_count
     exclude_tags = list(exclude_tags_opt) if exclude_tags_opt else cfg.exclude_tags
+    do_catalog = cfg.catalog if catalog_opt is None else catalog_opt
     author = author_opt or cfg.default_author
     uuid_mode = (uuid_opt or cfg.uuid_mode).lower()
     version_label = version_label_opt or date.today().isoformat()
@@ -179,3 +191,36 @@ def vault_export(
             f"notes without tags: {', '.join(assembled.notes_without_tags[:5])}"
             + (" …" if len(assembled.notes_without_tags) > 5 else "")
         )
+
+    if do_catalog:
+        library_root = get_library_root()
+        console.print(
+            f"Cataloging into [bold]{library_root}[/bold]…"
+        )
+        conn = open_library(db_path or DEFAULT_DB_PATH)
+        try:
+            catalog = LibraryCatalog(conn)
+            result = import_books(
+                [output_path],
+                catalog,
+                library_root=library_root,
+                match_fn=None,
+                move=False,
+                on_progress=build_progress_fn(console),
+            )
+        finally:
+            conn.close()
+
+        parts = []
+        if result.added:
+            parts.append(f"[green]{result.added} added[/green]")
+        if result.skipped:
+            parts.append(f"[yellow]{result.skipped} skipped[/yellow]")
+        if result.errors:
+            parts.append(f"[red]{result.errors} error(s)[/red]")
+        if parts:
+            console.print(", ".join(parts))
+        if result.errors:
+            for path, msg in result.error_details:
+                console.print(f"  [dim]{path.name}:[/dim] {msg}")
+            raise click.exceptions.Exit(1)
