@@ -7,10 +7,10 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.genre_applier import apply_genres
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 
 console = Console()
 
@@ -24,7 +24,7 @@ def genre() -> None:
 @db_option
 def genre_ls(db_path: Path | None) -> None:
     """List all canonical genres with book counts."""
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     genres = catalog.list_genres()
@@ -47,7 +47,7 @@ def genre_ls(db_path: Path | None) -> None:
 @db_option
 def genre_assign(book_id: int, genre_name: str, primary: bool, db_path: Path | None) -> None:
     """Assign a genre to a book."""
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     try:
@@ -69,7 +69,7 @@ def genre_assign(book_id: int, genre_name: str, primary: bool, db_path: Path | N
 @db_option
 def genre_unmatched(db_path: Path | None) -> None:
     """Show books with subjects but no genre assigned."""
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     unmatched = catalog.get_unmatched_subjects()
@@ -99,7 +99,7 @@ def genre_unmatched(db_path: Path | None) -> None:
 @click.pass_context
 def genre_apply(ctx: click.Context, dry_run: bool, force: bool, db_path: Path | None) -> None:
     """Batch-assign genres from subjects for cataloged books."""
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
     verbose = ctx.parent.params.get("verbose", 0) if ctx.parent else 0
 

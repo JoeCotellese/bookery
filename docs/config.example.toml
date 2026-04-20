@@ -110,3 +110,15 @@ max_tokens = 262144
 # When true (default), bookery scans /Volumes (macOS) and /media/$USER
 # (Linux) for a `.kobo/` marker. Disable to require an explicit --target.
 # auto_detect = true
+
+# ---------------------------------------------------------------------------
+# MATCHING
+# ---------------------------------------------------------------------------
+#
+# Defaults for the match pipeline (used by `match`, `rematch`, `add`,
+# `import --match`, `convert --match`).
+
+[matching]
+# Confidence cutoff for auto-accept when -y/--yes is in effect (0.0-1.0).
+# Override per-invocation with `-t/--threshold`.
+# auto_accept_threshold = 0.8

@@ -7,9 +7,9 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 
 console = Console()  # TODO: move Console() inside command for testability
 
@@ -26,7 +26,7 @@ def tag() -> None:
 def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
     """Add a tag to a book."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     record = catalog.get_by_id(book_id)
@@ -53,7 +53,7 @@ def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
 def tag_rm(book_id: int, tag_name: str, db_path: Path | None) -> None:
     """Remove a tag from a book."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     try:
@@ -72,7 +72,7 @@ def tag_rm(book_id: int, tag_name: str, db_path: Path | None) -> None:
 def tag_ls(db_path: Path | None) -> None:
     """List all tags with book counts."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     tags = catalog.list_tags()

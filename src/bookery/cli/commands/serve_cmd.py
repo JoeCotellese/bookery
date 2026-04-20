@@ -5,9 +5,9 @@ from pathlib import Path
 
 import click
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 from bookery.web import create_app
 
 
@@ -26,7 +26,7 @@ from bookery.web import create_app
 )
 def serve(db_path: Path | None, host: str, port: int) -> None:
     """Launch the web UI for browsing the library."""
-    resolved = db_path or DEFAULT_DB_PATH
+    resolved = resolve_db_path(db_path)
 
     if not resolved.exists():
         click.echo(f"No library found at {resolved}. Run 'bookery import' first.")

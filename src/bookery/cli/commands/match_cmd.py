@@ -16,6 +16,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from bookery.cli.options import auto_accept_option, threshold_option
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.pathformat import is_processed
@@ -76,20 +77,8 @@ def _make_progress(console: Console) -> Progress:
     default=None,
     help="Directory for modified copies (default: configured library_root).",
 )
-@click.option(
-    "-q",
-    "--quiet",
-    is_flag=True,
-    default=False,
-    help="Auto-accept high-confidence matches without prompting.",
-)
-@click.option(
-    "-t",
-    "--threshold",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.8,
-    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.8).",
-)
+@auto_accept_option
+@threshold_option
 @click.option(
     "--resume/--no-resume",
     default=True,
@@ -98,7 +87,7 @@ def _make_progress(console: Console) -> Progress:
 def match(
     path: Path,
     output_dir: Path | None,
-    quiet: bool,
+    auto_accept: bool,
     threshold: float,
     resume: bool,
 ) -> None:
@@ -111,7 +100,7 @@ def match(
     provider = _create_provider()
     review = ReviewSession(
         console=console,
-        quiet=quiet,
+        quiet=auto_accept,
         threshold=threshold,
         lookup_fn=provider.lookup_by_url,
     )
@@ -148,7 +137,7 @@ def match(
         progress.update(task_id, description=epub_path.name)
 
         # Pause progress bar for interactive output
-        if not quiet:
+        if not auto_accept:
             progress.stop()
             console.print(
                 f"\n[bold][{progress.tasks[task_id].completed + 1}/{total}] "
@@ -158,7 +147,7 @@ def match(
         result = match_one(epub_path, provider, review, output_dir)
 
         # Display normalization info in interactive mode
-        if not quiet and result.normalization and result.normalization.was_modified:
+        if not auto_accept and result.normalization and result.normalization.was_modified:
             console.print(
                 f"  [dim]Normalized title:[/dim] {result.normalization.normalized.title}"
             )
@@ -168,22 +157,22 @@ def match(
                 )
 
         if result.status == "matched":
-            if not quiet:
+            if not auto_accept:
                 rel_path = result.output_path.relative_to(output_dir) if result.output_path else ""
                 console.print(f"  [green]Written:[/green] {rel_path}")
             matched += 1
         elif result.status == "skipped":
-            if not quiet and result.error is None:
+            if not auto_accept and result.error is None:
                 # Only show "No candidates" if it wasn't a user skip (review returns None)
                 pass
             skipped += 1
         elif result.status == "error":
-            if not quiet:
+            if not auto_accept:
                 console.print(f"  [red]Error:[/red] {result.error}")
             errors += 1
 
         progress.advance(task_id)
-        if not quiet:
+        if not auto_accept:
             progress.start()
 
     progress.stop()

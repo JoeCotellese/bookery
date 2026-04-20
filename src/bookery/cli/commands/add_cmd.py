@@ -14,12 +14,17 @@ from bookery.cli._match_helpers import (
     format_skip_breakdown,
 )
 from bookery.cli._pdf_support import convert_pdf_to_epub
-from bookery.cli.options import db_option
+from bookery.cli.options import (
+    auto_accept_option,
+    db_option,
+    resolve_db_path,
+    threshold_option,
+)
 from bookery.convert.errors import ConvertError
 from bookery.core.config import get_library_root
 from bookery.core.importer import MatchFn, import_books
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 
 console = Console()
 
@@ -45,30 +50,19 @@ def _is_inside(path: Path, root: Path) -> bool:
     help="Delete source file after successful catalog (library copy is preserved).",
 )
 @click.option(
-    "--no-match",
-    "no_match",
-    is_flag=True,
-    default=False,
-    help="Skip the metadata matching pipeline.",
+    "--match/--no-match",
+    "do_match",
+    default=True,
+    help="Run the metadata matching pipeline (default: --match).",
 )
-@click.option(
-    "-q", "--quiet",
-    is_flag=True,
-    default=False,
-    help="Auto-accept high-confidence matches without prompting.",
-)
-@click.option(
-    "-t", "--threshold",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.8,
-    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.8).",
-)
+@auto_accept_option
+@threshold_option
 def add_command(
     file: Path,
     db_path: Path | None,
     do_move: bool,
-    no_match: bool,
-    quiet: bool,
+    do_match: bool,
+    auto_accept: bool,
     threshold: float,
 ) -> None:
     """Add a single EPUB to the library in one step.
@@ -83,23 +77,25 @@ def add_command(
     except UnknownFormatError as exc:
         raise click.BadParameter(str(exc), param_hint="FILE") from exc
 
-    # --no-match with --quiet / non-default --threshold is a flag conflict
-    if no_match and (quiet or threshold != 0.8):
+    # --no-match with --yes / non-default --threshold is a flag conflict
+    from bookery.core.config import get_matching_config
+    default_threshold = get_matching_config().auto_accept_threshold
+    if not do_match and (auto_accept or threshold != default_threshold):
         console.print(
-            "[yellow]warning:[/yellow] --quiet/--threshold ignored with --no-match",
+            "[yellow]warning:[/yellow] --yes/--threshold ignored with --no-match",
         )
 
     library_root = get_library_root()
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     match_fn: MatchFn | None = None
-    if not no_match:
+    if do_match:
         match_fn = build_match_fn(
             console=console,
             output_dir=library_root,
-            quiet=quiet,
+            quiet=auto_accept,
             threshold=threshold,
         )
 

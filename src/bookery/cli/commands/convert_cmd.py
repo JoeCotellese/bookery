@@ -15,6 +15,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from bookery.cli.options import auto_accept_option, threshold_option
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.converter import convert_one
@@ -63,11 +64,10 @@ def _make_progress(console: Console) -> Progress:
     help="Directory for converted EPUBs (default: configured library_root).",
 )
 @click.option(
-    "--match",
+    "--match/--no-match",
     "do_match",
-    is_flag=True,
     default=False,
-    help="Chain into metadata matching after conversion.",
+    help="Chain into metadata matching after conversion (default: --no-match).",
 )
 @click.option(
     "--force",
@@ -75,26 +75,14 @@ def _make_progress(console: Console) -> Progress:
     default=False,
     help="Overwrite existing output files.",
 )
-@click.option(
-    "-q",
-    "--quiet",
-    is_flag=True,
-    default=False,
-    help="Auto-accept high-confidence matches (used with --match).",
-)
-@click.option(
-    "-t",
-    "--threshold",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.8,
-    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.8).",
-)
+@auto_accept_option
+@threshold_option
 def convert(
     path: Path,
     output_dir: Path | None,
     do_match: bool,
     force: bool,
-    quiet: bool,
+    auto_accept: bool,
     threshold: float,
 ) -> None:
     """Convert MOBI files to EPUB format."""
@@ -115,7 +103,7 @@ def convert(
         provider = _create_provider()
         review = ReviewSession(
             console=console,
-            quiet=quiet,
+            quiet=auto_accept,
             threshold=threshold,
             lookup_fn=provider.lookup_by_url,
         )

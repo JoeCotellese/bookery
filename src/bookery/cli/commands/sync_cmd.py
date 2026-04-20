@@ -15,10 +15,10 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.config import get_data_dir, get_sync_config
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 from bookery.device.errors import DeviceError, KoboNotMounted
 from bookery.device.kepub_cache import KepubCache
 from bookery.device.kepubify import kepubify_version, run_kepubify
@@ -129,7 +129,7 @@ def sync_kobo(
         current_state["stage"] = _stage_label.get(stage, stage)
         _redraw_current()
 
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     try:
         catalog = LibraryCatalog(conn)
         with Live(
