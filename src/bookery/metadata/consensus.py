@@ -253,6 +253,7 @@ class ConsensusProvider:
 
         if len(top) == 1:
             provider_name, metadata = top[0]
+            metadata.identifiers.setdefault("source", provider_name)
             return [
                 MetadataCandidate(
                     metadata=metadata,
@@ -269,6 +270,7 @@ class ConsensusProvider:
 
         for field_name, provider_name in provenance.items():
             merged.identifiers[f"provenance_{field_name}"] = provider_name
+        merged.identifiers["source"] = self.name
 
         confidence = max_conf
         isbns = [m.isbn for _p, m in top if m.isbn]

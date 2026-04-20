@@ -11,6 +11,18 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
 
 
+def _stamp_source(candidate: MetadataCandidate) -> BookMetadata:
+    """Return the candidate's metadata with its provider source recorded.
+
+    Stamps ``identifiers["source"]`` when not already set so downstream
+    provenance tracking can attribute fields to the originating provider.
+    A ``ConsensusProvider`` may have already set this key to its own name.
+    """
+    metadata = candidate.metadata
+    metadata.identifiers.setdefault("source", candidate.source)
+    return metadata
+
+
 class ReviewSession:
     """Interactive review for metadata candidates.
 
@@ -55,13 +67,15 @@ class ReviewSession:
         # Auto-accept mode: accept best if above threshold, else skip
         if self._auto_above_threshold:
             best = candidates[0]
-            return best.metadata if best.confidence >= self._threshold else None
+            if best.confidence >= self._threshold:
+                return _stamp_source(best)
+            return None
 
         # Quiet mode: auto-accept best candidate if above threshold
         if self._quiet:
             best = candidates[0]
             if best.confidence >= self._threshold:
-                return best.metadata
+                return _stamp_source(best)
             return None
 
         # Display current metadata
@@ -110,7 +124,9 @@ class ReviewSession:
             if choice == "A":
                 self._auto_above_threshold = True
                 best = candidates[0]
-                return best.metadata if best.confidence >= self._threshold else None
+                if best.confidence >= self._threshold:
+                    return _stamp_source(best)
+                return None
             if choice == "S":
                 self._skip_remaining = True
                 return None
@@ -147,7 +163,7 @@ class ReviewSession:
             try:
                 idx = int(choice) - 1
                 if 0 <= idx < len(candidates):
-                    return candidates[idx].metadata
+                    return _stamp_source(candidates[idx])
             except ValueError:
                 pass
 

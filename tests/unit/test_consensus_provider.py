@@ -180,6 +180,53 @@ def test_empty_provider_list_rejected() -> None:
         ConsensusProvider([])
 
 
+def test_merged_metadata_records_source_identifier() -> None:
+    p1 = FakeProvider(
+        "openlibrary",
+        isbn_results=[_cand("openlibrary", title="Dune", authors=["Frank Herbert"])],
+    )
+    p2 = FakeProvider(
+        "googlebooks",
+        isbn_results=[_cand("googlebooks", title="Dune", authors=["Frank Herbert"])],
+    )
+    consensus = ConsensusProvider([p1, p2])
+    result = consensus.search_by_isbn("9780441013593")
+    assert result[0].metadata.identifiers["source"] == consensus.name
+
+
+def test_single_provider_passthrough_stamps_source() -> None:
+    # Even with a single-provider ConsensusProvider, downstream code
+    # (rematch, provenance tracking) expects ``identifiers["source"]``.
+    p = FakeProvider(
+        "openlibrary",
+        isbn_results=[_cand("openlibrary", title="Dune", authors=["Frank Herbert"])],
+    )
+    consensus = ConsensusProvider([p])
+    result = consensus.search_by_isbn("9780441013593")
+    assert result[0].metadata.identifiers["source"] == "openlibrary"
+
+
+def test_authors_list_agreement_prefers_agreed_value() -> None:
+    # Two providers emit authors in a normalized "First Last" form; priority
+    # provider's single-author spelling differs — agreement should win.
+    p1 = FakeProvider(
+        "openlibrary",
+        isbn_results=[_cand("openlibrary", title="Dune", authors=["F. Herbert"])],
+    )
+    p2 = FakeProvider(
+        "googlebooks",
+        isbn_results=[_cand("googlebooks", title="Dune", authors=["Frank Herbert"])],
+    )
+    p3 = FakeProvider(
+        "other",
+        isbn_results=[_cand("other", title="Dune", authors=["Frank Herbert"])],
+    )
+    consensus = ConsensusProvider([p1, p2, p3])
+    result = consensus.search_by_isbn("9780441013593")
+    assert result[0].metadata.authors == ["Frank Herbert"]
+    assert result[0].metadata.identifiers["provenance_authors"] == "googlebooks"
+
+
 def test_lookup_by_url_returns_first_hit_in_priority_order() -> None:
     cand = MetadataCandidate(
         metadata=BookMetadata(title="Dune"),

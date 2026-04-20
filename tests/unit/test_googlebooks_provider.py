@@ -119,7 +119,7 @@ def test_search_by_title_author_builds_query_and_sorts() -> None:
     # The exact-match candidate should rank first.
     assert candidates[0].source_id == "B"
     assert http.last_params == {
-        "q": "intitle:Dune+inauthor:Frank Herbert",
+        "q": "intitle:Dune inauthor:Frank Herbert",
         "maxResults": "5",
     }
 
@@ -168,3 +168,12 @@ def test_lookup_by_url_returns_none_for_bad_url() -> None:
 )
 def test_parse_volume_id(url: str, expected: str | None) -> None:
     assert GoogleBooksProvider._parse_volume_id(url) == expected
+
+
+def test_page_count_of_zero_is_coerced_to_none() -> None:
+    # Google Books frequently returns pageCount: 0 for books without an
+    # authoritative count. That should not pollute the BookMetadata.
+    http = FakeHttpClient({"volumes": {"items": [_volume(page_count=0)]}})
+    provider = GoogleBooksProvider(http_client=http)
+    candidates = provider.search_by_isbn("9780441013593")
+    assert candidates[0].metadata.page_count is None

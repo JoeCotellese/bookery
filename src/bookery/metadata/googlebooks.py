@@ -51,7 +51,10 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
     published_date = volume_info.get("publishedDate")
     language = volume_info.get("language")
     page_count = volume_info.get("pageCount")
-    page_count = int(page_count) if isinstance(page_count, (int, float)) else None
+    if isinstance(page_count, (int, float)) and page_count > 0:
+        page_count = int(page_count)
+    else:
+        page_count = None
 
     description = volume_info.get("description")
     if description:
@@ -138,7 +141,10 @@ class GoogleBooksProvider:
         query_parts = [f"intitle:{title}"]
         if author:
             query_parts.append(f"inauthor:{author}")
-        query = "+".join(query_parts)
+        # Google Books accepts space-separated terms; `+` in a params dict
+        # value gets URL-encoded to %2B, which Google treats as a literal
+        # character rather than a separator.
+        query = " ".join(query_parts)
 
         try:
             data = self._http.get(
