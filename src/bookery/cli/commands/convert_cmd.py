@@ -15,22 +15,19 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import auto_accept_option, threshold_option
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.converter import convert_one
 from bookery.core.pipeline import match_one
-from bookery.metadata.http import BookeryHttpClient
-from bookery.metadata.openlibrary import OpenLibraryProvider
-from bookery.metadata.provider import MetadataProvider
 
 logger = logging.getLogger(__name__)
 
 
-def _create_provider() -> MetadataProvider:
-    """Create the default metadata provider (Open Library)."""
-    http_client = BookeryHttpClient()
-    return OpenLibraryProvider(http_client=http_client)
+def _create_provider():
+    """Create the default metadata provider (Open Library) with caching."""
+    return build_metadata_provider()
 
 
 def _find_mobis(path: Path) -> list[Path]:

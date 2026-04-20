@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import (
     auto_accept_option,
     db_option,
@@ -19,17 +20,14 @@ from bookery.core.pipeline import match_one
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.mapping import BookRecord
-from bookery.metadata.http import BookeryHttpClient
-from bookery.metadata.openlibrary import OpenLibraryProvider
 from bookery.metadata.types import BookMetadata
 
 logger = logging.getLogger(__name__)
 
 
-def _create_provider() -> OpenLibraryProvider:
-    """Create the default metadata provider (Open Library)."""
-    http_client = BookeryHttpClient()
-    return OpenLibraryProvider(http_client=http_client)
+def _create_provider(*, use_cache: bool = True):
+    """Create the default metadata provider (Open Library), optionally cached."""
+    return build_metadata_provider(use_cache=use_cache)
 
 
 def _validate_selectors(
@@ -119,6 +117,12 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
     default=True,
     help="Skip books that already have an output_path (default: --resume).",
 )
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    help="Skip the metadata response cache and force fresh provider lookups.",
+)
 def rematch(
     book_id: int | None,
     match_all: bool,
@@ -128,6 +132,7 @@ def rematch(
     auto_accept: bool,
     threshold: float,
     resume: bool,
+    no_cache: bool,
 ) -> None:
     """Re-run metadata matching on cataloged books and update the database."""
     console = Console()
@@ -170,7 +175,7 @@ def rematch(
                 return
 
         # Set up match pipeline
-        provider = _create_provider()
+        provider = _create_provider(use_cache=not no_cache)
         review = ReviewSession(
             console=console,
             quiet=auto_accept,
