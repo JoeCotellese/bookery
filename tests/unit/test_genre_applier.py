@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from bookery.core.genre_applier import ApplyResult, apply_genres
+from bookery.core.genre_applier import (
+    PRIMARY_GENRE_FIELD,
+    ApplyResult,
+    apply_genres,
+    auto_apply_for_book,
+    collect_unmatched_subject_frequencies,
+)
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.metadata.types import BookMetadata
@@ -131,6 +137,82 @@ class TestApplyGenresDryRun:
         # Only the original genre should remain
         genres = catalog.get_genres_for_book(book_id)
         assert len(genres) == 1
+
+
+class TestAutoApplyForBook:
+    """Tests for auto_apply_for_book() (single-book genre hook)."""
+
+    def test_assigns_primary_from_subjects(self, catalog: LibraryCatalog) -> None:
+        book_id = _add_book_with_subjects(
+            catalog, "Mystery Novel", ["mystery", "thriller"], "h1"
+        )
+        primary = auto_apply_for_book(catalog, book_id, ["mystery", "thriller"])
+        assert primary == "Mystery & Thriller"
+        assert catalog.get_primary_genre(book_id) == "Mystery & Thriller"
+        prov = catalog.get_provenance(book_id)
+        assert PRIMARY_GENRE_FIELD in prov
+        assert prov[PRIMARY_GENRE_FIELD].source == "genres"
+
+    def test_locked_primary_genre_is_preserved(self, catalog: LibraryCatalog) -> None:
+        book_id = _add_book_with_subjects(
+            catalog, "Mystery Novel", ["fantasy"], "h2"
+        )
+        catalog.add_genre(book_id, "Fantasy", is_primary=True)
+        catalog.set_field_lock(book_id, PRIMARY_GENRE_FIELD, True)
+        # Try to auto-apply with subjects that would pick a different primary.
+        primary = auto_apply_for_book(catalog, book_id, ["mystery", "thriller"])
+        assert catalog.get_primary_genre(book_id) == "Fantasy"
+        # Returned value reflects preserved state
+        assert primary == "Fantasy"
+
+    def test_unmatched_subjects_leave_book_unmapped(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = _add_book_with_subjects(
+            catalog, "Oddity", ["quantum chromodynamics"], "h3"
+        )
+        primary = auto_apply_for_book(
+            catalog, book_id, ["quantum chromodynamics"]
+        )
+        assert primary is None
+        assert catalog.get_primary_genre(book_id) is None
+
+
+class TestUpdateBookHook:
+    """Confirm catalog.update_book triggers auto_apply_for_book via hook."""
+
+    def test_update_book_with_subjects_triggers_auto_assignment(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="T", source_path=Path("/t.epub")),
+            file_hash="h4",
+        )
+        catalog.update_book(
+            book_id,
+            source="openlibrary",
+            subjects=["science fiction", "space opera"],
+        )
+        assert catalog.get_primary_genre(book_id) == "Science Fiction"
+
+    def test_update_book_without_subjects_does_not_touch_genres(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = _add_book_with_subjects(catalog, "T", ["fantasy"], "h5")
+        catalog.add_genre(book_id, "Fantasy", is_primary=True)
+        catalog.update_book(book_id, source="user", publisher="Ace")
+        assert catalog.get_primary_genre(book_id) == "Fantasy"
+
+
+class TestCollectUnmatchedSubjectFrequencies:
+    def test_counts_only_unmapped_subjects(self, catalog: LibraryCatalog) -> None:
+        _add_book_with_subjects(
+            catalog, "A", ["widgetology", "science fiction"], "h6"
+        )
+        _add_book_with_subjects(catalog, "B", ["widgetology"], "h7")
+        freq = collect_unmatched_subject_frequencies(catalog)
+        assert ("widgetology", 2) in freq
+        assert all(sub != "science fiction" for sub, _ in freq)
 
 
 class TestApplyResult:

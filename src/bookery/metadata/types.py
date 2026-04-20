@@ -15,6 +15,7 @@ class BookMetadata:
     """
 
     title: str
+    subtitle: str | None = None
     authors: list[str] = field(default_factory=list)
     author_sort: str | None = None
     language: str | None = None
@@ -30,6 +31,10 @@ class BookMetadata:
     published_date: str | None = None
     original_publication_date: str | None = None
     page_count: int | None = None
+    rating: float | None = None
+    ratings_count: int | None = None
+    print_type: str | None = None
+    maturity_rating: str | None = None
     source_path: Path | None = None
 
     @property

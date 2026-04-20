@@ -62,6 +62,7 @@ def metadata_to_row(
     """
     return {
         "title": metadata.title,
+        "subtitle": metadata.subtitle,
         "authors": json.dumps(metadata.authors),
         "author_sort": metadata.author_sort,
         "language": metadata.language,
@@ -76,6 +77,10 @@ def metadata_to_row(
         "published_date": metadata.published_date,
         "original_publication_date": metadata.original_publication_date,
         "page_count": metadata.page_count,
+        "rating": metadata.rating,
+        "ratings_count": metadata.ratings_count,
+        "print_type": metadata.print_type,
+        "maturity_rating": metadata.maturity_rating,
         "source_path": str(metadata.source_path) if metadata.source_path else None,
         "output_path": str(output_path) if output_path else None,
         "file_hash": file_hash,
@@ -101,6 +106,7 @@ def row_to_metadata(row: Any) -> BookMetadata:
 
     return BookMetadata(
         title=row["title"],
+        subtitle=_opt("subtitle"),
         authors=json.loads(row["authors"]) if row["authors"] else [],
         author_sort=row["author_sort"],
         language=row["language"],
@@ -115,6 +121,10 @@ def row_to_metadata(row: Any) -> BookMetadata:
         published_date=_opt("published_date"),
         original_publication_date=_opt("original_publication_date"),
         page_count=_opt("page_count"),
+        rating=_opt("rating"),
+        ratings_count=_opt("ratings_count"),
+        print_type=_opt("print_type"),
+        maturity_rating=_opt("maturity_rating"),
         source_path=Path(source) if source else None,
     )
 

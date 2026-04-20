@@ -80,6 +80,8 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
     fields: dict = {}
     if metadata.title:
         fields["title"] = metadata.title
+    if metadata.subtitle:
+        fields["subtitle"] = metadata.subtitle
     if metadata.authors:
         fields["authors"] = metadata.authors
     if metadata.author_sort:
@@ -106,6 +108,14 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
         fields["page_count"] = metadata.page_count
     if metadata.cover_url:
         fields["cover_url"] = metadata.cover_url
+    if metadata.rating is not None:
+        fields["rating"] = metadata.rating
+    if metadata.ratings_count is not None:
+        fields["ratings_count"] = metadata.ratings_count
+    if metadata.print_type:
+        fields["print_type"] = metadata.print_type
+    if metadata.maturity_rating:
+        fields["maturity_rating"] = metadata.maturity_rating
     return fields
 
 

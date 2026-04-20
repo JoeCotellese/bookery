@@ -60,6 +60,11 @@ class TestOpenLibrary:
             "published_date",
             "original_publication_date",
             "page_count",
+            "subtitle",
+            "rating",
+            "ratings_count",
+            "print_type",
+            "maturity_rating",
         }
         assert expected == columns
 
@@ -79,7 +84,7 @@ class TestOpenLibrary:
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 5
+        assert row[0] == 6
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""

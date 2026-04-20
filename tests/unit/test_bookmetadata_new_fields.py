@@ -49,6 +49,41 @@ class TestCatalogRoundTrip:
             conn.close()
 
 
+class TestExpandedBookMetadata:
+    def test_v6_fields_default_to_none(self) -> None:
+        meta = BookMetadata(title="T")
+        assert meta.subtitle is None
+        assert meta.rating is None
+        assert meta.ratings_count is None
+        assert meta.print_type is None
+        assert meta.maturity_rating is None
+
+    def test_v6_fields_round_trip(self, tmp_path: Path) -> None:
+        conn = open_library(tmp_path / "lib.db")
+        try:
+            catalog = LibraryCatalog(conn)
+            meta = BookMetadata(
+                title="T",
+                authors=["A"],
+                source_path=Path("/tmp/x.epub"),
+                subtitle="A Subtitle",
+                rating=4.3,
+                ratings_count=2145,
+                print_type="BOOK",
+                maturity_rating="NOT_MATURE",
+            )
+            book_id = catalog.add_book(meta, file_hash="h" * 64)
+            record = catalog.get_by_id(book_id)
+            assert record is not None
+            assert record.metadata.subtitle == "A Subtitle"
+            assert record.metadata.rating == 4.3
+            assert record.metadata.ratings_count == 2145
+            assert record.metadata.print_type == "BOOK"
+            assert record.metadata.maturity_rating == "NOT_MATURE"
+        finally:
+            conn.close()
+
+
 class TestOpenLibraryParserPopulation:
     def test_isbn_response_populates_published_date_and_pages(self) -> None:
         data = {
@@ -109,3 +144,18 @@ class TestOpenLibraryParserPopulation:
         data = {"title": "T", "covers": [-1, 88]}
         meta = parse_isbn_response(data)
         assert meta.cover_url == "https://covers.openlibrary.org/b/id/88-L.jpg"
+
+    def test_isbn_response_populates_subtitle(self) -> None:
+        data = {"title": "T", "subtitle": "A Novel"}
+        meta = parse_isbn_response(data)
+        assert meta.subtitle == "A Novel"
+
+    def test_works_metadata_populates_subtitle(self) -> None:
+        data = {"key": "/works/OL1W", "title": "T", "subtitle": "A Novel"}
+        meta = parse_works_metadata(data)
+        assert meta.subtitle == "A Novel"
+
+    def test_search_result_populates_subtitle(self) -> None:
+        data = {"docs": [{"title": "T", "subtitle": "A Novel"}]}
+        results = parse_search_results(data)
+        assert results[0].subtitle == "A Novel"

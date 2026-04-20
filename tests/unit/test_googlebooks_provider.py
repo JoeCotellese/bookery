@@ -124,13 +124,78 @@ def test_search_by_title_author_builds_query_and_sorts() -> None:
     }
 
 
-def test_subtitle_is_joined_into_title() -> None:
+def test_subtitle_is_kept_separate_from_title() -> None:
     http = FakeHttpClient(
         {"volumes": {"items": [_volume(title="Dune", subtitle="A Novel")]}}
     )
     provider = GoogleBooksProvider(http_client=http)
     candidates = provider.search_by_isbn("9780441013593")
-    assert candidates[0].metadata.title == "Dune: A Novel"
+    assert candidates[0].metadata.title == "Dune"
+    assert candidates[0].metadata.subtitle == "A Novel"
+
+
+def test_parses_rating_ratings_count_print_type_and_maturity() -> None:
+    vol = _volume(title="Dune")
+    vol["volumeInfo"]["averageRating"] = 4.3
+    vol["volumeInfo"]["ratingsCount"] = 2145
+    vol["volumeInfo"]["printType"] = "BOOK"
+    vol["volumeInfo"]["maturityRating"] = "NOT_MATURE"
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+    assert meta.rating == 4.3
+    assert meta.ratings_count == 2145
+    assert meta.print_type == "BOOK"
+    assert meta.maturity_rating == "NOT_MATURE"
+
+
+def test_largest_cover_variant_is_selected() -> None:
+    vol = _volume(title="Dune")
+    vol["volumeInfo"]["imageLinks"] = {
+        "smallThumbnail": "http://example/st.jpg",
+        "thumbnail": "http://example/t.jpg",
+        "small": "http://example/s.jpg",
+        "medium": "http://example/m.jpg",
+        "large": "http://example/l.jpg",
+        "extraLarge": "http://example/xl.jpg",
+    }
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+    assert meta.cover_url == "https://example/xl.jpg"
+
+
+def test_cover_falls_back_to_next_available_variant() -> None:
+    vol = _volume(title="Dune", thumbnail=None)
+    vol["volumeInfo"]["imageLinks"] = {"medium": "http://example/m.jpg"}
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+    assert meta.cover_url == "https://example/m.jpg"
+
+
+def test_preview_and_info_links_recorded_in_identifiers() -> None:
+    vol = _volume(title="Dune")
+    vol["volumeInfo"]["previewLink"] = "https://books.google.com/preview"
+    vol["volumeInfo"]["infoLink"] = "https://books.google.com/info"
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+    assert meta.identifiers["googlebooks_preview"] == "https://books.google.com/preview"
+    assert meta.identifiers["googlebooks_info"] == "https://books.google.com/info"
+
+
+def test_non_book_print_type_is_skipped() -> None:
+    mag = _volume(vol_id="MAG", title="Magazine")
+    mag["volumeInfo"]["printType"] = "MAGAZINE"
+    book = _volume(vol_id="BOOKVOL", title="Dune")
+    book["volumeInfo"]["printType"] = "BOOK"
+    http = FakeHttpClient({"volumes": {"items": [mag, book]}})
+    provider = GoogleBooksProvider(http_client=http)
+    candidates = provider.search_by_title_author("Dune")
+    titles = [c.metadata.title for c in candidates]
+    assert "Magazine" not in titles
+    assert "Dune" in titles
 
 
 def test_isbn_10_is_used_when_no_isbn_13() -> None:

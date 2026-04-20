@@ -24,7 +24,7 @@ class TestMigrations:
         conn = open_library(db_path)
         version = _get_schema_version(conn)
         conn.close()
-        assert version == 5
+        assert version == 6
 
     def test_migrations_list_is_ordered(self) -> None:
         """MIGRATIONS list has strictly increasing version numbers."""
@@ -93,6 +93,15 @@ class TestMigrations:
         assert cursor.fetchone()[0] == 0
         conn.close()
 
+    def test_v6_adds_book_metadata_columns(self, db_path: Path) -> None:
+        """V6 migration adds subtitle, rating, ratings_count, print_type, maturity_rating."""
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(books)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        for col in ("subtitle", "rating", "ratings_count", "print_type", "maturity_rating"):
+            assert col in columns, f"missing {col}"
+
     def test_apply_migrations_is_idempotent(self, db_path: Path) -> None:
         """Running migrations twice does not raise or change version."""
         conn = open_library(db_path)
@@ -117,7 +126,7 @@ class TestMigrations:
         # Now open with bookery — should auto-migrate
         conn = open_library(db_path)
         version = _get_schema_version(conn)
-        assert version == 5
+        assert version == 6
 
         # Tags table should exist
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")

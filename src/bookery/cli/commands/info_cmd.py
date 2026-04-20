@@ -15,7 +15,7 @@ console = Console()  # TODO: move Console() inside command for testability
 
 
 _SETTABLE_FIELDS = {
-    "title", "authors", "author_sort", "language", "publisher", "isbn",
+    "title", "subtitle", "authors", "author_sort", "language", "publisher", "isbn",
     "description", "series", "series_index", "subjects", "published_date",
     "original_publication_date", "page_count", "cover_url",
 }
@@ -152,6 +152,8 @@ def info(
 
     table.add_row("ID", str(record.id))
     table.add_row("Title", meta.title)
+    if meta.subtitle:
+        table.add_row("Subtitle", meta.subtitle)
     table.add_row("Author", meta.author or "unknown")
     if meta.author_sort:
         table.add_row("Author Sort", meta.author_sort)
@@ -166,6 +168,10 @@ def info(
         table.add_row("First Published", meta.original_publication_date)
     if meta.page_count is not None:
         table.add_row("Pages", str(meta.page_count))
+    if meta.rating is not None:
+        count = meta.ratings_count
+        count_str = f" ({count:,} ratings)" if count else ""
+        table.add_row("Rating", f"⭐ {meta.rating:.1f}{count_str}")
     if meta.cover_url:
         table.add_row("Cover URL", meta.cover_url)
     if meta.description:

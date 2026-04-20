@@ -224,3 +224,63 @@ class TestLsGenreFilter:
         )
         assert result.exit_code == 1
         assert "not a canonical genre" in result.output
+
+
+class TestGenreStats:
+    """Tests for `bookery genre stats`."""
+
+    def test_stats_shows_unmatched_frequencies(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        for i, subs in enumerate([
+            ["widgetology", "science fiction"],
+            ["widgetology"],
+            ["whatsits"],
+        ]):
+            catalog.add_book(
+                BookMetadata(title=f"B{i}", source_path=Path(f"/{i}.epub")),
+                file_hash=f"h{i}",
+            )
+            catalog.store_subjects(i + 1, subs)
+        conn.close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["genre", "stats", "--db", str(db_path)])
+        assert result.exit_code == 0
+        assert "widgetology" in result.output
+        assert "whatsits" in result.output
+
+    def test_stats_empty_catalog(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        open_library(db_path).close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["genre", "stats", "--db", str(db_path)])
+        assert result.exit_code == 0
+        assert "No unmatched" in result.output
+
+
+class TestGenreAuto:
+    """Tests for `bookery genre auto`."""
+
+    def test_auto_all_reassigns_like_apply_force(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        book_id = catalog.add_book(
+            BookMetadata(title="B", source_path=Path("/b.epub")),
+            file_hash="h1",
+        )
+        catalog.store_subjects(book_id, ["science fiction"])
+        conn.close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["genre", "auto", "--all", "--db", str(db_path)])
+        assert result.exit_code == 0
+        assert "1" in result.output
+
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        assert catalog.get_primary_genre(book_id) == "Science Fiction"
+        conn.close()

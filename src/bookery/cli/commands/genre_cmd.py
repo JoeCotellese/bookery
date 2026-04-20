@@ -8,7 +8,10 @@ from rich.console import Console
 from rich.table import Table
 
 from bookery.cli.options import db_option, resolve_db_path
-from bookery.core.genre_applier import apply_genres
+from bookery.core.genre_applier import (
+    apply_genres,
+    collect_unmatched_subject_frequencies,
+)
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 
@@ -92,6 +95,32 @@ def genre_unmatched(db_path: Path | None) -> None:
     conn.close()
 
 
+@genre.command("stats")
+@click.option("--limit", type=int, default=25, show_default=True)
+@db_option
+def genre_stats(limit: int, db_path: Path | None) -> None:
+    """Show the most common subjects that don't map to a canonical genre."""
+    conn = open_library(resolve_db_path(db_path))
+    catalog = LibraryCatalog(conn)
+
+    freq = collect_unmatched_subject_frequencies(catalog)
+    if not freq:
+        console.print("[green]No unmatched subjects — every subject maps cleanly.[/green]")
+        conn.close()
+        return
+
+    table = Table(title="Unmatched subjects")
+    table.add_column("Subject")
+    table.add_column("Count", justify="right", style="dim")
+
+    for subject, count in freq[:limit]:
+        table.add_row(subject, str(count))
+    console.print(table)
+    if len(freq) > limit:
+        console.print(f"[dim]… {len(freq) - limit} more[/dim]")
+    conn.close()
+
+
 @genre.command("apply")
 @click.option("--dry-run", is_flag=True, help="Show what would be assigned without writing.")
 @click.option("--force", is_flag=True, help="Re-evaluate all books, even those with genres.")
@@ -124,3 +153,22 @@ def genre_apply(ctx: click.Context, dry_run: bool, force: bool, db_path: Path | 
         )
 
     conn.close()
+
+
+@genre.command("auto")
+@click.option("--all", "all_books", is_flag=True, help="Re-evaluate every book.")
+@click.option("--dry-run", is_flag=True, help="Show what would be assigned without writing.")
+@db_option
+@click.pass_context
+def genre_auto(
+    ctx: click.Context,
+    all_books: bool,
+    dry_run: bool,
+    db_path: Path | None,
+) -> None:
+    """Auto-map subjects to canonical genres across the catalog.
+
+    Without ``--all``, only books that don't yet have a genre are processed
+    (matches ``genre apply``). With ``--all``, every book is re-evaluated.
+    """
+    ctx.invoke(genre_apply, dry_run=dry_run, force=all_books, db_path=db_path)

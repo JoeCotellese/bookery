@@ -227,6 +227,38 @@ def test_authors_list_agreement_prefers_agreed_value() -> None:
     assert result[0].metadata.identifiers["provenance_authors"] == "googlebooks"
 
 
+def test_new_scalar_fields_vote_and_record_provenance() -> None:
+    p1 = FakeProvider(
+        "openlibrary",
+        isbn_results=[
+            _cand("openlibrary", title="Dune", subtitle="A Novel", rating=4.5)
+        ],
+    )
+    p2 = FakeProvider(
+        "googlebooks",
+        isbn_results=[
+            _cand(
+                "googlebooks",
+                title="Dune",
+                subtitle="An Epic",
+                rating=4.3,
+                ratings_count=2145,
+                print_type="BOOK",
+                maturity_rating="NOT_MATURE",
+            )
+        ],
+    )
+    consensus = ConsensusProvider([p1, p2])
+    merged = consensus.search_by_isbn("9780441013593")[0].metadata
+    # Disagreement on subtitle → priority (openlibrary) wins.
+    assert merged.subtitle == "A Novel"
+    # Google-only fields come through.
+    assert merged.ratings_count == 2145
+    assert merged.print_type == "BOOK"
+    assert merged.maturity_rating == "NOT_MATURE"
+    assert merged.identifiers["provenance_ratings_count"] == "googlebooks"
+
+
 def test_lookup_by_url_returns_first_hit_in_priority_order() -> None:
     cand = MetadataCandidate(
         metadata=BookMetadata(title="Dune"),
