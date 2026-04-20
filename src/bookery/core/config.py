@@ -66,6 +66,7 @@ DEFAULT_AUTO_ACCEPT_THRESHOLD = 0.8
 class MatchingConfig:
     auto_accept_threshold: float = DEFAULT_AUTO_ACCEPT_THRESHOLD
     cache_ttl_days: int = 30
+    providers: tuple[str, ...] = ("openlibrary",)
 
 
 @dataclass(frozen=True)
@@ -146,11 +147,21 @@ def _parse_sync(section: dict[str, Any] | None) -> SyncConfig:
 def _parse_matching(section: dict[str, Any] | None) -> MatchingConfig:
     if not section:
         return MatchingConfig()
+    providers_raw = section.get("providers")
+    if providers_raw is None:
+        providers = ("openlibrary",)
+    elif isinstance(providers_raw, (list, tuple)):
+        providers = tuple(str(p).strip() for p in providers_raw if str(p).strip())
+        if not providers:
+            providers = ("openlibrary",)
+    else:
+        providers = ("openlibrary",)
     return MatchingConfig(
         auto_accept_threshold=float(
             section.get("auto_accept_threshold", DEFAULT_AUTO_ACCEPT_THRESHOLD),
         ),
         cache_ttl_days=int(section.get("cache_ttl_days", 30)),
+        providers=providers,
     )
 
 
