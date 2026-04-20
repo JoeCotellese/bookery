@@ -109,7 +109,7 @@ def test_vault_export_catalog_replaces_prior_export(
         cli, [*args, "--version-label", "v2"], catch_exceptions=False,
     )
     assert second.exit_code == 0, second.output
-    assert "replacing 1 prior vault export" in second.output
+    assert "replaced 1 prior vault export" in second.output
 
     conn = open_library(db)
     try:
@@ -121,6 +121,114 @@ def test_vault_export_catalog_replaces_prior_export(
 
     library_epubs = list(_isolate_library_root.rglob("*.epub"))
     assert len(library_epubs) == 1, library_epubs
+
+
+def test_vault_export_catalog_does_not_clobber_unrelated_books(
+    tmp_path: Path, _isolate_library_root: Path,
+) -> None:
+    """`--catalog` must only replace prior snapshots of the *same* vault. A
+    real book whose title happens to start with the vault title (e.g. "Notes
+    from Underground" when the vault title is "Notes") must NOT be deleted.
+    """
+    from bookery.db.catalog import LibraryCatalog
+    from bookery.db.connection import open_library
+    from bookery.metadata.types import BookMetadata
+
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    db = tmp_path / "library.db"
+
+    # Seed the catalog with an unrelated book whose title shares the same
+    # prefix the vault export will use ("Notes ").
+    conn = open_library(db)
+    try:
+        catalog = LibraryCatalog(conn)
+        catalog.add_book(
+            BookMetadata(
+                title="Notes from Underground",
+                authors=["Fyodor Dostoevsky"],
+                source_path=tmp_path / "fake-dostoevsky.epub",
+            ),
+            file_hash="seed-hash-unrelated-book",
+        )
+    finally:
+        conn.close()
+
+    # Stub import_books so we don't need a real EPUB on disk for the seeded
+    # row's hash check; we only care that the prune step leaves it alone.
+    args = [
+        "vault-export", "--vault", str(FIXTURE),
+        "-o", str(out),
+        "--title", "Notes",
+        "--author", "Joe Cotellese",
+        "--catalog", "--db", str(db),
+    ]
+    result = runner.invoke(cli, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+
+    conn = open_library(db)
+    try:
+        titles = sorted(r.metadata.title for r in LibraryCatalog(conn).list_all())
+    finally:
+        conn.close()
+    assert "Notes from Underground" in titles, titles
+
+
+def test_vault_export_catalog_preserves_prior_when_import_fails(
+    tmp_path: Path, _isolate_library_root: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If `import_books` fails after the EPUB renders, the prior vault row
+    must remain in the catalog. We must never delete the user's last good
+    snapshot until the new one is safely cataloged.
+    """
+    from bookery.db.catalog import LibraryCatalog
+    from bookery.db.connection import open_library
+    from bookery.metadata.types import BookMetadata
+
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    db = tmp_path / "library.db"
+
+    # Seed a prior snapshot the prune step would otherwise match.
+    conn = open_library(db)
+    try:
+        LibraryCatalog(conn).add_book(
+            BookMetadata(
+                title="vault Vault — v0",
+                authors=["Obsidian Vault"],
+                source_path=tmp_path / "fake-prior-vault.epub",
+            ),
+            file_hash="seed-hash-prior-snapshot",
+        )
+    finally:
+        conn.close()
+
+    def _explode(*_args, **_kwargs):
+        from bookery.core.importer import ImportResult
+        return ImportResult(added=0, errors=1, error_details=[(out, "boom")])
+
+    monkeypatch.setattr(
+        "bookery.cli.commands.vault_export_cmd.import_books", _explode,
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--title", "vault Vault",
+            "--catalog", "--db", str(db),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0, result.output
+
+    conn = open_library(db)
+    try:
+        titles = [r.metadata.title for r in LibraryCatalog(conn).list_all()]
+    finally:
+        conn.close()
+    assert titles == ["vault Vault — v0"], titles
 
 
 def test_vault_export_rejects_missing_vault(tmp_path: Path):

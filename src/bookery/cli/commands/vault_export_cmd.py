@@ -35,6 +35,7 @@ from bookery.core.vault.epub import (
 from bookery.core.vault.walker import walk_vault
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.hashing import compute_file_hash
 
 console = Console()
 
@@ -201,22 +202,6 @@ def vault_export(
         conn = open_library(db_path or DEFAULT_DB_PATH)
         try:
             catalog = LibraryCatalog(conn)
-            # A vault export is a point-in-time snapshot — only one version
-            # should exist in the catalog at a time. Drop any prior row whose
-            # title starts with the un-versioned vault title (the version
-            # label is appended by `render_epub`, e.g. "Foo Vault — 2026-…").
-            removed_ids: list[int] = []
-            for record in catalog.list_all():
-                if record.metadata.title.startswith(title):
-                    if record.output_path and Path(record.output_path).exists():
-                        with contextlib.suppress(OSError):
-                            Path(record.output_path).unlink()
-                    catalog.delete_book(record.id)
-                    removed_ids.append(record.id)
-            if removed_ids:
-                console.print(
-                    f"[dim]replacing {len(removed_ids)} prior vault export(s)[/dim]"
-                )
             result = import_books(
                 [output_path],
                 catalog,
@@ -225,6 +210,40 @@ def vault_export(
                 move=False,
                 on_progress=build_progress_fn(console),
             )
+            # A vault export is a point-in-time snapshot — only one version
+            # should exist in the catalog at a time. After a successful
+            # import, drop any prior row that looks like an older snapshot of
+            # the same vault: same un-versioned title prefix (the version
+            # label is appended by `render_epub`, e.g. "Foo Vault — 2026-…")
+            # AND same author. The two-key match prevents wiping unrelated
+            # books like "Notes from Underground" when the vault is titled
+            # "Notes". Skip the row we just inserted, and never unlink the
+            # file we just imported.
+            removed = 0
+            if result.added:
+                new_hash = compute_file_hash(output_path)
+                new_record = catalog.get_by_hash(new_hash)
+                new_id = new_record.id if new_record else None
+                output_resolved = output_path.resolve()
+                title_prefix = f"{title} — "
+                for record in catalog.list_all():
+                    if record.id == new_id:
+                        continue
+                    if not record.metadata.title.startswith(title_prefix):
+                        continue
+                    if record.metadata.author != author:
+                        continue
+                    if record.output_path:
+                        path = Path(record.output_path)
+                        if path.exists() and path.resolve() != output_resolved:
+                            with contextlib.suppress(OSError):
+                                path.unlink()
+                    catalog.delete_book(record.id)
+                    removed += 1
+            if removed:
+                console.print(
+                    f"[dim]replaced {removed} prior vault export(s)[/dim]"
+                )
         finally:
             conn.close()
 
