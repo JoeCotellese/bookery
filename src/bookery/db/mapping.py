@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bookery.core.dedup import normalize_isbn
 from bookery.metadata.types import BookMetadata
 
 
@@ -49,7 +50,7 @@ def metadata_to_row(
         "author_sort": metadata.author_sort,
         "language": metadata.language,
         "publisher": metadata.publisher,
-        "isbn": metadata.isbn,
+        "isbn": normalize_isbn(metadata.isbn) or None,
         "description": metadata.description,
         "series": metadata.series,
         "series_index": metadata.series_index,

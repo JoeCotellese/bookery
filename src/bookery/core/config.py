@@ -65,6 +65,7 @@ DEFAULT_AUTO_ACCEPT_THRESHOLD = 0.8
 @dataclass(frozen=True, slots=True)
 class MatchingConfig:
     auto_accept_threshold: float = DEFAULT_AUTO_ACCEPT_THRESHOLD
+    cache_ttl_days: int = 30
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,7 @@ def _parse_matching(section: dict[str, Any] | None) -> MatchingConfig:
         auto_accept_threshold=float(
             section.get("auto_accept_threshold", DEFAULT_AUTO_ACCEPT_THRESHOLD),
         ),
+        cache_ttl_days=int(section.get("cache_ttl_days", 30)),
     )
 
 

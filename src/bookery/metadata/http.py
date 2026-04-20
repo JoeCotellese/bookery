@@ -3,9 +3,13 @@
 
 import logging
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from urllib.parse import urlparse
 
 import httpx
+
+if TYPE_CHECKING:
+    from bookery.metadata.cache import MetadataCache
 
 logger = logging.getLogger(__name__)
 
@@ -106,3 +110,40 @@ class BookeryHttpClient:
         if elapsed < self._min_interval and self._last_request_time > 0:
             time.sleep(self._min_interval - elapsed)
         self._last_request_time = time.monotonic()
+
+
+class CachingHttpClient:
+    """HTTP client wrapper that caches GET responses in a :class:`MetadataCache`.
+
+    Cache hits return the stored JSON immediately. Misses delegate to the
+    inner client and persist the response. The provider label is stamped on
+    cache rows so the same cache can safely serve multiple providers.
+    """
+
+    def __init__(
+        self,
+        inner: "HttpClient",
+        cache: "MetadataCache",
+        *,
+        provider: str,
+    ) -> None:
+        self._inner = inner
+        self._cache = cache
+        self._provider = provider
+
+    def get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        parsed = urlparse(url)
+        query_type = parsed.path or "/"
+        key_parts = [parsed.netloc, parsed.query]
+        if params:
+            for k in sorted(params):
+                key_parts.append(f"{k}={params[k]}")
+        query_key = "|".join(key_parts)
+
+        hit = self._cache.get(self._provider, query_type, query_key)
+        if hit is not None:
+            return hit
+
+        response = self._inner.get(url, params=params)
+        self._cache.put(self._provider, query_type, query_key, response)
+        return response

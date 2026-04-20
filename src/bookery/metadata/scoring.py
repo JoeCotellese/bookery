@@ -1,9 +1,9 @@
 # ABOUTME: Confidence scoring for metadata candidate matching.
 # ABOUTME: Compares extracted EPUB metadata against candidates using weighted field similarity.
 
-import re
 from difflib import SequenceMatcher
 
+from bookery.core.dedup import normalize_isbn as _canonical_isbn
 from bookery.metadata.types import BookMetadata
 
 # Match weights — must sum to 1.0
@@ -24,9 +24,6 @@ _COMPLETENESS_FIELDS: dict[str, float] = {
     "publisher": 0.05,
 }
 
-_ISBN_STRIP_RE = re.compile(r"[\s-]")
-
-
 def _normalize_author(name: str) -> str:
     """Normalize 'Last, First' to 'First Last' and lowercase."""
     name = name.strip().lower()
@@ -37,8 +34,8 @@ def _normalize_author(name: str) -> str:
 
 
 def _normalize_isbn(isbn: str) -> str:
-    """Strip hyphens and spaces from an ISBN for comparison."""
-    return _ISBN_STRIP_RE.sub("", isbn)
+    """Canonicalize ISBN for comparison (strip separators, convert ISBN-10 to ISBN-13)."""
+    return _canonical_isbn(isbn)
 
 
 def _string_similarity(a: str, b: str) -> float:

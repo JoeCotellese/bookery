@@ -114,7 +114,10 @@ bookery info 42
   ```toml
   [matching]
   auto_accept_threshold = 0.85
+  cache_ttl_days = 30        # metadata response cache TTL (default 30)
   ```
+
+- **`--no-cache`** on `match`/`rematch` bypasses the on-disk metadata response cache and forces fresh provider lookups. Cached responses live at `{data_dir}/metadata_cache.db` and expire after `[matching].cache_ttl_days`.
 
 ## Commands
 

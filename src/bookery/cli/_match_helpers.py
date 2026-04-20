@@ -9,11 +9,41 @@ from bookery.core.importer import ImportResult, MatchFn, MatchResult, ProgressFn
 from bookery.metadata.types import BookMetadata
 
 
+def build_metadata_provider(*, use_cache: bool = True):
+    """Build the default metadata provider with optional response caching.
+
+    When ``use_cache`` is true, wraps the HTTP client in a
+    :class:`CachingHttpClient` backed by a SQLite cache at
+    ``{data_dir}/metadata_cache.db`` with a TTL from
+    ``[matching].cache_ttl_days``.
+    """
+    from bookery.core.config import get_data_dir, get_matching_config
+    from bookery.metadata.cache import MetadataCache
+    from bookery.metadata.http import BookeryHttpClient, CachingHttpClient
+    from bookery.metadata.openlibrary import OpenLibraryProvider
+
+    http_client: object = BookeryHttpClient()
+    if use_cache:
+        matching = get_matching_config()
+        cache = MetadataCache(
+            get_data_dir() / "metadata_cache.db",
+            ttl_seconds=matching.cache_ttl_days * 86400.0,
+        )
+        http_client = CachingHttpClient(
+            http_client,  # type: ignore[arg-type]
+            cache,
+            provider="openlibrary",
+        )
+    return OpenLibraryProvider(http_client=http_client)  # type: ignore[arg-type]
+
+
 def build_match_fn(
     console: Console,
     output_dir: Path,
     quiet: bool,
     threshold: float,
+    *,
+    use_cache: bool = True,
 ) -> MatchFn:
     """Build a match callback that runs the full metadata pipeline.
 
@@ -22,11 +52,8 @@ def build_match_fn(
     """
     from bookery.cli.review import ReviewSession
     from bookery.core.pipeline import match_one
-    from bookery.metadata.http import BookeryHttpClient
-    from bookery.metadata.openlibrary import OpenLibraryProvider
 
-    http_client = BookeryHttpClient()
-    provider = OpenLibraryProvider(http_client=http_client)
+    provider = build_metadata_provider(use_cache=use_cache)
     review = ReviewSession(
         console=console,
         quiet=quiet,

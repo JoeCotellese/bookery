@@ -165,7 +165,8 @@ class LibraryCatalog:
         """Update one or more fields on a cataloged book.
 
         Accepts keyword arguments matching books table columns. Authors and
-        identifiers values are JSON-serialized automatically.
+        identifiers values are JSON-serialized automatically. ISBN is
+        canonicalized to ISBN-13 on write.
 
         Raises:
             ValueError: If the book_id does not exist.
@@ -178,6 +179,8 @@ class LibraryCatalog:
             fields["authors"] = json.dumps(fields["authors"])
         if "identifiers" in fields:
             fields["identifiers"] = json.dumps(fields["identifiers"])
+        if fields.get("isbn"):
+            fields["isbn"] = normalize_isbn(fields["isbn"]) or None  # type: ignore[arg-type]
 
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         set_clause += ", date_modified = strftime('%Y-%m-%dT%H:%M:%S', 'now')"

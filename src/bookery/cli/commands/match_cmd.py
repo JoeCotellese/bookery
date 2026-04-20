@@ -16,21 +16,19 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import auto_accept_option, threshold_option
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.pathformat import is_processed
 from bookery.core.pipeline import match_one
-from bookery.metadata.http import BookeryHttpClient
-from bookery.metadata.openlibrary import OpenLibraryProvider
-from bookery.metadata.provider import MetadataProvider
 
 logger = logging.getLogger(__name__)
 
-def _create_provider() -> MetadataProvider:
-    """Create the default metadata provider (Open Library)."""
-    http_client = BookeryHttpClient()
-    return OpenLibraryProvider(http_client=http_client)
+
+def _create_provider(*, use_cache: bool = True):
+    """Create the default metadata provider (Open Library), optionally cached."""
+    return build_metadata_provider(use_cache=use_cache)
 
 
 def _find_epubs(path: Path) -> list[Path]:
@@ -84,12 +82,19 @@ def _make_progress(console: Console) -> Progress:
     default=True,
     help="Skip files already in output-dir (default: --resume).",
 )
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    help="Skip the metadata response cache and force fresh provider lookups.",
+)
 def match(
     path: Path,
     output_dir: Path | None,
     auto_accept: bool,
     threshold: float,
     resume: bool,
+    no_cache: bool,
 ) -> None:
     """Match EPUB metadata against Open Library and write corrected copies."""
     console = Console()
@@ -97,7 +102,7 @@ def match(
     if output_dir is None:
         output_dir = get_library_root()
 
-    provider = _create_provider()
+    provider = _create_provider(use_cache=not no_cache)
     review = ReviewSession(
         console=console,
         quiet=auto_accept,

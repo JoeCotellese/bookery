@@ -81,17 +81,38 @@ def normalize_isbn(isbn: str | None) -> str:
     if len(cleaned) == 10:
         if not cleaned[:9].isdigit():
             return cleaned
-        cleaned = _isbn10_to_isbn13(cleaned)
+        cleaned = isbn10_to_isbn13(cleaned)
 
     return cleaned
 
 
-def _isbn10_to_isbn13(isbn10: str) -> str:
-    """Convert an ISBN-10 to ISBN-13 by prepending 978 and recalculating check digit."""
+def isbn10_to_isbn13(isbn10: str) -> str:
+    """Convert an ISBN-10 to ISBN-13 by prepending 978 and recalculating the check digit.
+
+    Input must be 10 characters of stripped (no hyphen/space) ISBN-10 with the
+    first 9 characters numeric; the 10th may be 'X'. Returns a 13-digit ISBN-13.
+    """
+    if len(isbn10) != 10 or not isbn10[:9].isdigit():
+        raise ValueError(f"Not a valid ISBN-10: {isbn10!r}")
     base = "978" + isbn10[:9]
-    total = sum(
-        int(d) * (1 if i % 2 == 0 else 3)
-        for i, d in enumerate(base)
-    )
+    total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(base))
     check = (10 - (total % 10)) % 10
     return base + str(check)
+
+
+def isbn13_to_isbn10(isbn13: str) -> str:
+    """Convert an ISBN-13 (978 prefix) to ISBN-10 by recalculating the mod-11 check digit.
+
+    Only the 978 prefix can round-trip to ISBN-10; a 979 prefix has no ISBN-10
+    equivalent and raises ValueError. Check digit 10 is encoded as 'X'.
+    """
+    if len(isbn13) != 13 or not isbn13.isdigit():
+        raise ValueError(f"Not a valid ISBN-13: {isbn13!r}")
+    if not isbn13.startswith("978"):
+        raise ValueError(f"ISBN-13 with non-978 prefix has no ISBN-10: {isbn13!r}")
+    body = isbn13[3:12]
+    total = sum(int(d) * (10 - i) for i, d in enumerate(body))
+    remainder = total % 11
+    check_num = (11 - remainder) % 11
+    check = "X" if check_num == 10 else str(check_num)
+    return body + check
