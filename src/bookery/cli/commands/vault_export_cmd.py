@@ -20,7 +20,7 @@ from rich.progress import (
 )
 
 from bookery.cli._match_helpers import build_progress_fn
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.config import get_library_root, load_config
 from bookery.core.importer import import_books
 from bookery.core.vault.assemble import assemble_vault
@@ -34,7 +34,7 @@ from bookery.core.vault.epub import (
 )
 from bookery.core.vault.walker import walk_vault
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 from bookery.db.hashing import compute_file_hash
 
 console = Console()
@@ -199,7 +199,7 @@ def vault_export(
         console.print(
             f"Cataloging into [bold]{library_root}[/bold]…"
         )
-        conn = open_library(db_path or DEFAULT_DB_PATH)
+        conn = open_library(resolve_db_path(db_path))
         try:
             catalog = LibraryCatalog(conn)
             result = import_books(

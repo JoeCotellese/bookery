@@ -59,6 +59,14 @@ class SyncConfig:
     kobo: SyncKoboConfig = field(default_factory=SyncKoboConfig)
 
 
+DEFAULT_AUTO_ACCEPT_THRESHOLD = 0.8
+
+
+@dataclass(frozen=True, slots=True)
+class MatchingConfig:
+    auto_accept_threshold: float = DEFAULT_AUTO_ACCEPT_THRESHOLD
+
+
 @dataclass(frozen=True)
 class VaultExportConfig:
     vault_path: Path | None = None
@@ -79,6 +87,7 @@ class Config:
     convert: ConvertConfig = field(default_factory=ConvertConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     vault_export: VaultExportConfig = field(default_factory=VaultExportConfig)
+    matching: MatchingConfig = field(default_factory=MatchingConfig)
 
 
 def _config_path() -> Path:
@@ -131,6 +140,16 @@ def _parse_sync(section: dict[str, Any] | None) -> SyncConfig:
     if not section:
         return SyncConfig()
     return SyncConfig(kobo=_parse_sync_kobo(section.get("kobo")))
+
+
+def _parse_matching(section: dict[str, Any] | None) -> MatchingConfig:
+    if not section:
+        return MatchingConfig()
+    return MatchingConfig(
+        auto_accept_threshold=float(
+            section.get("auto_accept_threshold", DEFAULT_AUTO_ACCEPT_THRESHOLD),
+        ),
+    )
 
 
 def _parse_vault_export(section: dict[str, Any] | None) -> VaultExportConfig:
@@ -196,12 +215,14 @@ def load_config() -> Config:
     convert = _parse_convert(data.get("convert"))
     sync = _parse_sync(data.get("sync"))
     vault_export = _parse_vault_export(data.get("vault_export"))
+    matching = _parse_matching(data.get("matching"))
     return Config(
         library_root=library_root,
         data_dir=data_dir,
         convert=convert,
         sync=sync,
         vault_export=vault_export,
+        matching=matching,
     )
 
 
@@ -223,3 +244,8 @@ def get_convert_config() -> ConvertConfig:
 def get_sync_config() -> SyncConfig:
     """Return the [sync] configuration block."""
     return load_config().sync
+
+
+def get_matching_config() -> MatchingConfig:
+    """Return the [matching] configuration block."""
+    return load_config().matching

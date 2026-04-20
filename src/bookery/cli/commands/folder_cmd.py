@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.book_lookup import (
     Ambiguous,
     Found,
@@ -15,7 +15,7 @@ from bookery.core.book_lookup import (
     resolve_book,
 )
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 from bookery.util.file_manager import (
     Headless,
     Opened,
@@ -38,7 +38,7 @@ console = Console()  # TODO: move Console() inside command for testability
 @db_option
 def folder(query: str, print_only: bool, db_path: Path | None) -> None:
     """Open the on-disk folder for a book by ID or title."""
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     try:
         catalog = LibraryCatalog(conn)
         result = resolve_book(catalog, query)

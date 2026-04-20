@@ -7,9 +7,9 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from bookery.cli.options import db_option
+from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 
 console = Console()  # TODO: move Console() inside command for testability
 
@@ -42,7 +42,7 @@ def ls(
 ) -> None:
     """List all books in the library catalog."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     if genre_filter:

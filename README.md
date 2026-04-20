@@ -91,19 +91,30 @@ bookery convert ~/Books/ -o ~/Books-epub/
 bookery match ~/Books/ -o ~/Books-fixed/
 
 # Auto-accept high-confidence matches (no prompts)
-bookery match ~/Books/ -o ~/Books-fixed/ --quiet
+bookery match ~/Books/ -o ~/Books-fixed/ --yes
 
 # Import EPUBs into the catalog (copies into ~/.library/ by default)
-bookery import ~/Books/ --db ~/library.db
+bookery --db ~/library.db import ~/Books/
 
 # Import and remove the sources after they land in the library
-bookery import ~/Downloads/ --db ~/library.db --move
+bookery --db ~/library.db import ~/Downloads/ --move
 
 # Search and browse the catalog
 bookery search "martian"
 bookery ls --tag fiction
 bookery info 42
 ```
+
+### Common options
+
+- **`--db PATH`** is a top-level option; put it before the subcommand so every command picks it up: `bookery --db ~/library.db ls`. Subcommand-level `--db` still works and overrides the global.
+- **`-y/--yes`** auto-accepts high-confidence matches without prompting (valid on `add`, `import`, `match`, `rematch`, `convert`). `-q/--quiet` is a deprecated alias.
+- **`-t/--threshold`** sets the confidence cutoff for auto-accept. The default comes from `[matching].auto_accept_threshold` in `~/.bookery/config.toml` (default `0.8`):
+
+  ```toml
+  [matching]
+  auto_accept_threshold = 0.85
+  ```
 
 ## Commands
 

@@ -7,12 +7,17 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from bookery.cli.options import db_option
+from bookery.cli.options import (
+    auto_accept_option,
+    db_option,
+    resolve_db_path,
+    threshold_option,
+)
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.pipeline import match_one
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 from bookery.db.mapping import BookRecord
 from bookery.metadata.http import BookeryHttpClient
 from bookery.metadata.openlibrary import OpenLibraryProvider
@@ -107,18 +112,8 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
     default=None,
     help="Directory for modified copies (default: configured library_root).",
 )
-@click.option(
-    "-q", "--quiet",
-    is_flag=True,
-    default=False,
-    help="Auto-accept high-confidence matches without prompting.",
-)
-@click.option(
-    "-t", "--threshold",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.85,
-    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.85).",
-)
+@auto_accept_option
+@threshold_option
 @click.option(
     "--resume/--no-resume",
     default=True,
@@ -130,7 +125,7 @@ def rematch(
     tag_name: str | None,
     db_path: Path | None,
     output_dir: Path | None,
-    quiet: bool,
+    auto_accept: bool,
     threshold: float,
     resume: bool,
 ) -> None:
@@ -142,7 +137,7 @@ def rematch(
     if output_dir is None:
         output_dir = get_library_root()
 
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     try:
         catalog = LibraryCatalog(conn)
 
@@ -178,7 +173,7 @@ def rematch(
         provider = _create_provider()
         review = ReviewSession(
             console=console,
-            quiet=quiet,
+            quiet=auto_accept,
             threshold=threshold,
             lookup_fn=provider.lookup_by_url,
         )
@@ -189,7 +184,7 @@ def rematch(
         total = len(books)
 
         for i, record in enumerate(books, start=1):
-            if not quiet:
+            if not auto_accept:
                 console.print(
                     f"\n[bold][{i}/{total}] Rematching:[/bold] "
                     f"{record.metadata.title} (id={record.id})"
@@ -204,7 +199,7 @@ def rematch(
 
             result = match_one(record.source_path, provider, review, output_dir)
 
-            if not quiet and result.normalization and result.normalization.was_modified:
+            if not auto_accept and result.normalization and result.normalization.was_modified:
                 console.print(
                     f"  [dim]Normalized:[/dim] "
                     f"{result.normalization.normalized.title}"
@@ -216,13 +211,13 @@ def rematch(
                 catalog.update_book(record.id, **fields)
                 if result.output_path:
                     catalog.set_output_path(record.id, result.output_path)
-                if not quiet:
+                if not auto_accept:
                     console.print(f"  [green]Updated:[/green] {result.output_path}")
                 matched += 1
             elif result.status == "skipped":
                 skipped += 1
             elif result.status == "error":
-                if not quiet:
+                if not auto_accept:
                     console.print(f"  [red]Error:[/red] {result.error}")
                 errors += 1
     finally:

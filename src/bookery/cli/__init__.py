@@ -2,6 +2,7 @@
 # ABOUTME: Defines the root command group and registers subcommands.
 
 import logging
+from pathlib import Path
 
 import click
 
@@ -29,8 +30,19 @@ from bookery.cli.commands import (
 @click.group()
 @click.version_option(package_name="bookery")
 @click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
-def cli(verbose: int) -> None:
+@click.option(
+    "--db",
+    "db_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to library database. Subcommand --db overrides this.",
+)
+@click.pass_context
+def cli(ctx: click.Context, verbose: int, db_path: Path | None) -> None:
     """Bookery - a CLI-first ebook library manager."""
+    ctx.ensure_object(dict)
+    if db_path is not None:
+        ctx.obj["db_path"] = db_path
     if verbose >= 2:
         level = logging.DEBUG
     elif verbose >= 1:

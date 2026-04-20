@@ -13,13 +13,18 @@ from bookery.cli._match_helpers import (
     format_skip_breakdown,
 )
 from bookery.cli._pdf_support import convert_pdf_to_epub
-from bookery.cli.options import db_option
+from bookery.cli.options import (
+    auto_accept_option,
+    db_option,
+    resolve_db_path,
+    threshold_option,
+)
 from bookery.convert.errors import ConvertError
 from bookery.core.config import get_library_root
 from bookery.core.dedup import filter_redundant_mobis
 from bookery.core.importer import MatchFn, import_books
 from bookery.db.catalog import LibraryCatalog
-from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.connection import open_library
 
 console = Console()  # TODO: move Console() inside command for testability
 
@@ -149,18 +154,8 @@ def _convert_mobis(
     default=None,
     help="Directory for modified copies (default: configured library_root).",
 )
-@click.option(
-    "-q", "--quiet",
-    is_flag=True,
-    default=False,
-    help="Auto-accept high-confidence matches without prompting.",
-)
-@click.option(
-    "-t", "--threshold",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.8,
-    help="Confidence cutoff for auto-accept (0.0-1.0, default 0.8).",
-)
+@auto_accept_option
+@threshold_option
 @click.option(
     "--convert/--no-convert",
     "do_convert",
@@ -185,7 +180,7 @@ def import_command(
     db_path: Path | None,
     do_match: bool,
     output_dir: Path | None,
-    quiet: bool,
+    auto_accept: bool,
     threshold: float,
     do_convert: bool,
     force_duplicates: bool,
@@ -238,7 +233,7 @@ def import_command(
     console.print(f"Found [bold]{len(epub_files)}[/bold] EPUB file(s)\n")
 
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(db_path or DEFAULT_DB_PATH)
+    conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     library_root = output_dir or get_library_root()
@@ -247,7 +242,7 @@ def import_command(
         match_fn = build_match_fn(
             console=console,
             output_dir=library_root,
-            quiet=quiet,
+            quiet=auto_accept,
             threshold=threshold,
         )
 
