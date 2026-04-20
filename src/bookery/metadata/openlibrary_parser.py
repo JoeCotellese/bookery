@@ -8,7 +8,7 @@ from bookery.metadata.types import BookMetadata
 _COVERS_BASE_URL = "https://covers.openlibrary.org/b/isbn"
 
 
-def _cover_url_from_covers(covers: Any, size: str = "L") -> str | None:
+def cover_url_from_covers(covers: Any, size: str = "L") -> str | None:
     """Build a cover URL from the ``covers`` array of an OL edition/work.
 
     OL ignores the `-1` sentinel cover ID it sometimes returns; treat it
@@ -53,7 +53,7 @@ def parse_isbn_response(data: dict[str, Any]) -> BookMetadata:
     page_count_raw = data.get("number_of_pages")
     page_count = int(page_count_raw) if isinstance(page_count_raw, (int, float)) else None
 
-    cover_url = _cover_url_from_covers(data.get("covers")) or (
+    cover_url = cover_url_from_covers(data.get("covers")) or (
         build_cover_url(isbn) if isbn else None
     )
 
@@ -122,7 +122,7 @@ def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
         identifiers["openlibrary_author_keys"] = ",".join(author_keys)
 
     original_publication_date = data.get("first_publish_date")
-    cover_url = _cover_url_from_covers(data.get("covers"))
+    cover_url = cover_url_from_covers(data.get("covers"))
 
     return BookMetadata(
         title=title,

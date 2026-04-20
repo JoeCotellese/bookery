@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.http import HttpClient, MetadataFetchError
 from bookery.metadata.openlibrary_parser import (
+    cover_url_from_covers,
     parse_author_name,
     parse_isbn_response,
     parse_search_results,
@@ -346,8 +347,7 @@ class OpenLibraryProvider:
             metadata.original_publication_date = first_publish
 
         if not metadata.cover_url:
-            from bookery.metadata.openlibrary_parser import _cover_url_from_covers
-            metadata.cover_url = _cover_url_from_covers(works_data.get("covers"))
+            metadata.cover_url = cover_url_from_covers(works_data.get("covers"))
 
         return metadata
 
