@@ -242,10 +242,21 @@ class LibraryCatalog:
         written = list(fields.keys())
 
         if source is not None or provenance:
-            prov_map = {f: source for f in written} if source else {}
+            # Fields that were cleared to an empty value shouldn't claim a
+            # source — the source didn't "supply" a missing value. Delete
+            # any stale provenance for those fields and skip the upsert.
+            cleared = [k for k in written if fields[k] in (None, "", "[]", "{}")]
+            if cleared:
+                self._conn.executemany(
+                    "DELETE FROM book_field_provenance "
+                    "WHERE book_id = ? AND field_name = ?",
+                    [(book_id, k) for k in cleared],
+                )
+
+            populated = [k for k in written if k not in cleared]
+            prov_map = {f: source for f in populated} if source else {}
             if provenance:
-                prov_map.update({k: v for k, v in provenance.items() if k in written})
-            # Drop entries with no source string assigned.
+                prov_map.update({k: v for k, v in provenance.items() if k in populated})
             prov_map = {k: v for k, v in prov_map.items() if v}
             for field_name, field_source in prov_map.items():
                 self._upsert_provenance(

@@ -136,6 +136,17 @@ def test_get_locked_fields(catalog) -> None:
     assert locked == {"title"}
 
 
+def test_clearing_a_field_removes_its_provenance(catalog) -> None:
+    # Clearing publisher to None should drop its provenance row — the
+    # source didn't "supply" a missing value.
+    book_id = _add(catalog)
+    catalog.update_book(book_id, source="googlebooks", publisher="Chilton")
+    assert catalog.get_provenance(book_id)["publisher"].source == "googlebooks"
+
+    catalog.update_book(book_id, source="user", publisher=None)
+    assert "publisher" not in catalog.get_provenance(book_id)
+
+
 def test_update_book_without_source_leaves_provenance_unchanged(catalog) -> None:
     book_id = _add(catalog)
     before = catalog.get_provenance(book_id)["title"].source

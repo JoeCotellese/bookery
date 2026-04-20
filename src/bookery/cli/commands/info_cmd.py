@@ -16,7 +16,7 @@ console = Console()  # TODO: move Console() inside command for testability
 
 _SETTABLE_FIELDS = {
     "title", "authors", "author_sort", "language", "publisher", "isbn",
-    "description", "series", "series_index", "published_date",
+    "description", "series", "series_index", "subjects", "published_date",
     "original_publication_date", "page_count", "cover_url",
 }
 
@@ -36,7 +36,7 @@ def _parse_set_pairs(pairs: tuple[str, ...]) -> dict[str, object]:
                 f"Unknown field {key!r}. Settable fields: "
                 f"{', '.join(sorted(_SETTABLE_FIELDS))}"
             )
-        if key == "authors":
+        if key in ("authors", "subjects"):
             out[key] = [a.strip() for a in value.split(",") if a.strip()]
         elif key == "page_count":
             out[key] = int(value)
@@ -105,13 +105,9 @@ def info(
     if set_pairs:
         parsed = _parse_set_pairs(set_pairs)
         catalog.update_book(book_id, source="user", **parsed)  # type: ignore[arg-type]
-        for field_name in parsed:
-            catalog.set_field_lock(book_id, field_name, True)
         record = catalog.get_by_id(book_id)
         assert record is not None
-        console.print(
-            f"[green]Updated and locked:[/green] {', '.join(sorted(parsed))}"
-        )
+        console.print(f"[green]Updated:[/green] {', '.join(sorted(parsed))}")
 
     for field_name in lock_fields:
         catalog.set_field_lock(book_id, field_name, True)

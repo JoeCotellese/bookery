@@ -38,15 +38,12 @@ def test_info_provenance_shows_table(tmp_path: Path) -> None:
     assert "extracted" in result.output
 
 
-def test_info_set_and_lock(tmp_path: Path) -> None:
+def test_info_set_records_user_provenance_without_locking(tmp_path: Path) -> None:
     db_path = _seed(tmp_path)
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        [
-            "info", "1", "--db", str(db_path),
-            "--set", "title=My Dune",
-        ],
+        ["info", "1", "--db", str(db_path), "--set", "title=My Dune"],
     )
     assert result.exit_code == 0, result.output
 
@@ -57,7 +54,48 @@ def test_info_set_and_lock(tmp_path: Path) -> None:
     assert record.metadata.title == "My Dune"
     prov = catalog.get_provenance(1)
     assert prov["title"].source == "user"
+    # --set no longer implies --lock; callers opt into locking explicitly.
+    assert prov["title"].locked is False
+    conn.close()
+
+
+def test_info_set_and_lock_combined(tmp_path: Path) -> None:
+    db_path = _seed(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "info", "1", "--db", str(db_path),
+            "--set", "title=My Dune",
+            "--lock", "title",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    conn = open_library(db_path)
+    catalog = LibraryCatalog(conn)
+    prov = catalog.get_provenance(1)
+    assert prov["title"].source == "user"
     assert prov["title"].locked is True
+    conn.close()
+
+
+def test_info_set_allows_value_containing_equals(tmp_path: Path) -> None:
+    db_path = _seed(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "info", "1", "--db", str(db_path),
+            "--set", "description=a=b",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    conn = open_library(db_path)
+    record = LibraryCatalog(conn).get_by_id(1)
+    assert record is not None
+    assert record.metadata.description == "a=b"
     conn.close()
 
 

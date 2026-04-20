@@ -131,7 +131,8 @@ CREATE TABLE book_field_provenance (
     locked     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (book_id, field_name)
 );
-CREATE INDEX idx_book_field_provenance_book_id ON book_field_provenance(book_id);
+-- No separate book_id index: the PK (book_id, field_name) already makes
+-- book_id the leftmost key, so SQLite uses it for WHERE book_id = ? lookups.
 
 INSERT INTO schema_version (version) VALUES (5);
 """
