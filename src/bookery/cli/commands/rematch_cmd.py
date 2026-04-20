@@ -96,6 +96,16 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
         fields["series"] = metadata.series
     if metadata.series_index is not None:
         fields["series_index"] = metadata.series_index
+    if metadata.subjects:
+        fields["subjects"] = metadata.subjects
+    if metadata.published_date:
+        fields["published_date"] = metadata.published_date
+    if metadata.original_publication_date:
+        fields["original_publication_date"] = metadata.original_publication_date
+    if metadata.page_count is not None:
+        fields["page_count"] = metadata.page_count
+    if metadata.cover_url:
+        fields["cover_url"] = metadata.cover_url
     return fields
 
 
