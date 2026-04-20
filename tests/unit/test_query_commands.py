@@ -133,6 +133,31 @@ class TestInfoCommand:
         assert "9780156001311" in result.output
         assert "medieval monastery" in result.output
 
+    def test_info_renders_subtitle_and_rating(self, tmp_path: Path) -> None:
+        """info shows subtitle and rating when present."""
+        db_path = tmp_path / "lib.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        catalog.add_book(
+            BookMetadata(
+                title="Dune",
+                subtitle="A Novel",
+                authors=["Frank Herbert"],
+                rating=4.3,
+                ratings_count=2145,
+                source_path=Path("/books/dune.epub"),
+            ),
+            file_hash="hash_dune",
+        )
+        conn.close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["info", "1", "--db", str(db_path)])
+        assert result.exit_code == 0
+        assert "A Novel" in result.output
+        assert "4.3" in result.output
+        assert "2,145" in result.output
+
     def test_info_nonexistent_shows_error(self, tmp_path: Path) -> None:
         """info for unknown ID shows an error."""
         db_path = tmp_path / "lib.db"

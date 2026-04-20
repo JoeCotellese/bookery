@@ -137,4 +137,20 @@ CREATE TABLE book_field_provenance (
 INSERT INTO schema_version (version) VALUES (5);
 """
 
-MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5)]
+SCHEMA_V6 = """
+ALTER TABLE books ADD COLUMN subtitle TEXT;
+ALTER TABLE books ADD COLUMN rating REAL;
+ALTER TABLE books ADD COLUMN ratings_count INTEGER;
+ALTER TABLE books ADD COLUMN print_type TEXT;
+ALTER TABLE books ADD COLUMN maturity_rating TEXT;
+
+INSERT INTO schema_version (version) VALUES (6);
+"""
+
+MIGRATIONS = [
+    (2, SCHEMA_V2),
+    (3, SCHEMA_V3),
+    (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
+]

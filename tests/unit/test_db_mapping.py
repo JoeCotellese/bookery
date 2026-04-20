@@ -17,11 +17,12 @@ class TestMetadataToRow:
         row = metadata_to_row(meta, file_hash="abc123")
 
         expected_keys = {
-            "title", "authors", "author_sort", "language", "publisher",
+            "title", "subtitle", "authors", "author_sort", "language", "publisher",
             "isbn", "description", "series", "series_index", "identifiers",
             "subjects", "source_path", "output_path", "file_hash",
             "cover_url", "published_date", "original_publication_date",
-            "page_count",
+            "page_count", "rating", "ratings_count", "print_type",
+            "maturity_rating",
         }
         assert expected_keys == set(row.keys())
 

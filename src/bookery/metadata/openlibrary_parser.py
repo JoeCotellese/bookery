@@ -59,6 +59,7 @@ def parse_isbn_response(data: dict[str, Any]) -> BookMetadata:
 
     return BookMetadata(
         title=title,
+        subtitle=data.get("subtitle") or None,
         publisher=publisher,
         isbn=isbn,
         language=language,
@@ -126,6 +127,7 @@ def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
 
     return BookMetadata(
         title=title,
+        subtitle=data.get("subtitle") or None,
         description=description,
         subjects=subjects,
         identifiers=identifiers,
@@ -189,6 +191,7 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
         results.append(
             BookMetadata(
                 title=title,
+                subtitle=doc.get("subtitle") or None,
                 authors=authors,
                 isbn=isbn,
                 language=language,

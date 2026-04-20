@@ -269,6 +269,26 @@ class LibraryCatalog:
                 )
 
         self._conn.commit()
+
+        # Auto-genre hook: only fires when a provider source is attached,
+        # so internal bookkeeping (e.g. store_subjects) doesn't clobber
+        # the separate genre-apply workflow.
+        if (
+            source is not None
+            and "subjects" in written
+            and fields.get("subjects") not in (None, "", "[]")
+        ):
+            try:
+                from bookery.core.genre_applier import auto_apply_for_book
+            except ImportError:  # pragma: no cover — defensive
+                return written
+            try:
+                subjects_written = json.loads(fields["subjects"])  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                subjects_written = []
+            if subjects_written:
+                auto_apply_for_book(self, book_id, list(subjects_written))
+
         return written
 
     def _upsert_provenance(

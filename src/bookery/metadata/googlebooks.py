@@ -16,6 +16,16 @@ _GB_BASE = "https://www.googleapis.com/books/v1/volumes"
 _SEARCH_LIMIT = 5
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
+# Ordered from largest to smallest — we pick the first variant Google returns.
+_COVER_VARIANTS = (
+    "extraLarge",
+    "large",
+    "medium",
+    "small",
+    "thumbnail",
+    "smallThumbnail",
+)
+
 
 def _strip_html(text: str) -> str:
     """Remove HTML tags and collapse whitespace."""
@@ -36,14 +46,23 @@ def _pick_isbn(industry_identifiers: list[dict[str, str]]) -> str | None:
     return isbn_13 or isbn_10
 
 
+def _pick_cover(image_links: dict[str, Any]) -> str | None:
+    """Pick the largest available cover variant; upgrade http -> https."""
+    for key in _COVER_VARIANTS:
+        url = image_links.get(key)
+        if url:
+            if url.startswith("http://"):
+                url = "https://" + url[len("http://") :]
+            return url
+    return None
+
+
 def _parse_volume(item: dict[str, Any]) -> BookMetadata:
     """Parse a Google Books `volumes` item into BookMetadata."""
     volume_info = item.get("volumeInfo", {}) or {}
 
     title = volume_info.get("title", "Unknown")
-    subtitle = volume_info.get("subtitle")
-    if subtitle:
-        title = f"{title}: {subtitle}"
+    subtitle = volume_info.get("subtitle") or None
 
     authors = list(volume_info.get("authors", []) or [])
 
@@ -65,21 +84,31 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
     isbn = _pick_isbn(volume_info.get("industryIdentifiers", []) or [])
 
     image_links = volume_info.get("imageLinks", {}) or {}
-    cover_url = (
-        image_links.get("thumbnail")
-        or image_links.get("smallThumbnail")
-        or None
+    cover_url = _pick_cover(image_links)
+
+    average_rating = volume_info.get("averageRating")
+    rating = float(average_rating) if isinstance(average_rating, (int, float)) else None
+    ratings_count_raw = volume_info.get("ratingsCount")
+    ratings_count = (
+        int(ratings_count_raw) if isinstance(ratings_count_raw, (int, float)) else None
     )
-    if cover_url and cover_url.startswith("http://"):
-        cover_url = "https://" + cover_url[len("http://") :]
+    print_type = volume_info.get("printType") or None
+    maturity_rating = volume_info.get("maturityRating") or None
 
     identifiers: dict[str, str] = {}
     volume_id = item.get("id")
     if volume_id:
         identifiers["googlebooks_volume"] = volume_id
+    preview_link = volume_info.get("previewLink")
+    if preview_link:
+        identifiers["googlebooks_preview"] = preview_link
+    info_link = volume_info.get("infoLink")
+    if info_link:
+        identifiers["googlebooks_info"] = info_link
 
     return BookMetadata(
         title=title,
+        subtitle=subtitle,
         authors=authors,
         publisher=publisher,
         isbn=isbn,
@@ -90,7 +119,19 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
         published_date=published_date,
         page_count=page_count,
         cover_url=cover_url,
+        rating=rating,
+        ratings_count=ratings_count,
+        print_type=print_type,
+        maturity_rating=maturity_rating,
     )
+
+
+def _is_book(item: dict[str, Any]) -> bool:
+    """Return True if item is a regular BOOK (not a magazine, etc.)."""
+    volume_info = item.get("volumeInfo", {}) or {}
+    print_type = volume_info.get("printType")
+    # Default to BOOK when printType is missing (older responses omit it).
+    return print_type in (None, "", "BOOK")
 
 
 class GoogleBooksProvider:
@@ -119,7 +160,7 @@ class GoogleBooksProvider:
             logger.warning("ISBN lookup failed for %s: %s", isbn, exc)
             return []
 
-        items = data.get("items", []) or []
+        items = [i for i in (data.get("items", []) or []) if _is_book(i)]
         if not items:
             return []
 
@@ -155,7 +196,7 @@ class GoogleBooksProvider:
             logger.warning("Search failed for title=%s author=%s: %s", title, author, exc)
             return []
 
-        items = data.get("items", []) or []
+        items = [i for i in (data.get("items", []) or []) if _is_book(i)]
         if not items:
             return []
 

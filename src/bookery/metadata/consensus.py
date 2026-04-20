@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _SCALAR_FIELDS = (
     "title",
+    "subtitle",
     "author_sort",
     "language",
     "publisher",
@@ -26,6 +27,10 @@ _SCALAR_FIELDS = (
     "published_date",
     "original_publication_date",
     "page_count",
+    "rating",
+    "ratings_count",
+    "print_type",
+    "maturity_rating",
 )
 _LIST_FIELDS = ("authors", "subjects")
 _AGREEMENT_BONUS = 0.05
