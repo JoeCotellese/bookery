@@ -58,6 +58,35 @@ class TestAutoAcceptOption:
         assert result.exit_code == 0, result.output
 
 
+class TestDbFallback:
+    """Precedence: subcommand --db > top-level --db > DEFAULT_DB_PATH."""
+
+    def test_no_db_flag_uses_default_path(self) -> None:
+        from bookery.cli.options import resolve_db_path
+        from bookery.db.connection import DEFAULT_DB_PATH
+
+        # No Click context active, no flag → fall through to DEFAULT_DB_PATH.
+        assert resolve_db_path(None) == DEFAULT_DB_PATH
+
+
+class TestQuietStillAutoAccepts:
+    """Deprecated -q must still set auto_accept, not merely warn."""
+
+    def test_quiet_routes_to_auto_accept_variable(self) -> None:
+        # Invoke `add --help` with -q mixed in would error (conflict).
+        # Instead check at the callback level: two options, same dest.
+        from bookery.cli.options import auto_accept_option
+
+        @auto_accept_option
+        def cb(auto_accept: bool) -> None:
+            _ = auto_accept
+
+        # Click stores both -y and -q into the same `auto_accept` param name.
+        params = [p for p in cb.__click_params__]  # type: ignore[attr-defined]
+        names = [p.name for p in params]
+        assert names.count("auto_accept") == 2
+
+
 class TestMatchToggle:
     """Commands expose a uniform --match/--no-match toggle."""
 

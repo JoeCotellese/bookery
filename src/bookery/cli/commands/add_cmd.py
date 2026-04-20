@@ -57,7 +57,9 @@ def _is_inside(path: Path, root: Path) -> bool:
 )
 @auto_accept_option
 @threshold_option
+@click.pass_context
 def add_command(
+    ctx: click.Context,
     file: Path,
     db_path: Path | None,
     do_move: bool,
@@ -77,10 +79,12 @@ def add_command(
     except UnknownFormatError as exc:
         raise click.BadParameter(str(exc), param_hint="FILE") from exc
 
-    # --no-match with --yes / non-default --threshold is a flag conflict
-    from bookery.core.config import get_matching_config
-    default_threshold = get_matching_config().auto_accept_threshold
-    if not do_match and (auto_accept or threshold != default_threshold):
+    # Warn when --no-match is combined with flags only meaningful to matching.
+    threshold_from_cli = (
+        ctx.get_parameter_source("threshold")
+        == click.core.ParameterSource.COMMANDLINE
+    )
+    if not do_match and (auto_accept or threshold_from_cli):
         console.print(
             "[yellow]warning:[/yellow] --yes/--threshold ignored with --no-match",
         )
