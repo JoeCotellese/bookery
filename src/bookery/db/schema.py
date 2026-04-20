@@ -121,4 +121,20 @@ ALTER TABLE books ADD COLUMN page_count INTEGER;
 INSERT INTO schema_version (version) VALUES (4);
 """
 
-MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3), (4, SCHEMA_V4)]
+SCHEMA_V5 = """
+CREATE TABLE book_field_provenance (
+    book_id    INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    field_name TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    confidence REAL,
+    locked     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (book_id, field_name)
+);
+-- No separate book_id index: the PK (book_id, field_name) already makes
+-- book_id the leftmost key, so SQLite uses it for WHERE book_id = ? lookups.
+
+INSERT INTO schema_version (version) VALUES (5);
+"""
+
+MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5)]

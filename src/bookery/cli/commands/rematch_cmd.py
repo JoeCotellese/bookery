@@ -213,10 +213,27 @@ def rematch(
             if result.status == "matched":
                 assert result.metadata is not None
                 fields = _metadata_to_update_fields(result.metadata)
-                catalog.update_book(record.id, **fields)
+                source = result.metadata.identifiers.get("source") or "matcher"
+                per_field_provenance = {
+                    k.removeprefix("provenance_"): v
+                    for k, v in result.metadata.identifiers.items()
+                    if k.startswith("provenance_")
+                }
+                written = catalog.update_book(
+                    record.id,
+                    source=source,
+                    provenance=per_field_provenance or None,
+                    respect_locked=True,
+                    **fields,
+                )
                 if result.output_path:
                     catalog.set_output_path(record.id, result.output_path)
                 if not auto_accept:
+                    locked = set(fields) - set(written)
+                    if locked:
+                        console.print(
+                            f"  [dim]Preserved locked field(s):[/dim] {', '.join(sorted(locked))}"
+                        )
                     console.print(f"  [green]Updated:[/green] {result.output_path}")
                 matched += 1
             elif result.status == "skipped":

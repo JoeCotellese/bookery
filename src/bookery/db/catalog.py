@@ -10,7 +10,13 @@ from bookery.core.dedup import (
     normalize_for_dedup,
     normalize_isbn,
 )
-from bookery.db.mapping import BookRecord, DuplicateMatch, metadata_to_row, row_to_record
+from bookery.db.mapping import (
+    BookRecord,
+    DuplicateMatch,
+    ProvenanceEntry,
+    metadata_to_row,
+    row_to_record,
+)
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
@@ -30,6 +36,8 @@ class LibraryCatalog:
         metadata: BookMetadata,
         file_hash: str,
         output_path: Path | None = None,
+        *,
+        source: str = "extracted",
     ) -> int:
         """Add a book to the catalog.
 
@@ -54,13 +62,22 @@ class LibraryCatalog:
                 f"INSERT INTO books ({columns}) VALUES ({placeholders})",
                 values,
             )
-            self._conn.commit()
         except sqlite3.IntegrityError as exc:
             if "UNIQUE constraint failed: books.file_hash" in str(exc):
                 raise DuplicateBookError(f"Book with hash {file_hash} already exists") from exc
             raise
 
-        return cursor.lastrowid  # type: ignore[return-value]
+        book_id = cursor.lastrowid
+        assert book_id is not None
+        for field_name, value in row.items():
+            if field_name in {"source_path", "output_path", "file_hash"}:
+                continue
+            if value in (None, "", "[]", "{}"):
+                continue
+            self._upsert_provenance(book_id, field_name, source)
+
+        self._conn.commit()
+        return book_id  # type: ignore[return-value]
 
     def get_by_id(self, book_id: int) -> BookRecord | None:
         """Retrieve a book by its row ID."""
@@ -161,18 +178,44 @@ class LibraryCatalog:
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
-    def update_book(self, book_id: int, **fields: str | list[str] | float | None) -> None:
+    def update_book(
+        self,
+        book_id: int,
+        *,
+        source: str | None = None,
+        provenance: dict[str, str] | None = None,
+        confidence: float | None = None,
+        respect_locked: bool = False,
+        **fields: object,
+    ) -> list[str]:
         """Update one or more fields on a cataloged book.
 
         Accepts keyword arguments matching books table columns. Authors and
         identifiers values are JSON-serialized automatically. ISBN is
         canonicalized to ISBN-13 on write.
 
+        If ``source`` is provided, a provenance row is written for each
+        updated field (credited to that source). ``provenance`` may be
+        passed to override the source on a per-field basis.
+
+        If ``respect_locked`` is true, any field with a locked provenance
+        row is silently dropped from the update — this is what lets
+        ``rematch`` avoid clobbering user-curated values.
+
+        Returns the list of field names that were actually written (after
+        locked-field filtering).
+
         Raises:
             ValueError: If the book_id does not exist.
         """
         if not fields:
-            return
+            return []
+
+        if respect_locked:
+            locked = self.get_locked_fields(book_id)
+            fields = {k: v for k, v in fields.items() if k not in locked}
+            if not fields:
+                return []
 
         # JSON-serialize list/dict fields
         if "authors" in fields:
@@ -180,7 +223,9 @@ class LibraryCatalog:
         if "identifiers" in fields:
             fields["identifiers"] = json.dumps(fields["identifiers"])
         if fields.get("isbn"):
-            fields["isbn"] = normalize_isbn(fields["isbn"]) or None  # type: ignore[arg-type]
+            isbn_val = fields["isbn"]
+            if isinstance(isbn_val, str):
+                fields["isbn"] = normalize_isbn(isbn_val) or None
 
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         set_clause += ", date_modified = strftime('%Y-%m-%dT%H:%M:%S', 'now')"
@@ -190,10 +235,110 @@ class LibraryCatalog:
             f"UPDATE books SET {set_clause} WHERE id = ?",
             values,
         )
+        if cursor.rowcount == 0:
+            self._conn.commit()
+            raise ValueError(f"Book with id {book_id} not found")
+
+        written = list(fields.keys())
+
+        if source is not None or provenance:
+            # Fields that were cleared to an empty value shouldn't claim a
+            # source — the source didn't "supply" a missing value. Delete
+            # any stale provenance for those fields and skip the upsert.
+            cleared = [k for k in written if fields[k] in (None, "", "[]", "{}")]
+            if cleared:
+                self._conn.executemany(
+                    "DELETE FROM book_field_provenance "
+                    "WHERE book_id = ? AND field_name = ?",
+                    [(book_id, k) for k in cleared],
+                )
+
+            populated = [k for k in written if k not in cleared]
+            prov_map = {f: source for f in populated} if source else {}
+            if provenance:
+                prov_map.update({k: v for k, v in provenance.items() if k in populated})
+            prov_map = {k: v for k, v in prov_map.items() if v}
+            for field_name, field_source in prov_map.items():
+                self._upsert_provenance(
+                    book_id,
+                    field_name,
+                    field_source,
+                    confidence=confidence,
+                )
+
+        self._conn.commit()
+        return written
+
+    def _upsert_provenance(
+        self,
+        book_id: int,
+        field_name: str,
+        source: str,
+        *,
+        confidence: float | None = None,
+    ) -> None:
+        """Insert or refresh a provenance row, preserving the locked flag."""
+        self._conn.execute(
+            """
+            INSERT INTO book_field_provenance (book_id, field_name, source, confidence)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(book_id, field_name) DO UPDATE SET
+                source = excluded.source,
+                confidence = excluded.confidence,
+                fetched_at = strftime('%Y-%m-%dT%H:%M:%S', 'now')
+            """,
+            (book_id, field_name, source, confidence),
+        )
+
+    def set_field_lock(self, book_id: int, field_name: str, locked: bool) -> None:
+        """Set or clear the locked flag for a field.
+
+        If no provenance row exists for the field yet and we're locking it,
+        a ``user`` row is created to anchor the lock.
+        """
+        if locked:
+            self._conn.execute(
+                """
+                INSERT INTO book_field_provenance (book_id, field_name, source, locked)
+                VALUES (?, ?, 'user', 1)
+                ON CONFLICT(book_id, field_name) DO UPDATE SET locked = 1
+                """,
+                (book_id, field_name),
+            )
+        else:
+            self._conn.execute(
+                "UPDATE book_field_provenance SET locked = 0 "
+                "WHERE book_id = ? AND field_name = ?",
+                (book_id, field_name),
+            )
         self._conn.commit()
 
-        if cursor.rowcount == 0:
-            raise ValueError(f"Book with id {book_id} not found")
+    def get_locked_fields(self, book_id: int) -> set[str]:
+        """Return the set of field names currently locked on this book."""
+        rows = self._conn.execute(
+            "SELECT field_name FROM book_field_provenance "
+            "WHERE book_id = ? AND locked = 1",
+            (book_id,),
+        ).fetchall()
+        return {row["field_name"] for row in rows}
+
+    def get_provenance(self, book_id: int) -> dict[str, ProvenanceEntry]:
+        """Return all provenance rows for a book, keyed by field name."""
+        rows = self._conn.execute(
+            "SELECT field_name, source, fetched_at, confidence, locked "
+            "FROM book_field_provenance WHERE book_id = ? ORDER BY field_name",
+            (book_id,),
+        ).fetchall()
+        return {
+            row["field_name"]: ProvenanceEntry(
+                field_name=row["field_name"],
+                source=row["source"],
+                fetched_at=row["fetched_at"],
+                confidence=row["confidence"],
+                locked=bool(row["locked"]),
+            )
+            for row in rows
+        }
 
     def set_output_path(self, book_id: int, output_path: Path) -> None:
         """Set the output_path for a cataloged book."""
