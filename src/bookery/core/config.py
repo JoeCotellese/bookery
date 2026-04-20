@@ -69,6 +69,7 @@ class VaultExportConfig:
     default_author: str = "Obsidian Vault"
     uuid_mode: str = "stable"  # "stable" | "random"
     exclude_tags: list[str] = field(default_factory=list)
+    catalog: bool = False
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,7 @@ def _parse_vault_export(section: dict[str, Any] | None) -> VaultExportConfig:
         default_author=str(section.get("default_author", "Obsidian Vault")),
         uuid_mode=str(section.get("uuid_mode", "stable")),
         exclude_tags=exclude_tags,
+        catalog=bool(section.get("catalog", False)),
     )
 
 
