@@ -34,6 +34,22 @@ class BookRecord:
     date_modified: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProvenanceEntry:
+    """A single row from book_field_provenance.
+
+    Records which source supplied a field value, when it was fetched,
+    the optional confidence score at the time, and whether the value is
+    locked against being overwritten by automatic rematching.
+    """
+
+    field_name: str
+    source: str
+    fetched_at: str
+    confidence: float | None
+    locked: bool
+
+
 def metadata_to_row(
     metadata: BookMetadata,
     file_hash: str,
