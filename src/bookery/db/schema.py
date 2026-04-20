@@ -112,4 +112,13 @@ ALTER TABLE books ADD COLUMN subjects TEXT;
 INSERT INTO schema_version (version) VALUES (3);
 """
 
-MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3)]
+SCHEMA_V4 = """
+ALTER TABLE books ADD COLUMN cover_url TEXT;
+ALTER TABLE books ADD COLUMN published_date TEXT;
+ALTER TABLE books ADD COLUMN original_publication_date TEXT;
+ALTER TABLE books ADD COLUMN page_count INTEGER;
+
+INSERT INTO schema_version (version) VALUES (4);
+"""
+
+MIGRATIONS = [(2, SCHEMA_V2), (3, SCHEMA_V3), (4, SCHEMA_V4)]
