@@ -45,6 +45,14 @@ def info(book_id: int, db_path: Path | None) -> None:
         table.add_row("Publisher", meta.publisher)
     if meta.isbn:
         table.add_row("ISBN", meta.isbn)
+    if meta.published_date:
+        table.add_row("Published", meta.published_date)
+    if meta.original_publication_date:
+        table.add_row("First Published", meta.original_publication_date)
+    if meta.page_count is not None:
+        table.add_row("Pages", str(meta.page_count))
+    if meta.cover_url:
+        table.add_row("Cover URL", meta.cover_url)
     if meta.description:
         table.add_row("Description", meta.description)
     if meta.series:

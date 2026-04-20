@@ -55,6 +55,10 @@ def metadata_to_row(
         "series_index": metadata.series_index,
         "identifiers": json.dumps(metadata.identifiers),
         "subjects": json.dumps(metadata.subjects),
+        "cover_url": metadata.cover_url,
+        "published_date": metadata.published_date,
+        "original_publication_date": metadata.original_publication_date,
+        "page_count": metadata.page_count,
         "source_path": str(metadata.source_path) if metadata.source_path else None,
         "output_path": str(output_path) if output_path else None,
         "file_hash": file_hash,
@@ -71,6 +75,13 @@ def row_to_metadata(row: Any) -> BookMetadata:
         subjects_raw = row["subjects"]
     except (KeyError, IndexError):
         subjects_raw = None
+
+    def _opt(key: str) -> Any:
+        try:
+            return row[key]
+        except (KeyError, IndexError):
+            return None
+
     return BookMetadata(
         title=row["title"],
         authors=json.loads(row["authors"]) if row["authors"] else [],
@@ -83,6 +94,10 @@ def row_to_metadata(row: Any) -> BookMetadata:
         series_index=row["series_index"],
         subjects=json.loads(subjects_raw) if subjects_raw else [],
         identifiers=json.loads(row["identifiers"]) if row["identifiers"] else {},
+        cover_url=_opt("cover_url"),
+        published_date=_opt("published_date"),
+        original_publication_date=_opt("original_publication_date"),
+        page_count=_opt("page_count"),
         source_path=Path(source) if source else None,
     )
 

@@ -55,11 +55,11 @@ class TestV3MigrationTables:
         assert "subjects" in columns
 
     def test_schema_version_is_3(self, conn) -> None:
-        """Schema version is 3 after migration."""
+        """Schema version is at least 3 after applying the v3 migration."""
         cursor = conn.execute(
             "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
         )
-        assert cursor.fetchone()[0] == 3
+        assert cursor.fetchone()[0] >= 3
 
 
 class TestMappingSubjects:

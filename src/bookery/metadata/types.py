@@ -26,6 +26,10 @@ class BookMetadata:
     subjects: list[str] = field(default_factory=list)
     identifiers: dict[str, str] = field(default_factory=dict)
     cover_image: bytes | None = None
+    cover_url: str | None = None
+    published_date: str | None = None
+    original_publication_date: str | None = None
+    page_count: int | None = None
     source_path: Path | None = None
 
     @property

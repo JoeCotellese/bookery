@@ -20,6 +20,8 @@ class TestMetadataToRow:
             "title", "authors", "author_sort", "language", "publisher",
             "isbn", "description", "series", "series_index", "identifiers",
             "subjects", "source_path", "output_path", "file_hash",
+            "cover_url", "published_date", "original_publication_date",
+            "page_count",
         }
         assert expected_keys == set(row.keys())
 

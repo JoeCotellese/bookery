@@ -169,6 +169,7 @@ class OpenLibraryProvider:
                 if not works_key:
                     return None
 
+            assert works_key is not None  # narrow for type checker
             if edition_key:
                 return self._lookup_by_edition(works_key, edition_key)
             return self._lookup_by_works(works_key)
@@ -236,14 +237,19 @@ class OpenLibraryProvider:
         )
 
     def _lookup_by_works(self, works_key: str) -> MetadataCandidate:
-        """Fetch metadata from works endpoint only (no edition data)."""
+        """Fetch metadata from works endpoint only (no edition data).
+
+        Author OLIDs captured by :func:`parse_works_metadata` are preserved
+        on the returned metadata — they're the most reliable author
+        disambiguator and survive into the catalog for future rematches.
+        """
         works_data = self._http.get(f"{_OL_BASE}{works_key}.json")
         metadata = parse_works_metadata(works_data)
 
-        # Resolve author names from author keys stored by parse_works_metadata
+        # Resolve author names from author keys stored by parse_works_metadata.
+        # Keep the keys in identifiers so downstream consumers can use them.
         author_keys_str = metadata.identifiers.get("openlibrary_author_keys", "")
         if author_keys_str:
-            del metadata.identifiers["openlibrary_author_keys"]
             authors: list[str] = []
             for author_key in author_keys_str.split(","):
                 try:
@@ -309,7 +315,11 @@ class OpenLibraryProvider:
     def _enrich_from_works(
         self, metadata: BookMetadata, isbn_data: dict[str, Any]
     ) -> BookMetadata:
-        """Fetch description from the works endpoint if available."""
+        """Fetch description, subjects, and first-publish date from the works endpoint.
+
+        Also fills ``original_publication_date`` and a work-level cover URL
+        when the edition-level cover wasn't available.
+        """
         works = isbn_data.get("works", [])
         if not works:
             return metadata
@@ -330,6 +340,14 @@ class OpenLibraryProvider:
         subjects = parse_works_subjects(works_data)
         if subjects:
             metadata.subjects = subjects
+
+        first_publish = works_data.get("first_publish_date")
+        if first_publish and not metadata.original_publication_date:
+            metadata.original_publication_date = first_publish
+
+        if not metadata.cover_url:
+            from bookery.metadata.openlibrary_parser import _cover_url_from_covers
+            metadata.cover_url = _cover_url_from_covers(works_data.get("covers"))
 
         return metadata
 

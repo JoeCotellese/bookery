@@ -8,11 +8,26 @@ from bookery.metadata.types import BookMetadata
 _COVERS_BASE_URL = "https://covers.openlibrary.org/b/isbn"
 
 
+def _cover_url_from_covers(covers: Any, size: str = "L") -> str | None:
+    """Build a cover URL from the ``covers`` array of an OL edition/work.
+
+    OL ignores the `-1` sentinel cover ID it sometimes returns; treat it
+    as missing. Returns None if no usable cover ID is found.
+    """
+    if not isinstance(covers, list):
+        return None
+    for cover_id in covers:
+        if isinstance(cover_id, int) and cover_id > 0:
+            return f"https://covers.openlibrary.org/b/id/{cover_id}-{size}.jpg"
+    return None
+
+
 def parse_isbn_response(data: dict[str, Any]) -> BookMetadata:
     """Parse an Open Library ISBN endpoint response into BookMetadata.
 
     The ISBN endpoint returns edition-level data with fields like
-    title, publishers, isbn_13, languages, works, etc.
+    title, publishers, isbn_13, languages, works, publish_date,
+    number_of_pages, and covers.
     """
     title = data.get("title", "Unknown")
 
@@ -34,12 +49,23 @@ def parse_isbn_response(data: dict[str, Any]) -> BookMetadata:
     if works:
         identifiers["openlibrary_work"] = works[0]["key"]
 
+    published_date = data.get("publish_date")
+    page_count_raw = data.get("number_of_pages")
+    page_count = int(page_count_raw) if isinstance(page_count_raw, (int, float)) else None
+
+    cover_url = _cover_url_from_covers(data.get("covers")) or (
+        build_cover_url(isbn) if isbn else None
+    )
+
     return BookMetadata(
         title=title,
         publisher=publisher,
         isbn=isbn,
         language=language,
         identifiers=identifiers,
+        published_date=published_date,
+        page_count=page_count,
+        cover_url=cover_url,
     )
 
 
@@ -70,9 +96,10 @@ def parse_works_subjects(data: dict[str, Any]) -> list[str]:
 def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
     """Parse an Open Library Works endpoint response into BookMetadata.
 
-    Extracts title, description, subjects, works key, and author keys from
-    the works response. Author keys are stored in identifiers for later
-    resolution via the author endpoint.
+    Extracts title, description, subjects, works key, author keys, the
+    work's first publication date, and a cover URL (if the work carries
+    cover IDs). Author keys are stored in identifiers for later resolution
+    via the author endpoint and are preserved on the final record.
     """
     title = data.get("title", "Unknown")
     description = parse_works_response(data)
@@ -94,11 +121,16 @@ def parse_works_metadata(data: dict[str, Any]) -> BookMetadata:
     if author_keys:
         identifiers["openlibrary_author_keys"] = ",".join(author_keys)
 
+    original_publication_date = data.get("first_publish_date")
+    cover_url = _cover_url_from_covers(data.get("covers"))
+
     return BookMetadata(
         title=title,
         description=description,
         subjects=subjects,
         identifiers=identifiers,
+        original_publication_date=original_publication_date,
+        cover_url=cover_url,
     )
 
 
@@ -110,7 +142,8 @@ def parse_author_name(data: dict[str, Any]) -> str:
 def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
     """Parse an Open Library Search API response into a list of BookMetadata.
 
-    Each doc in the search results contains title, author_name, isbn, etc.
+    Each doc in the search results contains title, author_name, isbn,
+    first_publish_year, cover_i, number_of_pages_median, etc.
     """
     docs = data.get("docs", [])
     results: list[BookMetadata] = []
@@ -134,6 +167,25 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
         if work_key:
             identifiers["openlibrary_work"] = work_key
 
+        author_keys = doc.get("author_key", [])
+        if author_keys:
+            identifiers["openlibrary_author_keys"] = ",".join(
+                f"/authors/{k}" for k in author_keys
+            )
+
+        first_year = doc.get("first_publish_year")
+        original_publication_date = str(first_year) if first_year else None
+
+        cover_id = doc.get("cover_i")
+        cover_url = (
+            f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+            if isinstance(cover_id, int) and cover_id > 0
+            else None
+        )
+
+        pages_median = doc.get("number_of_pages_median")
+        page_count = int(pages_median) if isinstance(pages_median, (int, float)) else None
+
         results.append(
             BookMetadata(
                 title=title,
@@ -143,6 +195,9 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
                 publisher=publisher,
                 subjects=subjects,
                 identifiers=identifiers,
+                original_publication_date=original_publication_date,
+                cover_url=cover_url,
+                page_count=page_count,
             )
         )
 
