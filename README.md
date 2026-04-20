@@ -115,9 +115,11 @@ bookery info 42
   [matching]
   auto_accept_threshold = 0.85
   cache_ttl_days = 30        # metadata response cache TTL (default 30)
+  providers = ["openlibrary", "googlebooks"]   # priority order; default ["openlibrary"]
   ```
 
 - **`--no-cache`** on `match`/`rematch` bypasses the on-disk metadata response cache and forces fresh provider lookups. Cached responses live at `{data_dir}/metadata_cache.db` and expire after `[matching].cache_ttl_days`.
+- **`[matching].providers`** selects and orders metadata sources. With a single entry the named provider is used directly; with two or more, results are merged by a consensus step that prefers values agreed on by ≥2 providers and falls back to the priority order otherwise. Supported: `openlibrary`, `googlebooks`.
 
 ## Commands
 

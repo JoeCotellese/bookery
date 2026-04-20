@@ -10,31 +10,62 @@ from bookery.metadata.types import BookMetadata
 
 
 def build_metadata_provider(*, use_cache: bool = True):
-    """Build the default metadata provider with optional response caching.
+    """Build the configured metadata provider with optional response caching.
 
-    When ``use_cache`` is true, wraps the HTTP client in a
-    :class:`CachingHttpClient` backed by a SQLite cache at
+    Reads ``[matching].providers`` and composes the listed providers in
+    priority order. A single provider is returned directly; multiple
+    providers are wrapped in a :class:`ConsensusProvider` that merges
+    per-field values and prefers cross-provider agreement.
+
+    When ``use_cache`` is true, each provider's HTTP client is wrapped
+    in a :class:`CachingHttpClient` backed by a SQLite cache at
     ``{data_dir}/metadata_cache.db`` with a TTL from
-    ``[matching].cache_ttl_days``.
+    ``[matching].cache_ttl_days``. The provider label on each cache row
+    keeps entries isolated per upstream API.
     """
     from bookery.core.config import get_data_dir, get_matching_config
     from bookery.metadata.cache import MetadataCache
+    from bookery.metadata.consensus import ConsensusProvider
+    from bookery.metadata.googlebooks import GoogleBooksProvider
     from bookery.metadata.http import BookeryHttpClient, CachingHttpClient
     from bookery.metadata.openlibrary import OpenLibraryProvider
 
-    http_client: object = BookeryHttpClient()
+    matching = get_matching_config()
+    provider_names = matching.providers or ("openlibrary",)
+
+    cache: MetadataCache | None = None
     if use_cache:
-        matching = get_matching_config()
         cache = MetadataCache(
             get_data_dir() / "metadata_cache.db",
             ttl_seconds=matching.cache_ttl_days * 86400.0,
         )
-        http_client = CachingHttpClient(
-            http_client,  # type: ignore[arg-type]
-            cache,
-            provider="openlibrary",
-        )
-    return OpenLibraryProvider(http_client=http_client)  # type: ignore[arg-type]
+
+    def _http_for(provider_name: str):
+        client: object = BookeryHttpClient()
+        if cache is not None:
+            client = CachingHttpClient(
+                client,  # type: ignore[arg-type]
+                cache,
+                provider=provider_name,
+            )
+        return client
+
+    providers: list = []
+    for name in provider_names:
+        if name == "openlibrary":
+            providers.append(OpenLibraryProvider(http_client=_http_for("openlibrary")))  # type: ignore[arg-type]
+        elif name == "googlebooks":
+            providers.append(GoogleBooksProvider(http_client=_http_for("googlebooks")))  # type: ignore[arg-type]
+        else:
+            import logging
+            logging.getLogger(__name__).warning("Unknown metadata provider %r; skipping", name)
+
+    if not providers:
+        providers.append(OpenLibraryProvider(http_client=_http_for("openlibrary")))  # type: ignore[arg-type]
+
+    if len(providers) == 1:
+        return providers[0]
+    return ConsensusProvider(providers)
 
 
 def build_match_fn(
