@@ -222,6 +222,8 @@ class LibraryCatalog:
             fields["authors"] = json.dumps(fields["authors"])
         if "identifiers" in fields:
             fields["identifiers"] = json.dumps(fields["identifiers"])
+        if "subjects" in fields:
+            fields["subjects"] = json.dumps(fields["subjects"])
         if fields.get("isbn"):
             isbn_val = fields["isbn"]
             if isinstance(isbn_val, str):
@@ -554,7 +556,7 @@ class LibraryCatalog:
 
     def store_subjects(self, book_id: int, subjects: list[str]) -> None:
         """Update the subjects JSON column for a book."""
-        self.update_book(book_id, subjects=json.dumps(subjects))
+        self.update_book(book_id, subjects=subjects)
 
     def get_books_with_subjects(self) -> list[tuple[int, str, list[str]]]:
         """Get all books that have subjects, regardless of genre status.
