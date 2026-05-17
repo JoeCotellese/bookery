@@ -47,19 +47,39 @@ def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
 
 
 _H1_LINE_RE = re.compile(r"^# (.+)$", re.MULTILINE)
+_H2_LINE_RE = re.compile(r"^## (.+)$", re.MULTILINE)
+_FOLDER_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
-def _demote_body_h1s(body: str) -> str:
-    """Demote every H1 in a note body to H2.
+def _folder_slug(folder: str) -> str:
+    """Stable slug for a folder anchor: lowercased, non-alphanum collapsed to '-'.
 
-    The assembler emits its own H1 per note as the chapter heading. If the
-    body contains any H1 — whether it duplicates the title or not, and
-    regardless of where it appears — pandoc with ``--toc-depth=1`` would pick
-    it up as a sibling chapter and pollute the TOC with ghost entries. Pushing
-    every body H1 down one level keeps all in-note headings as subsections of
-    the chapter while preserving their text.
+    Empty (root) folder maps to "root" so its anchor is deterministic.
     """
-    return _H1_LINE_RE.sub(r"## \1", body)
+    if not folder:
+        return "root"
+    slug = _FOLDER_SLUG_RE.sub("-", folder.lower()).strip("-")
+    return slug or "root"
+
+
+def _folder_label(folder: str) -> str:
+    """Display label for a folder chapter heading. Root folder gets 'Notes'."""
+    return folder if folder else "Notes"
+
+
+def _demote_body_headings(body: str) -> str:
+    """Demote body H1/H2 down two levels so they sit beneath the note's H2.
+
+    Folders are H1 chapters and notes are H2 sections, so any in-body H1 or H2
+    would compete with chapter/section headings in the TOC. Pushing body H1→H3
+    and body H2→H4 keeps the TOC clean (pandoc ``--toc-depth=2`` only walks
+    folder→note) while preserving the body's heading text and relative
+    hierarchy. The H2 substitution runs first so demoted H1s (now starting
+    with ``## ``) are not re-matched as H2s.
+    """
+    body = _H2_LINE_RE.sub(r"#### \1", body)
+    body = _H1_LINE_RE.sub(r"### \1", body)
+    return body
 
 
 @dataclass(slots=True)
@@ -90,6 +110,10 @@ def assemble_vault(
     folder_to_notes: dict[str, list[Note]] = {}
     for n in notes:
         folder_to_notes.setdefault(n.relative_folder, []).append(n)
+    # Sort notes within each folder alphabetically (case-insensitive) so the
+    # Kobo TOC reads predictably A→Z under each folder chapter.
+    for folder_notes in folder_to_notes.values():
+        folder_notes.sort(key=lambda n: n.title.casefold())
 
     broken_total = 0
     all_assets: list[Path] = []
@@ -99,14 +123,14 @@ def assemble_vault(
     total = len(notes)
     processed = 0
     for folder in sorted(folder_to_notes):
-        label = folder if folder else "(root)"
-        chunks.append(f"<!-- folder: {label} -->")
+        chunks.append(f"# {_folder_label(folder)} {{#folder-{_folder_slug(folder)}}}")
+        chunks.append("")
         for note in folder_to_notes[folder]:
             processed += 1
             if on_progress is not None:
                 on_progress(processed, total, note.title)
             display_title, unique_slug = disambiguated[id(note)]
-            body = _demote_body_h1s(note.body)
+            body = _demote_body_headings(note.body)
             body, broken = resolve_wikilinks(body, title_to_slug)
             body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
             broken_total += broken
@@ -115,7 +139,7 @@ def assemble_vault(
                 if resolved not in seen_assets:
                     seen_assets.add(resolved)
                     all_assets.append(resolved)
-            chunks.append(f"# {display_title} {{#{unique_slug}}}")
+            chunks.append(f"## {display_title} {{#{unique_slug}}}")
             chunks.append("")
             chunks.append(body.rstrip())
             chunks.append("")

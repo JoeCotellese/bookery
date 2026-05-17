@@ -17,10 +17,10 @@ def test_full_pipeline_produces_expected_markdown():
     result = assemble_vault(notes, vault_path=FIXTURE, include_index=True)
     md = result.markdown
 
-    # Anchors present.
-    assert "# Note A {#note-a}" in md
-    assert "# Note B {#note-b}" in md
-    assert "# Lit One {#lit-one}" in md
+    # Folder chapters (H1) wrap note sections (H2) with anchors.
+    assert "## Note A {#note-a}" in md
+    assert "## Note B {#note-b}" in md
+    assert "## Lit One {#lit-one}" in md
 
     # Resolved wiki-links.
     assert "[Note B](#note-b)" in md

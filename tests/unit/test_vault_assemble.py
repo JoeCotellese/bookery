@@ -27,12 +27,44 @@ def test_assembles_concatenated_markdown_with_anchors(tmp_path: Path):
     result = assemble_vault(notes, vault_path=tmp_path)
 
     assert isinstance(result, AssembledVault)
-    # Each note produces an H1 with an anchor via {#slug}.
-    assert "# Note A {#note-a}" in result.markdown
-    assert "# Note B {#note-b}" in result.markdown
-    # Wiki-link resolved.
+    # The folder is the chapter (H1); each note is a section (H2) under it.
+    assert "# Perm {#folder-perm}" in result.markdown
+    assert "## Note A {#note-a}" in result.markdown
+    assert "## Note B {#note-b}" in result.markdown
+    # Wiki-link resolved to the note slug.
     assert "[Note B](#note-b)" in result.markdown
     assert result.broken_link_count == 0
+
+
+def test_folder_emitted_as_h1_chapter(tmp_path: Path):
+    notes = [_note("Solo", "My Folder", "body")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "# My Folder {#folder-my-folder}" in md
+    assert "## Solo {#solo}" in md
+    # Folder header precedes the note section under it.
+    assert md.index("# My Folder") < md.index("## Solo")
+
+
+def test_root_folder_gets_label(tmp_path: Path):
+    notes = [_note("Loose", "", "body")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    # Notes living at the vault root still need a chapter wrapper; use a
+    # stable "Notes" label with a deterministic anchor.
+    assert "# Notes {#folder-root}" in result.markdown
+    assert "## Loose {#loose}" in result.markdown
+
+
+def test_notes_alphabetized_within_folder(tmp_path: Path):
+    notes = [
+        _note("zeta", "F", "z"),
+        _note("Alpha", "F", "a"),
+        _note("mango", "F", "m"),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Case-insensitive A→Z within a folder.
+    assert md.index("## Alpha") < md.index("## mango") < md.index("## zeta")
 
 
 def test_broken_link_counted(tmp_path: Path):
@@ -48,9 +80,11 @@ def test_folder_grouping_headers(tmp_path: Path):
         _note("B", "Lit", "b"),
     ]
     result = assemble_vault(notes, vault_path=tmp_path)
-    # Folder names appear as top-level section separators before their notes.
-    assert result.markdown.index("Lit") < result.markdown.index("# B")
-    assert result.markdown.index("Perm") < result.markdown.index("# A")
+    md = result.markdown
+    # Folders are sorted; each folder H1 precedes its notes' H2 sections.
+    assert md.index("# Lit") < md.index("## B")
+    assert md.index("# Perm") < md.index("## A")
+    assert md.index("# Lit") < md.index("# Perm")
 
 
 def test_index_appended_when_enabled(tmp_path: Path):
@@ -73,18 +107,18 @@ def test_on_progress_called_per_note(tmp_path: Path):
     assert sorted(title for _, _, title in seen) == ["A", "B", "C"]
 
 
-def test_body_h1_demoted_to_h2(tmp_path: Path):
-    # Any H1 in the body — matching or not, at the start or buried after
-    # other content — must be demoted so pandoc's --toc-depth=1 never picks
-    # it up as a sibling chapter.
+def test_body_h1_demoted_to_h3(tmp_path: Path):
+    # Folders are H1, notes are H2. A body H1 must drop two levels to H3 so
+    # pandoc's --toc-depth=2 never picks it up as a chapter or section.
     notes = [_note("Same Title", "F", "![cover](x.png)\n\n# Same Title\n\nbody\n")]
     result = assemble_vault(notes, vault_path=tmp_path)
     md = result.markdown
-    # Exactly one top-level heading per note: the assembler's anchor-bearing H1.
+    # Exactly one H1 per folder.
     h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
-    assert h1_lines == ["# Same Title {#same-title}"]
-    h2_lines = [ln for ln in md.splitlines() if ln.startswith("## ")]
-    assert "## Same Title" in h2_lines
+    assert h1_lines == ["# F {#folder-f}"]
+    # Note heading is H2; body H1 demoted to H3.
+    assert "## Same Title {#same-title}" in md
+    assert "### Same Title" in md
 
 
 def test_non_matching_body_h1_also_demoted(tmp_path: Path):
@@ -92,8 +126,20 @@ def test_non_matching_body_h1_also_demoted(tmp_path: Path):
     result = assemble_vault(notes, vault_path=tmp_path)
     md = result.markdown
     h1_lines = [ln for ln in md.splitlines() if ln.startswith("# ")]
-    assert h1_lines == ["# Title {#title}"]
-    assert "## Different Heading" in md
+    assert h1_lines == ["# F {#folder-f}"]
+    assert "### Different Heading" in md
+
+
+def test_body_h2_demoted_to_h4(tmp_path: Path):
+    # The note itself owns H2; any in-body H2 must cascade down to H4 to keep
+    # the TOC clean and the heading hierarchy consistent.
+    notes = [_note("T", "F", "## Subsection\n\nbody\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Only one H2 per note: the note's own heading.
+    h2_lines = [ln for ln in md.splitlines() if ln.startswith("## ")]
+    assert h2_lines == ["## T {#t}"]
+    assert "#### Subsection" in md
 
 
 def test_duplicate_titles_in_same_folder_use_filename_hint(tmp_path: Path):
@@ -120,8 +166,8 @@ def test_duplicate_titles_in_same_folder_use_filename_hint(tmp_path: Path):
     )
     result = assemble_vault([n1, n2], vault_path=tmp_path)
     md = result.markdown
-    assert "Reference (book-a-references)" in md
-    assert "Reference (book-b-references)" in md
+    assert "## Reference (book-a-references)" in md
+    assert "## Reference (book-b-references)" in md
 
 
 def test_duplicate_titles_get_unique_slugs(tmp_path: Path):

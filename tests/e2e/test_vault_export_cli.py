@@ -27,18 +27,32 @@ def _run(tmp_path: Path, *extra_args: str):
     ), out
 
 
+def _flatten_toc_titles(toc) -> set[str]:
+    """Walk pandoc's nested TOC (Section + children tuples) and collect titles."""
+    titles: set[str] = set()
+    for entry in toc:
+        if isinstance(entry, tuple):
+            section, children = entry
+            if hasattr(section, "title"):
+                titles.add(section.title)
+            titles |= _flatten_toc_titles(children)
+        elif hasattr(entry, "title"):
+            titles.add(entry.title)
+    return titles
+
+
 def test_vault_export_produces_valid_epub(tmp_path: Path):
     result, out = _run(tmp_path, "--index")
     assert result.exit_code == 0, result.output
     assert out.exists()
 
     book = epub.read_epub(str(out))
-    titles = {item.title for item in book.toc if hasattr(item, "title")}
-    # Pandoc's TOC items include the notes as top-level H1s.
-    # At minimum, the file is readable and contains a dc:identifier.
+    titles = _flatten_toc_titles(book.toc)
+    # Folders surface as nested TOC sections; notes appear underneath them.
     ids = [v for v, _ in book.get_metadata("DC", "identifier")]
     assert any(v.startswith("urn:uuid:") for v in ids)
-    assert "Note A" in result.output or titles  # smoke the summary output
+    assert "Note A" in titles
+    assert "Note B" in titles
 
 
 def test_vault_export_stable_identifier_across_runs(tmp_path: Path):
@@ -257,16 +271,16 @@ def test_vault_export_default_output_lands_in_library_root_with_catalog(
         cli,
         [
             "vault-export", "--vault", str(FIXTURE),
+            "--title", "Test Vault",
             "--catalog", "--db", str(db),
         ],
         catch_exceptions=False,
-        # Click's CliRunner does not chdir; emulate the user's working
-        # directory by passing it via the underlying invocation.
+        # Pinning --title keeps the test deterministic even when the
+        # developer's real ~/.bookery/config.toml sets a vault title.
     )
     assert result.exit_code == 0, result.output
     library_epubs = list(_isolate_library_root.rglob("*.epub"))
     assert len(library_epubs) == 1, library_epubs
-    # Default filename is derived from the title — the fixture vault folder
-    # is "vault" so the default title is "vault Vault" and the file is
-    # written to <library_root>/vault Vault.epub.
-    assert (_isolate_library_root / "vault Vault.epub").exists()
+    # Default filename is derived from --title so the EPUB lands at a
+    # stable, predictable path under the library root.
+    assert (_isolate_library_root / "Test Vault.epub").exists()
