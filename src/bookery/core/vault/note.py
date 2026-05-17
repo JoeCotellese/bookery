@@ -11,6 +11,19 @@ from typing import Any
 
 _H1_RE = re.compile(r"^# +(.+?)\s*$", re.MULTILINE)
 _TIMESTAMP_PREFIX_RE = re.compile(r"^\d{8}[-_ ]")
+_DISPLAY_TIMESTAMP_PREFIX_RE = re.compile(r"^\d{8,14}\s*[-_]?\s*")
+
+
+def display_title(raw_title: str) -> str:
+    """Strip a leading Zettelkasten timestamp prefix for display and sort.
+
+    Matches 8-14 leading digits followed by optional whitespace, an optional
+    `-`/`_` separator, and more optional whitespace. Falls back to the raw
+    title when nothing meaningful remains so callers always get a non-empty
+    string when given one.
+    """
+    stripped = _DISPLAY_TIMESTAMP_PREFIX_RE.sub("", raw_title, count=1)
+    return stripped if stripped else raw_title
 
 
 @dataclass(slots=True)
