@@ -49,6 +49,13 @@ def render_epub(
     if pandoc is None:
         raise PandocMissingError("pandoc not found on PATH; install pandoc to use vault-export")
 
+    # Resolve the destination against the caller's cwd *before* pandoc runs.
+    # pandoc is invoked with ``cwd=tmp_path`` so it can resolve image assets by
+    # filename; a relative output_path would otherwise land inside that temp
+    # directory and vanish on context exit.
+    output_path = Path(output_path).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         md_file = tmp_path / "vault.md"

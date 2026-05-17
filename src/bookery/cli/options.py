@@ -1,6 +1,7 @@
 # ABOUTME: Shared Click options for Bookery CLI commands.
 # ABOUTME: Provides reusable decorators for --db, --yes, --threshold, and their resolvers.
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -9,11 +10,16 @@ import click
 
 from bookery.db.connection import DEFAULT_DB_PATH
 
+BOOKERY_DB_ENV = "BOOKERY_DB"
+
 
 def resolve_db_path(db_path: Path | None) -> Path:
     """Resolve the effective database path.
 
-    Precedence: subcommand --db > top-level --db (ctx.obj) > DEFAULT_DB_PATH.
+    Precedence: subcommand --db > top-level --db (ctx.obj) > $BOOKERY_DB > DEFAULT_DB_PATH.
+    The env-var hook lets the test suite redirect every CLI invocation away
+    from the user's real ~/.bookery/library.db without forcing every test to
+    thread --db explicitly.
     """
     if db_path is not None:
         return db_path
@@ -24,6 +30,9 @@ def resolve_db_path(db_path: Path | None) -> Path:
             top = obj.get("db_path")
             if top is not None:
                 return top
+    env_db = os.environ.get(BOOKERY_DB_ENV)
+    if env_db:
+        return Path(env_db).expanduser()
     return DEFAULT_DB_PATH
 
 

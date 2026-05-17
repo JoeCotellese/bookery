@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from bookery.cli import cli
@@ -61,11 +62,13 @@ class TestAutoAcceptOption:
 class TestDbFallback:
     """Precedence: subcommand --db > top-level --db > DEFAULT_DB_PATH."""
 
-    def test_no_db_flag_uses_default_path(self) -> None:
+    def test_no_db_flag_uses_default_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from bookery.cli.options import resolve_db_path
         from bookery.db.connection import DEFAULT_DB_PATH
 
-        # No Click context active, no flag → fall through to DEFAULT_DB_PATH.
+        # The autouse fixture sets BOOKERY_DB to keep tests away from the
+        # real DB; this test exercises the env-unset fallback specifically.
+        monkeypatch.delenv("BOOKERY_DB", raising=False)
         assert resolve_db_path(None) == DEFAULT_DB_PATH
 
 

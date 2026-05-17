@@ -62,6 +62,28 @@ def test_render_disables_multiline_tables_extension(monkeypatch, tmp_path: Path)
 
 
 @pandoc_required
+def test_render_with_relative_output_writes_to_caller_cwd(monkeypatch, tmp_path: Path):
+    """When the caller passes a relative output_path, the EPUB must land at
+    that path resolved against the caller's working directory — not inside the
+    temporary directory pandoc uses as its cwd (which is wiped on exit and
+    silently drops the file).
+    """
+    caller_cwd = tmp_path / "caller"
+    caller_cwd.mkdir()
+    monkeypatch.chdir(caller_cwd)
+    relative = Path("vault.epub")
+    ident = stable_uuid(tmp_path)
+    render_epub(
+        "# One {#one}\n\ncontent\n",
+        [],
+        EpubMetadata(title="T", author="A", identifier=ident),
+        relative,
+    )
+    expected = caller_cwd / "vault.epub"
+    assert expected.exists() and expected.stat().st_size > 0
+
+
+@pandoc_required
 def test_render_produces_epub_with_identifier(tmp_path: Path):
     out = tmp_path / "v.epub"
     ident = stable_uuid(tmp_path)
