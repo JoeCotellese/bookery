@@ -86,10 +86,11 @@ def render_epub(
             "-t",
             "epub",
             "--toc",
-            # Folders are H1 chapters and notes are H2 sections. Depth 2 lets
-            # the Kobo TOC render an expandable folder→note tree while body
-            # H3/H4 subheadings stay in the note text without polluting it.
-            "--toc-depth=2",
+            # Folders are H1 chapters, letter buckets are H2 sections, and
+            # notes are H3 entries. Depth 3 lets the Kobo TOC render an
+            # expandable folder→letter→note tree while body H4/H5 subheadings
+            # stay in the note text without polluting it.
+            "--toc-depth=3",
             "--metadata",
             f"title={title}",
             "--metadata",
