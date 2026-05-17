@@ -167,9 +167,7 @@ def assemble_vault(
             bucket = _bucket_for(display_for[id(note)])
             bucket_to_notes.setdefault(bucket, []).append(note)
         for bucket in sorted(bucket_to_notes, key=_bucket_sort_key):
-            chunks.append(
-                f"## {bucket} {{#bucket-{_folder_slug(folder)}-{_bucket_slug(bucket)}}}"
-            )
+            chunks.append(f"## {bucket} {{#bucket-{_folder_slug(folder)}-{_bucket_slug(bucket)}}}")
             chunks.append("")
             bucket_notes = sorted(
                 bucket_to_notes[bucket],
@@ -182,9 +180,7 @@ def assemble_vault(
                 heading, unique_slug = disambiguated[id(note)]
                 body = _demote_body_headings(note.body)
                 body, broken = resolve_wikilinks(body, title_to_slug)
-                body, assets = resolve_images(
-                    body, note_path=note.path, asset_index=asset_index
-                )
+                body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
                 broken_total += broken
                 for a in assets:
                     resolved = a.resolve()
