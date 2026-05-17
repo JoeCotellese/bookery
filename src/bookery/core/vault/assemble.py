@@ -10,26 +10,61 @@ from pathlib import Path
 
 from bookery.core.vault.image import build_asset_index, resolve_images
 from bookery.core.vault.index import build_tag_index
-from bookery.core.vault.note import Note
+from bookery.core.vault.note import Note, display_title
 from bookery.core.vault.wikilink import resolve_wikilinks
 
 AssembleProgressFn = Callable[[int, int, str], None]
 
+# Notes whose stripped display title starts with anything other than a letter
+# bucket here. The literal hash keeps the heading short and unambiguous for
+# the Kobo TOC.
+_NON_LETTER_BUCKET = "#"
+_NON_LETTER_BUCKET_SLUG = "hash"
 
-def _disambiguate(notes: list[Note]) -> dict[int, tuple[str, str]]:
+
+def _bucket_for(title: str) -> str:
+    """Return the single-character A-Z bucket label for a display title.
+
+    Non-letter leaders (digits, symbols, empty) collapse to the ``#`` bucket
+    so the alphabetical sections stay clean.
+    """
+    if not title:
+        return _NON_LETTER_BUCKET
+    first = title[0]
+    if first.isalpha():
+        return first.upper()
+    return _NON_LETTER_BUCKET
+
+
+def _bucket_sort_key(bucket: str) -> tuple[int, str]:
+    """Sort the ``#`` bucket before A-Z, then alphabetically."""
+    if bucket == _NON_LETTER_BUCKET:
+        return (0, "")
+    return (1, bucket)
+
+
+def _bucket_slug(bucket: str) -> str:
+    """Stable anchor slug fragment for a bucket label."""
+    if bucket == _NON_LETTER_BUCKET:
+        return _NON_LETTER_BUCKET_SLUG
+    return bucket.lower()
+
+
+def _disambiguate(notes: list[Note], display_for: dict[int, str]) -> dict[int, tuple[str, str]]:
     """Return {id(note): (display_title, unique_slug)} ensuring unique anchor slugs.
 
-    Notes that share a title get a folder hint appended to their display title
-    (e.g. "References (Book A)") and incrementing suffixes on their slugs
-    (references, references-2, references-3). Single-occurrence notes keep
-    their original title and slug.
+    Notes that share a *display* title (after timestamp stripping) get a folder
+    hint appended to their display title (e.g. "References (Book A)") and
+    incrementing suffixes on their slugs (references, references-2,
+    references-3). Single-occurrence notes keep their stripped display title
+    and original slug.
     """
-    by_title: dict[str, list[Note]] = {}
+    by_display: dict[str, list[Note]] = {}
     for n in notes:
-        by_title.setdefault(n.title, []).append(n)
+        by_display.setdefault(display_for[id(n)], []).append(n)
 
     result: dict[int, tuple[str, str]] = {}
-    for title, group in by_title.items():
+    for title, group in by_display.items():
         if len(group) == 1:
             n = group[0]
             result[id(n)] = (title, n.slug)
@@ -68,17 +103,16 @@ def _folder_label(folder: str) -> str:
 
 
 def _demote_body_headings(body: str) -> str:
-    """Demote body H1/H2 down two levels so they sit beneath the note's H2.
+    """Demote body H1/H2 down so they sit beneath the note's H3 heading.
 
-    Folders are H1 chapters and notes are H2 sections, so any in-body H1 or H2
-    would compete with chapter/section headings in the TOC. Pushing body H1→H3
-    and body H2→H4 keeps the TOC clean (pandoc ``--toc-depth=2`` only walks
-    folder→note) while preserving the body's heading text and relative
-    hierarchy. The H2 substitution runs first so demoted H1s (now starting
-    with ``## ``) are not re-matched as H2s.
+    Folders are H1 chapters, letter buckets are H2 sections, and notes are H3
+    entries. Any in-body H1 or H2 would compete with those structural headings
+    in the TOC, so push body H1->H4 and body H2->H5. The H2 substitution runs
+    first so demoted H1s (now starting with ``## ``) are not re-matched as
+    H2s. pandoc ``--toc-depth=3`` only walks folder->bucket->note.
     """
-    body = _H2_LINE_RE.sub(r"#### \1", body)
-    body = _H1_LINE_RE.sub(r"### \1", body)
+    body = _H2_LINE_RE.sub(r"##### \1", body)
+    body = _H1_LINE_RE.sub(r"#### \1", body)
     return body
 
 
@@ -99,21 +133,21 @@ def assemble_vault(
     on_progress: AssembleProgressFn | None = None,
 ) -> AssembledVault:
     """Concatenate notes into a single markdown doc with resolved links and assets."""
-    disambiguated = _disambiguate(notes)
-    # Wiki-link resolution: map the *original* title to the (first) unique slug,
-    # so `[[References]]` keeps landing on the first References note.
+    display_for: dict[int, str] = {id(n): display_title(n.title) for n in notes}
+    disambiguated = _disambiguate(notes, display_for)
+    # Wiki-link resolution: map both the original raw title and the stripped
+    # display title to the (first) unique slug, so both `[[202302010942 - X]]`
+    # and `[[X]]` keep landing on the right note.
     title_to_slug: dict[str, str] = {}
     for n in notes:
-        title_to_slug.setdefault(n.title, disambiguated[id(n)][1])
+        slug = disambiguated[id(n)][1]
+        title_to_slug.setdefault(n.title, slug)
+        title_to_slug.setdefault(display_for[id(n)], slug)
     asset_index = build_asset_index(vault_path)
 
     folder_to_notes: dict[str, list[Note]] = {}
     for n in notes:
         folder_to_notes.setdefault(n.relative_folder, []).append(n)
-    # Sort notes within each folder alphabetically (case-insensitive) so the
-    # Kobo TOC reads predictably A→Z under each folder chapter.
-    for folder_notes in folder_to_notes.values():
-        folder_notes.sort(key=lambda n: n.title.casefold())
 
     broken_total = 0
     all_assets: list[Path] = []
@@ -125,24 +159,42 @@ def assemble_vault(
     for folder in sorted(folder_to_notes):
         chunks.append(f"# {_folder_label(folder)} {{#folder-{_folder_slug(folder)}}}")
         chunks.append("")
+        # Group this folder's notes into letter buckets keyed by the stripped
+        # display title. A note whose display title starts with a non-letter
+        # leader (digit/symbol) lands in the ``#`` bucket.
+        bucket_to_notes: dict[str, list[Note]] = {}
         for note in folder_to_notes[folder]:
-            processed += 1
-            if on_progress is not None:
-                on_progress(processed, total, note.title)
-            display_title, unique_slug = disambiguated[id(note)]
-            body = _demote_body_headings(note.body)
-            body, broken = resolve_wikilinks(body, title_to_slug)
-            body, assets = resolve_images(body, note_path=note.path, asset_index=asset_index)
-            broken_total += broken
-            for a in assets:
-                resolved = a.resolve()
-                if resolved not in seen_assets:
-                    seen_assets.add(resolved)
-                    all_assets.append(resolved)
-            chunks.append(f"## {display_title} {{#{unique_slug}}}")
+            bucket = _bucket_for(display_for[id(note)])
+            bucket_to_notes.setdefault(bucket, []).append(note)
+        for bucket in sorted(bucket_to_notes, key=_bucket_sort_key):
+            chunks.append(
+                f"## {bucket} {{#bucket-{_folder_slug(folder)}-{_bucket_slug(bucket)}}}"
+            )
             chunks.append("")
-            chunks.append(body.rstrip())
-            chunks.append("")
+            bucket_notes = sorted(
+                bucket_to_notes[bucket],
+                key=lambda n: display_for[id(n)].casefold(),
+            )
+            for note in bucket_notes:
+                processed += 1
+                if on_progress is not None:
+                    on_progress(processed, total, note.title)
+                heading, unique_slug = disambiguated[id(note)]
+                body = _demote_body_headings(note.body)
+                body, broken = resolve_wikilinks(body, title_to_slug)
+                body, assets = resolve_images(
+                    body, note_path=note.path, asset_index=asset_index
+                )
+                broken_total += broken
+                for a in assets:
+                    resolved = a.resolve()
+                    if resolved not in seen_assets:
+                        seen_assets.add(resolved)
+                        all_assets.append(resolved)
+                chunks.append(f"### {heading} {{#{unique_slug}}}")
+                chunks.append("")
+                chunks.append(body.rstrip())
+                chunks.append("")
 
     notes_without_tags: list[str] = []
     if include_index:
