@@ -91,6 +91,11 @@ def render_epub(
             # expandable folder→letter→note tree while body H4/H5 subheadings
             # stay in the note text without polluting it.
             "--toc-depth=3",
+            # Split the EPUB into one XHTML file per note (H3). Without this,
+            # pandoc defaults to splitting at H1 only, which collapses every
+            # note in a folder into a single multi-megabyte XHTML chapter.
+            # Kobo hangs trying to lay out a 3 MB XHTML page in one go.
+            "--split-level=3",
             "--metadata",
             f"title={title}",
             "--metadata",
