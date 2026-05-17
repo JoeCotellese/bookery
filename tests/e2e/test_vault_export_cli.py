@@ -240,3 +240,33 @@ def test_vault_export_rejects_missing_vault(tmp_path: Path):
         ["vault-export", "--vault", str(bad), "-o", str(out)],
     )
     assert result.exit_code != 0
+
+
+def test_vault_export_default_output_lands_in_library_root_with_catalog(
+    tmp_path: Path, _isolate_library_root: Path,
+) -> None:
+    """When --catalog is set and no -o is passed, the EPUB should be written
+    directly into the library root with a stable filename so `sync kobo`
+    picks it up on the next run without any stray file in cwd.
+    """
+    runner = CliRunner()
+    db = tmp_path / "library.db"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "--catalog", "--db", str(db),
+        ],
+        catch_exceptions=False,
+        # Click's CliRunner does not chdir; emulate the user's working
+        # directory by passing it via the underlying invocation.
+    )
+    assert result.exit_code == 0, result.output
+    library_epubs = list(_isolate_library_root.rglob("*.epub"))
+    assert len(library_epubs) == 1, library_epubs
+    # Default filename is derived from the title — the fixture vault folder
+    # is "vault" so the default title is "vault Vault" and the file is
+    # written to <library_root>/vault Vault.epub.
+    assert (_isolate_library_root / "vault Vault.epub").exists()

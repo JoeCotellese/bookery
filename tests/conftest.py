@@ -12,9 +12,13 @@ def _isolate_library_root(
     tmp_path_factory: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
-    """Point BOOKERY_LIBRARY_ROOT at a per-test tmp dir so tests never touch ~/.library/."""
+    """Point BOOKERY_LIBRARY_ROOT and BOOKERY_DB at per-test tmp paths so tests
+    never touch the user's real ~/.library/ or ~/.bookery/library.db.
+    """
     root = tmp_path_factory.mktemp("library_root")
+    db_dir = tmp_path_factory.mktemp("library_db")
     monkeypatch.setenv("BOOKERY_LIBRARY_ROOT", str(root))
+    monkeypatch.setenv("BOOKERY_DB", str(db_dir / "library.db"))
     return root
 
 

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import contextlib
-from datetime import date
 from pathlib import Path
 
 import click
@@ -46,8 +45,9 @@ console = Console()
 @click.option("--folder", "folders_opt", multiple=True,
               help="Top-level folder to include (repeatable). Defaults to the whole vault.")
 @click.option("-o", "--output", "output_path", type=click.Path(path_type=Path),
-              default=Path("vault.epub"), show_default=True,
-              help="Output EPUB path.")
+              default=None,
+              help="Output EPUB path. Defaults to <library_root>/vault-export.epub "
+                   "when --catalog is enabled, otherwise ./vault.epub.")
 @click.option("--index/--no-index", "index_opt", default=None,
               help="Append a tag index section at the end of the EPUB.")
 @click.option("--index-exclude-prefix", "index_exclude_opt", multiple=True,
@@ -71,7 +71,7 @@ console = Console()
 def vault_export(
     vault_opt: Path | None,
     folders_opt: tuple[str, ...],
-    output_path: Path,
+    output_path: Path | None,
     index_opt: bool | None,
     index_exclude_opt: tuple[str, ...],
     index_min_count_opt: int | None,
@@ -106,7 +106,23 @@ def vault_export(
     do_catalog = cfg.catalog if catalog_opt is None else catalog_opt
     author = author_opt or cfg.default_author
     uuid_mode = (uuid_opt or cfg.uuid_mode).lower()
-    version_label = version_label_opt or date.today().isoformat()
+    # Only stamp the title with a date when the user explicitly asks for one;
+    # the stable filename is more useful for re-sync (Kobo and disk) than a
+    # date-versioned snapshot that piles up duplicates.
+    version_label = version_label_opt
+    title = title_opt or cfg.title or f"{vault_path.name} Vault"
+
+    if output_path is None:
+        # When the user does not pass -o, drop the EPUB straight into the
+        # library so `sync kobo` picks it up. Without --catalog there is no
+        # library entry to anchor on, so fall back to a cwd-local filename.
+        filename = f"{title}.epub"
+        output_path = (
+            get_library_root() / filename
+            if do_catalog
+            else Path(filename)
+        )
+    output_path = Path(output_path).expanduser().resolve()
 
     console.print(f"Exporting vault: [bold]{vault_path}[/bold]")
 
@@ -127,7 +143,6 @@ def vault_export(
     current_task = current.add_task("(scanning…)", total=None)
 
     identifier = stable_uuid(vault_path) if uuid_mode == "stable" else random_uuid()
-    title = title_opt or f"{vault_path.name} Vault"
     metadata = EpubMetadata(
         title=title,
         author=author,
@@ -181,7 +196,9 @@ def vault_export(
             raise click.ClickException(str(exc)) from exc
 
     size = output_path.stat().st_size if output_path.exists() else 0
-    console.print(f"[green]✓[/green] wrote [bold]{output_path}[/bold] ({size:,} bytes)")
+    console.print(
+        f"[green]✓[/green] wrote [bold]{output_path}[/bold] ({size:,} bytes)"
+    )
     console.print(
         f"notes={len(notes)}  images={len(assembled.asset_paths)}  "
         f"broken_links={assembled.broken_link_count}  "
@@ -225,11 +242,18 @@ def vault_export(
                 new_record = catalog.get_by_hash(new_hash)
                 new_id = new_record.id if new_record else None
                 output_resolved = output_path.resolve()
+                # A row counts as a prior snapshot of THIS vault when it
+                # either matches the title exactly (the stable filename case
+                # — no version label appended) or starts with the same title
+                # followed by " — " (a previously version-labelled snapshot).
+                # Author must also match so unrelated books sharing a title
+                # prefix (e.g. "Notes from Underground") are never touched.
                 title_prefix = f"{title} — "
                 for record in catalog.list_all():
                     if record.id == new_id:
                         continue
-                    if not record.metadata.title.startswith(title_prefix):
+                    rec_title = record.metadata.title
+                    if rec_title != title and not rec_title.startswith(title_prefix):
                         continue
                     if record.metadata.author != author:
                         continue
@@ -260,3 +284,6 @@ def vault_export(
             for path, msg in result.error_details:
                 console.print(f"  [dim]{path.name}:[/dim] {msg}")
             raise click.exceptions.Exit(1)
+
+    console.print()
+    console.print(f"[bold green]EPUB:[/bold green] {output_path}")

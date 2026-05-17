@@ -76,6 +76,7 @@ class VaultExportConfig:
     include_index: bool = False
     index_exclude_prefixes: list[str] = field(default_factory=list)
     index_min_count: int = 1
+    title: str | None = None
     default_author: str = "Obsidian Vault"
     uuid_mode: str = "stable"  # "stable" | "random"
     exclude_tags: list[str] = field(default_factory=list)
@@ -173,12 +174,15 @@ def _parse_vault_export(section: dict[str, Any] | None) -> VaultExportConfig:
     folders = [str(x) for x in section.get("folders", [])]
     exclude = [str(x) for x in section.get("index_exclude_prefixes", [])]
     exclude_tags = [str(x) for x in section.get("exclude_tags", [])]
+    raw_title = section.get("title")
+    title = str(raw_title) if raw_title else None
     return VaultExportConfig(
         vault_path=vault_path,
         folders=folders,
         include_index=bool(section.get("include_index", False)),
         index_exclude_prefixes=exclude,
         index_min_count=int(section.get("index_min_count", 1)),
+        title=title,
         default_author=str(section.get("default_author", "Obsidian Vault")),
         uuid_mode=str(section.get("uuid_mode", "stable")),
         exclude_tags=exclude_tags,
