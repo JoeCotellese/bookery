@@ -8,6 +8,7 @@ import ebooklib
 from ebooklib import epub
 
 from bookery.metadata.types import BookMetadata
+from bookery.util.text import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,20 @@ def _get_metadata_value(book: epub.EpubBook, namespace: str, name: str) -> str |
     # Metadata entries are tuples of (value, attributes)
     value = values[0][0]
     return str(value).strip() if value else None
+
+
+def _strip_description(value: str | None) -> str | None:
+    """Strip HTML markup from a DC:description value read from the OPF.
+
+    Publishers and conversion tools commonly wrap descriptions in ``<p>`` or
+    ``<div>`` tags, and the raw OPF string carries entity escapes (``&amp;``,
+    ``&#x27;``). Normalize to plain text so the catalog stores the same shape
+    regardless of where the metadata came from.
+    """
+    if value is None:
+        return None
+    stripped = strip_html(value)
+    return stripped or None
 
 
 def _get_authors(book: epub.EpubBook) -> list[str]:
@@ -119,7 +134,7 @@ def read_epub_metadata(path: Path) -> BookMetadata:
         language=_get_metadata_value(book, "DC", "language"),
         publisher=_get_metadata_value(book, "DC", "publisher"),
         isbn=isbn,
-        description=_get_metadata_value(book, "DC", "description"),
+        description=_strip_description(_get_metadata_value(book, "DC", "description")),
         identifiers=identifiers,
         cover_image=cover_image,
         source_path=path,

@@ -9,12 +9,12 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.http import HttpClient, MetadataFetchError
 from bookery.metadata.scoring import score_candidate
 from bookery.metadata.types import BookMetadata
+from bookery.util.text import strip_html
 
 logger = logging.getLogger(__name__)
 
 _GB_BASE = "https://www.googleapis.com/books/v1/volumes"
 _SEARCH_LIMIT = 5
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 # Ordered from largest to smallest — we pick the first variant Google returns.
 _COVER_VARIANTS = (
@@ -27,9 +27,9 @@ _COVER_VARIANTS = (
 )
 
 
-def _strip_html(text: str) -> str:
-    """Remove HTML tags and collapse whitespace."""
-    return re.sub(r"\s+", " ", _HTML_TAG_RE.sub("", text)).strip()
+# Backward-compatible alias for the shared helper. Google Books descriptions
+# are rich HTML so we keep this local name for readability at the call site.
+_strip_html = strip_html
 
 
 def _pick_isbn(industry_identifiers: list[dict[str, str]]) -> str | None:

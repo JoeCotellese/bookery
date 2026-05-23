@@ -8,6 +8,7 @@ from flask import Flask
 
 from bookery.db.catalog import LibraryCatalog
 from bookery.metadata.provider import MetadataProvider
+from bookery.util.text import description_paragraphs
 from bookery.web.routes import bp
 
 
@@ -32,5 +33,9 @@ def create_app(
     app.config["SECRET_KEY"] = os.environ.get("BOOKERY_SECRET_KEY", "bookery-dev-secret")
     app.config["CATALOG"] = catalog
     app.config["PROVIDERS"] = dict(providers) if providers else {}
+    # Render plain-text description fields as escaped <p> blocks. Storage is
+    # already plain text (HTML is stripped on write), so this filter never
+    # needs to sanitize — it just wraps blank-line paragraphs.
+    app.jinja_env.filters["description_paragraphs"] = description_paragraphs
     app.register_blueprint(bp)
     return app

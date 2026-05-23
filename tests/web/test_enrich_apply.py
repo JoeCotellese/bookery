@@ -525,6 +525,88 @@ class TestEnrichApplyPost:
         assert response.status_code == 404
 
 
+# --- description HTML stripping on apply (issue #123) -----------------------
+
+
+class TestEnrichApplyStripsDescriptionHtml:
+    """Apply-candidate path must strip HTML from provider descriptions."""
+
+    def _apply_with_description(
+        self,
+        mock_catalog,
+        client,
+        open_library,
+        tmp_path,
+        proposed_description: str | None,
+        *,
+        current_description: str | None = None,
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, source_path=source, description=current_description
+        )
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(
+                title="T",
+                authors=["A"],
+                description=proposed_description,
+            ),
+            confidence=0.9,
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+        return mock_catalog.update_book.call_args
+
+    def test_html_in_proposed_description_is_stripped(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        call = self._apply_with_description(
+            mock_catalog,
+            client,
+            open_library,
+            tmp_path,
+            '<p class="description">A story.</p>',
+        )
+        assert call.kwargs["description"] == "A story."
+
+    def test_entities_in_proposed_description_are_decoded(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        call = self._apply_with_description(
+            mock_catalog, client, open_library, tmp_path, "foo &amp; bar"
+        )
+        assert call.kwargs["description"] == "foo & bar"
+
+    def test_html_that_strips_to_same_as_current_does_not_write(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        # Current plain text matches what the HTML proposed value strips to.
+        # The skip-clear / no-clobber guard from #125 also covers "no real
+        # change" — make sure description isn't gratuitously re-written.
+        call = self._apply_with_description(
+            mock_catalog,
+            client,
+            open_library,
+            tmp_path,
+            "<p>Existing prose.</p>",
+            current_description="Existing prose.",
+        )
+        assert "description" not in call.kwargs
+
+
 # --- _enrich_candidate_row View button wiring -------------------------------
 
 
