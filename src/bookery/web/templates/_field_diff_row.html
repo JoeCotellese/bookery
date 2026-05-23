@@ -1,8 +1,24 @@
 {# ABOUTME: Single field row inside the apply-candidate diff table. #}
 {# ABOUTME: Highlights changed cells, collapses long values into <details>. #}
-<tr class="diff-row diff-{{ 'changed' if diff.changed else 'unchanged' }}">
+{% set row_class = 'diff-clear' if diff.skip_clear else ('diff-changed' if diff.changed else 'diff-unchanged') %}
+<tr class="diff-row {{ row_class }}">
     <th scope="row" class="diff-field">{{ diff.field|replace('_', ' ')|title }}</th>
-    {% if diff.changed %}
+    {% if diff.skip_clear %}
+        {# Proposed is empty while current is set — skipped to protect curated data (issue #125). #}
+        <td class="diff-current">
+            {% if diff.current and diff.current|length > 200 %}
+                <details>
+                    <summary>{{ diff.current[:200] }}…</summary>
+                    {{ diff.current }}
+                </details>
+            {% else %}
+                {{ diff.current or "—" }}
+            {% endif %}
+        </td>
+        <td class="diff-proposed muted">
+            <span class="diff-skip-note">— · current kept — provider had no value</span>
+        </td>
+    {% elif diff.changed %}
         <td class="diff-current changed">
             {% if diff.current and diff.current|length > 200 %}
                 <details>

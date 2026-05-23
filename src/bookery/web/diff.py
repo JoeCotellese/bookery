@@ -15,13 +15,17 @@ class FieldDiff:
     ``current`` and ``proposed`` are pre-formatted display strings (empty
     string when the underlying value is None/missing). ``changed`` collapses
     None/empty equivalence and ordered-list comparison so templates can
-    branch on a single boolean.
+    branch on a single boolean. ``skip_clear`` flags rows where the proposed
+    value is empty but the current value is set — the apply handler must
+    not overwrite a curated value with nothing, and the diff UI mutes the
+    row so the user can see why no write will happen.
     """
 
     field: str
     current: str
     proposed: str
     changed: bool
+    skip_clear: bool = False
 
 
 # Field order matches the diff panel UX spec (title, authors, isbn, ...).
@@ -67,31 +71,41 @@ def metadata_diff(current: BookMetadata, proposed: BookMetadata) -> list[FieldDi
     Returns one :class:`FieldDiff` per displayable field in a fixed order so
     the diff panel always renders the same rows regardless of which sides
     are populated. ``None`` and empty string are treated as equivalent for
-    every scalar field; authors are compared as ordered lists.
+    every scalar field; authors are compared as ordered lists. Rows where
+    the proposed value is empty and the current value is non-empty are
+    flagged ``skip_clear`` so the apply pipeline can drop them.
     """
     diffs: list[FieldDiff] = []
     for field in _FIELDS:
         if field == "authors":
             cur_list = current.authors or []
             prop_list = proposed.authors or []
+            changed = _authors_changed(cur_list, prop_list)
+            skip_clear = changed and not prop_list and bool(cur_list)
             diffs.append(
                 FieldDiff(
                     field=field,
                     current=_format_authors(cur_list),
                     proposed=_format_authors(prop_list),
-                    changed=_authors_changed(cur_list, prop_list),
+                    changed=changed,
+                    skip_clear=skip_clear,
                 )
             )
             continue
 
         cur_val = getattr(current, field)
         prop_val = getattr(proposed, field)
+        changed = _scalar_changed(cur_val, prop_val)
+        cur_display = _format_scalar(cur_val)
+        prop_display = _format_scalar(prop_val)
+        skip_clear = changed and not prop_display and bool(cur_display)
         diffs.append(
             FieldDiff(
                 field=field,
-                current=_format_scalar(cur_val),
-                proposed=_format_scalar(prop_val),
-                changed=_scalar_changed(cur_val, prop_val),
+                current=cur_display,
+                proposed=prop_display,
+                changed=changed,
+                skip_clear=skip_clear,
             )
         )
     return diffs

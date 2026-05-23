@@ -306,6 +306,36 @@ def _find_candidate(
     return None
 
 
+def _is_empty_scalar(value: object) -> bool:
+    """True when a scalar metadata value is None or an empty/whitespace string."""
+    if value is None:
+        return True
+    return isinstance(value, str) and value.strip() == ""
+
+
+def _should_write_scalar(current: object, proposed: object) -> bool:
+    """Decide whether to mirror ``proposed`` into the catalog row.
+
+    Skip when the values are equivalent (no-op) or when proposed is empty
+    while current is not — the apply pipeline must never silently wipe a
+    curated value because the provider happened to lack one (issue #125).
+    """
+    if _is_empty_scalar(proposed) and not _is_empty_scalar(current):
+        return False
+    cur = "" if current is None else str(current)
+    prop = "" if proposed is None else str(proposed)
+    return cur != prop
+
+
+def _should_write_authors(current: list[str], proposed: list[str]) -> bool:
+    """Authors variant of :func:`_should_write_scalar` for the list field."""
+    cur = current or []
+    prop = proposed or []
+    if not prop and cur:
+        return False
+    return list(cur) != list(prop)
+
+
 @bp.route("/books/<int:book_id>/delete", methods=["GET"])
 def delete_confirm(book_id):
     """Render the delete confirmation panel (htmx swap into #book-content)."""
@@ -462,21 +492,26 @@ def enrich_apply(book_id):
     # Mirror the candidate's fields into the catalog with provenance credited
     # to the provider. We intentionally only write fields that the provider
     # supplied so untouched values (e.g. an unset ISBN) don't clobber what
-    # the user already curated.
-    update_fields: dict[str, object] = {"title": proposed.title}
-    if proposed.authors:
+    # the user already curated. Defense in depth for issue #125: never
+    # overwrite a non-empty current value with an empty proposed value —
+    # even if a form post somehow forces the clearing value through.
+    current = book.metadata
+    update_fields: dict[str, object] = {}
+    if _should_write_scalar(current.title, proposed.title):
+        update_fields["title"] = proposed.title
+    if _should_write_authors(current.authors, proposed.authors):
         update_fields["authors"] = list(proposed.authors)
-    if proposed.isbn is not None:
+    if _should_write_scalar(current.isbn, proposed.isbn):
         update_fields["isbn"] = proposed.isbn
-    if proposed.language is not None:
+    if _should_write_scalar(current.language, proposed.language):
         update_fields["language"] = proposed.language
-    if proposed.publisher is not None:
+    if _should_write_scalar(current.publisher, proposed.publisher):
         update_fields["publisher"] = proposed.publisher
-    if proposed.description is not None:
+    if _should_write_scalar(current.description, proposed.description):
         update_fields["description"] = proposed.description
-    if proposed.series is not None:
+    if _should_write_scalar(current.series, proposed.series):
         update_fields["series"] = proposed.series
-    if proposed.series_index is not None:
+    if _should_write_scalar(current.series_index, proposed.series_index):
         update_fields["series_index"] = proposed.series_index
 
     # Always credit provenance to the matched provider's canonical name

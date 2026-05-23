@@ -553,3 +553,23 @@ header h1 a {
     flex-wrap: wrap;
     margin-top: 1rem;
 }
+
+/* --- Apply-candidate diff: skip-clear rows (issue #125) ----------------- */
+
+.diff-row.diff-clear {
+    color: var(--color-muted);
+    background: #fafafa;
+    font-style: italic;
+}
+
+.diff-row.diff-clear .diff-skip-note {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+}
+
+.enrich-diff-skip-summary {
+    margin-left: 0.5rem;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
