@@ -24,6 +24,7 @@ def _make_book(
     description: str | None = None,
     series: str | None = None,
     series_index: float | None = None,
+    metadata_matched_at: str | None = None,
 ) -> BookRecord:
     """Helper to create a BookRecord for tests."""
     return BookRecord(
@@ -44,6 +45,7 @@ def _make_book(
         output_path=output_path,
         date_added="2026-01-01",
         date_modified="2026-01-01",
+        metadata_matched_at=metadata_matched_at,
     )
 
 
@@ -106,8 +108,21 @@ class TestBookList:
         assert html.index("Adams, John") < html.index("Brown, Dan")
 
     def test_books_table_shows_enriched_badge(self, mock_catalog, client):
-        enriched = _make_book(1, title="Enriched", output_path=Path("/out/enriched.epub"))
-        plain = _make_book(2, title="Plain")
+        # Only metadata_matched_at — not output_path — drives the checkmark.
+        # Both books are library-canonical (output_path set), but only the
+        # matched one shows the badge.
+        enriched = _make_book(
+            1,
+            title="Enriched",
+            output_path=Path("/out/enriched.epub"),
+            metadata_matched_at="2026-05-01T00:00:00",
+        )
+        plain = _make_book(
+            2,
+            title="Plain",
+            output_path=Path("/out/plain.epub"),
+            metadata_matched_at=None,
+        )
         mock_catalog.list_all_by_author.return_value = [enriched, plain]
 
         response = client.get("/books")

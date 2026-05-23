@@ -147,10 +147,48 @@ ALTER TABLE books ADD COLUMN maturity_rating TEXT;
 INSERT INTO schema_version (version) VALUES (6);
 """
 
+# Decouple "this book has been matched against a metadata provider" from
+# "this book has a managed library location". Pre-V7, output_path served both
+# meanings; after the library-canonical migration every row has output_path,
+# so callers using `output_path IS NOT NULL` as a matched-flag broke silently.
+#
+# Backfill rule: a row counts as previously matched if it has at least one
+# `book_field_provenance` entry written by a metadata provider — i.e. a source
+# that isn't one of the internal/non-provider sources we know about
+# (`extracted` for EPUB extraction inserts, `user` for manual edits via the
+# CLI / web form, `genres` for the auto-genre applier). Anything else
+# (`openlibrary`, `googlebooks`, `consensus:...`, future providers) is, by
+# definition, evidence that a provider touched the row. This is more accurate
+# than the `identifiers`-substring heuristic considered earlier, which both
+# missed rows matched via web `enrich_apply` (which writes provenance but not
+# the identifiers JSON) and produced false positives for Calibre EPUBs that
+# already declared `<dc:identifier opf:scheme="ISBN">` (extraction stores
+# those as `{"isbn": "..."}`).
+#
+# Backfilled rows take their date_modified (falling back to date_added) as a
+# best-effort timestamp — provenance rows have their own `fetched_at`, but the
+# books-table timestamps are the closest stable analogue for "when did the
+# match-flow finish for this row" and avoid having to pick a single field's
+# fetched_at.
+SCHEMA_V7 = """
+ALTER TABLE books ADD COLUMN metadata_matched_at TEXT;
+
+UPDATE books
+SET metadata_matched_at = COALESCE(date_modified, date_added)
+WHERE id IN (
+    SELECT DISTINCT book_id
+    FROM book_field_provenance
+    WHERE source NOT IN ('extracted', 'user', 'genres')
+);
+
+INSERT INTO schema_version (version) VALUES (7);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
 ]

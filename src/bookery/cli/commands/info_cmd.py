@@ -192,6 +192,8 @@ def info(
     table.add_row("Source", str(record.source_path))
     if record.output_path:
         table.add_row("Output", str(record.output_path))
+    if record.metadata_matched_at:
+        table.add_row("Matched", record.metadata_matched_at)
     table.add_row("Hash", record.file_hash)
     table.add_row("Added", record.date_added)
     table.add_row("Modified", record.date_modified)
