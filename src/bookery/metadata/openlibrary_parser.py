@@ -4,6 +4,7 @@
 from typing import Any
 
 from bookery.metadata.types import BookMetadata
+from bookery.util.text import strip_html
 
 _COVERS_BASE_URL = "https://covers.openlibrary.org/b/isbn"
 
@@ -74,16 +75,22 @@ def parse_works_response(data: dict[str, Any]) -> str | None:
     """Extract the description from an Open Library Works response.
 
     Handles the OL quirk where description can be either a plain string
-    or a dict with {"type": ..., "value": "actual text"}.
+    or a dict with {"type": ..., "value": "actual text"}. The value is
+    stripped of any HTML markup so the catalog stores plain text.
     """
     desc = data.get("description")
     if desc is None:
         return None
     if isinstance(desc, str):
-        return desc
-    if isinstance(desc, dict):
-        return desc.get("value")
-    return None
+        raw = desc
+    elif isinstance(desc, dict):
+        raw = desc.get("value")
+    else:
+        return None
+    if not raw:
+        return None
+    cleaned = strip_html(raw)
+    return cleaned or None
 
 
 def parse_works_subjects(data: dict[str, Any]) -> list[str]:

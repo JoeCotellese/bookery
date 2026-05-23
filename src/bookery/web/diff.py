@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from bookery.metadata.types import BookMetadata
+from bookery.util.text import strip_html
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,13 @@ def metadata_diff(current: BookMetadata, proposed: BookMetadata) -> list[FieldDi
 
         cur_val = getattr(current, field)
         prop_val = getattr(proposed, field)
+        # Descriptions are stored as plain text, but provider candidates can
+        # still arrive with HTML markup. Strip both sides so the diff reflects
+        # what the apply pipeline will actually write — and so the proposed
+        # column doesn't render literal <p class="..."> noise.
+        if field == "description":
+            cur_val = strip_html(cur_val) if cur_val else cur_val
+            prop_val = strip_html(prop_val) if prop_val else prop_val
         changed = _scalar_changed(cur_val, prop_val)
         cur_display = _format_scalar(cur_val)
         prop_display = _format_scalar(prop_val)

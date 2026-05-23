@@ -15,6 +15,7 @@ from ebooklib import epub
 from mobi import extract as mobi_extract
 
 from bookery.metadata.types import BookMetadata
+from bookery.util.text import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -343,9 +344,13 @@ def parse_opf_metadata(opf_path: Path | None) -> BookMetadata | None:
     pub_el = metadata_el.find("dc:publisher", ns)
     publisher = pub_el.text.strip() if pub_el is not None and pub_el.text else None
 
-    # Description
+    # Description — MOBI/OPF descriptions are often HTML; normalize to plain
+    # text so the catalog stores the same shape as descriptions from other
+    # sources (EPUB, providers, edit form).
     desc_el = metadata_el.find("dc:description", ns)
-    description = desc_el.text.strip() if desc_el is not None and desc_el.text else None
+    description_raw = desc_el.text.strip() if desc_el is not None and desc_el.text else None
+    description = strip_html(description_raw) if description_raw else None
+    description = description or None
 
     # ISBN from dc:identifier with opf:scheme="ISBN"
     isbn = None

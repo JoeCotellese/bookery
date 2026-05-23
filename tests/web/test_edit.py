@@ -66,3 +66,58 @@ class TestUpdateStillRendersDetail:
         html = response.data.decode()
         assert "Updated" in html
         assert 'aria-labelledby="detail-header"' in html
+
+
+class TestDescriptionHtmlStripping:
+    """Edit POSTs must store plain text — never HTML markup (issue #123)."""
+
+    def _post_description(self, mock_catalog, client, description: str):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Book")
+        client.post(
+            "/books/1/edit",
+            data={
+                "title": "Book",
+                "authors": "Author",
+                "isbn": "",
+                "language": "",
+                "publisher": "",
+                "description": description,
+                "series": "",
+                "series_index": "",
+            },
+        )
+        return mock_catalog.update_book.call_args
+
+    def test_html_tags_stripped_on_save(self, mock_catalog, client):
+        call = self._post_description(
+            mock_catalog, client, '<p class="description">A story.</p>'
+        )
+        assert call.kwargs["description"] == "A story."
+
+    def test_entities_decoded_on_save(self, mock_catalog, client):
+        call = self._post_description(
+            mock_catalog, client, "foo &amp; bar"
+        )
+        assert call.kwargs["description"] == "foo & bar"
+
+    def test_paragraphs_preserved_as_blank_lines(self, mock_catalog, client):
+        call = self._post_description(
+            mock_catalog, client, "<p>first</p><p>second</p>"
+        )
+        assert call.kwargs["description"] == "first\n\nsecond"
+
+    def test_empty_html_becomes_none(self, mock_catalog, client):
+        call = self._post_description(mock_catalog, client, "<p></p>")
+        assert call.kwargs["description"] is None
+
+    def test_book_524_repro_case(self, mock_catalog, client):
+        # The reported bug: stored values arrive with <p class="description">
+        # wrappers that render as escaped text. After the fix the catalog
+        # never sees that markup.
+        call = self._post_description(
+            mock_catalog,
+            client,
+            '<p class="description">A great story about &amp;c.</p>',
+        )
+        assert call.kwargs["description"] == "A great story about &c."
+        assert "<p" not in call.kwargs["description"]

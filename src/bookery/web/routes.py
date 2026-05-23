@@ -21,6 +21,7 @@ from bookery.core.pipeline import apply_metadata_safely
 from bookery.core.remove import remove_book
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
+from bookery.util.text import strip_html
 from bookery.web.diff import metadata_diff
 
 
@@ -146,7 +147,11 @@ def update_book(book_id):
     isbn = request.form.get("isbn", "").strip() or None
     language = request.form.get("language", "").strip() or None
     publisher = request.form.get("publisher", "").strip() or None
-    description = request.form.get("description", "").strip() or None
+    # Strip HTML on write so storage is always plain text — the catalog is
+    # the source of truth for the render layer and we never want to round-trip
+    # markup through the FTS index or the edit textarea.
+    description_raw = request.form.get("description", "")
+    description = strip_html(description_raw) or None
     series = request.form.get("series", "").strip() or None
 
     series_index_raw = request.form.get("series_index", "").strip()
@@ -507,8 +512,14 @@ def enrich_apply(book_id):
         update_fields["language"] = proposed.language
     if _should_write_scalar(current.publisher, proposed.publisher):
         update_fields["publisher"] = proposed.publisher
-    if _should_write_scalar(current.description, proposed.description):
-        update_fields["description"] = proposed.description
+    # Provider descriptions are commonly HTML (Google Books, scraped OL).
+    # Strip on write so the catalog stores plain text — mirrors the same
+    # guarantee the edit form path enforces. Compare against the stripped
+    # value too so an HTML-wrapped echo of the current text doesn't read as
+    # a real change.
+    stripped_description = strip_html(proposed.description) if proposed.description else None
+    if _should_write_scalar(current.description, stripped_description):
+        update_fields["description"] = stripped_description
     if _should_write_scalar(current.series, proposed.series):
         update_fields["series"] = proposed.series
     if _should_write_scalar(current.series_index, proposed.series_index):

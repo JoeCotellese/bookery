@@ -92,6 +92,32 @@ class TestDetailSections:
         html = client.get("/books/1").data.decode()
         assert 'aria-labelledby="detail-description"' not in html
 
+    def test_description_wraps_blank_line_paragraphs_in_p_tags(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(
+            1, description="first paragraph\n\nsecond paragraph"
+        )
+        html = client.get("/books/1").data.decode()
+        assert "<p>first paragraph</p>" in html
+        assert "<p>second paragraph</p>" in html
+
+    def test_description_does_not_render_literal_html_class_attr(self, mock_catalog, client):
+        # If the catalog still held HTML (legacy data before migration), the
+        # render layer would escape it. After issue #123 the catalog stores
+        # plain text, so the literal '<p class="description">' string the
+        # bug report flagged never appears on the detail page.
+        mock_catalog.get_by_id.return_value = make_book(
+            1, description="Plain prose, no markup."
+        )
+        html = client.get("/books/1").data.decode()
+        assert '&lt;p class=&#34;description&#34;&gt;' not in html
+        assert '<p class="description">' not in html
+        assert "<p>Plain prose, no markup.</p>" in html
+
+    def test_description_escapes_special_chars(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, description="A & B")
+        html = client.get("/books/1").data.decode()
+        assert "<p>A &amp; B</p>" in html
+
 
 class TestEnrichedBadge:
     def test_badge_shown_when_output_path_set(self, mock_catalog, client):
