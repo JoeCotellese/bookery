@@ -17,7 +17,11 @@ from flask import (
 )
 
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
+from bookery.core.pipeline import apply_metadata_safely
 from bookery.core.remove import remove_book
+from bookery.metadata.candidate import MetadataCandidate
+from bookery.metadata.provider import MetadataProvider
+from bookery.web.diff import metadata_diff
 
 
 def _file_context(book) -> dict[str, str]:
@@ -228,10 +232,18 @@ def enrich_search(book_id):
     )
     any_results = any(not r.is_empty for r in results)
 
+    # Reconstruct the query string passed to the diff route so View can
+    # re-fetch without keeping per-session state. Whatever dispatch path
+    # was taken (ISBN, URL, title/author), the diff route's own
+    # ``dispatch_from_form`` will resolve the same shape.
+    diff_query = dispatch.isbn or dispatch.url or dispatch.title_author or ""
+
     return render_template(
         "_enrich_candidates.html",
+        book=book,
         results=results,
         any_results=any_results,
+        diff_query=diff_query,
     )
 
 
@@ -249,6 +261,49 @@ def _duplicate_cluster_count(catalog, output_path: Path | None, book_id: int) ->
         (str(output_path), book_id),
     )
     return int(cursor.fetchone()[0])
+
+
+def _find_provider_by_name(name: str) -> MetadataProvider | None:
+    """Look up a configured provider by its display name.
+
+    ``providers`` is keyed by short id (``openlibrary``); the candidate
+    rows carry the provider's human-facing ``name`` (``Open Library``).
+    Iterate the registry so the route works with either key.
+    """
+    providers = current_app.config.get("PROVIDERS", {})
+    for provider in providers.values():
+        if provider.name == name:
+            return provider
+    return providers.get(name)
+
+
+def _refetch_candidate(provider: MetadataProvider, query: str) -> list[MetadataCandidate]:
+    """Re-run the original search against ``provider`` for ``query``.
+
+    Apply requests carry no candidate state across the wire, so we re-call
+    the same dispatch path used by ``enrich_search`` and pick the candidate
+    by ``source_id``. ISBN-shaped queries hit ``search_by_isbn``, URLs go to
+    ``lookup_by_url``, everything else is treated as a title/author search.
+    """
+    dispatch = dispatch_from_form("", query)
+    if dispatch.isbn:
+        return list(provider.search_by_isbn(dispatch.isbn))
+    if dispatch.url:
+        single = provider.lookup_by_url(dispatch.url)
+        return [single] if single is not None else []
+    if dispatch.title_author:
+        return list(provider.search_by_title_author(dispatch.title_author))
+    return []
+
+
+def _find_candidate(
+    candidates: list[MetadataCandidate], candidate_id: str
+) -> MetadataCandidate | None:
+    """Locate a candidate by its provider-supplied ``source_id``."""
+    for candidate in candidates:
+        if candidate.source_id == candidate_id:
+            return candidate
+    return None
 
 
 @bp.route("/books/<int:book_id>/delete", methods=["GET"])
@@ -302,4 +357,142 @@ def delete_book(book_id):
     # callers get a normal 303 redirect back to the list.
     response = make_response("", 200)
     response.headers["HX-Redirect"] = url_for("web.books")
+    return response
+
+
+@bp.route("/books/<int:book_id>/enrich/candidate", methods=["GET"])
+def enrich_candidate(book_id):
+    """Render the field-by-field diff panel for a chosen candidate.
+
+    Re-fetches the candidate from its provider using the original query so
+    no per-session state is required. The diff panel includes an Apply form
+    that POSTs back to ``enrich_apply`` with the same dispatch params.
+    """
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    provider_name = request.args.get("provider", "")
+    query = request.args.get("query", "")
+    candidate_id = request.args.get("candidate_id", "")
+
+    provider = _find_provider_by_name(provider_name)
+    if provider is None:
+        abort(404)
+
+    candidates = _refetch_candidate(provider, query)
+    candidate = _find_candidate(candidates, candidate_id)
+    if candidate is None:
+        abort(404)
+
+    diffs = metadata_diff(book.metadata, candidate.metadata)
+
+    return render_template(
+        "_enrich_diff.html",
+        book=book,
+        candidate=candidate,
+        diffs=diffs,
+        provider_name=provider_name,
+        query=query,
+        candidate_id=candidate_id,
+    )
+
+
+@bp.route("/books/<int:book_id>/enrich/apply", methods=["POST"])
+def enrich_apply(book_id):
+    """Apply the selected candidate's metadata to a non-destructive copy.
+
+    Writes the proposed metadata to a new EPUB copy via
+    ``apply_metadata_safely``, then mirrors the same fields into the
+    catalog and records the output path. Emits a success flash and an
+    ``HX-Redirect`` so the htmx client navigates back to the refreshed
+    detail page.
+
+    Missing source files short-circuit with an error flash and no catalog
+    writes; write-pipeline failures (verification, IO) likewise leave the
+    catalog untouched.
+    """
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    provider_name = request.form.get("provider", "")
+    query = request.form.get("query", "")
+    candidate_id = request.form.get("candidate_id", "")
+
+    provider = _find_provider_by_name(provider_name)
+    if provider is None:
+        abort(404)
+
+    candidates = _refetch_candidate(provider, query)
+    candidate = _find_candidate(candidates, candidate_id)
+    if candidate is None:
+        abort(404)
+
+    detail_url = url_for("web.book_detail", book_id=book_id)
+
+    source = book.source_path
+    if source is None or not source.exists():
+        flash(
+            f"Cannot apply: source file is missing ({source})",
+            "error",
+        )
+        response = make_response("", 200)
+        response.headers["HX-Redirect"] = detail_url
+        return response
+
+    # Prefer the existing library location of this book (its previous output
+    # copy's parent) so multiple enrich passes don't scatter files across
+    # the filesystem. Fall back to the source file's directory.
+    output_dir = book.output_path.parent if book.output_path is not None else source.parent
+
+    proposed = candidate.metadata
+    write_result = apply_metadata_safely(source, proposed, output_dir)
+    if not write_result.success or write_result.path is None:
+        flash(
+            f"Apply failed: {write_result.error or 'unknown error'}",
+            "error",
+        )
+        response = make_response("", 200)
+        response.headers["HX-Redirect"] = detail_url
+        return response
+
+    # Mirror the candidate's fields into the catalog with provenance credited
+    # to the provider. We intentionally only write fields that the provider
+    # supplied so untouched values (e.g. an unset ISBN) don't clobber what
+    # the user already curated.
+    update_fields: dict[str, object] = {"title": proposed.title}
+    if proposed.authors:
+        update_fields["authors"] = list(proposed.authors)
+    if proposed.isbn is not None:
+        update_fields["isbn"] = proposed.isbn
+    if proposed.language is not None:
+        update_fields["language"] = proposed.language
+    if proposed.publisher is not None:
+        update_fields["publisher"] = proposed.publisher
+    if proposed.description is not None:
+        update_fields["description"] = proposed.description
+    if proposed.series is not None:
+        update_fields["series"] = proposed.series
+    if proposed.series_index is not None:
+        update_fields["series_index"] = proposed.series_index
+
+    # Always credit provenance to the matched provider's canonical name
+    # rather than echoing the user-supplied form value verbatim.
+    catalog.update_book(
+        book_id,
+        source=provider.name,
+        confidence=candidate.confidence,
+        **update_fields,
+    )
+    catalog.set_output_path(book_id, write_result.path)
+
+    flash(
+        f'Applied "{proposed.title}" from {provider.name}',
+        "success",
+    )
+    response = make_response("", 200)
+    response.headers["HX-Redirect"] = detail_url
     return response

@@ -1,0 +1,39 @@
+{# ABOUTME: Single field row inside the apply-candidate diff table. #}
+{# ABOUTME: Highlights changed cells, collapses long values into <details>. #}
+<tr class="diff-row diff-{{ 'changed' if diff.changed else 'unchanged' }}">
+    <th scope="row" class="diff-field">{{ diff.field|replace('_', ' ')|title }}</th>
+    {% if diff.changed %}
+        <td class="diff-current changed">
+            {% if diff.current and diff.current|length > 200 %}
+                <details>
+                    <summary>{{ diff.current[:200] }}…</summary>
+                    {{ diff.current }}
+                </details>
+            {% else %}
+                {{ diff.current or "—" }}
+            {% endif %}
+        </td>
+        <td class="diff-proposed changed">
+            {% if diff.proposed and diff.proposed|length > 200 %}
+                <details>
+                    <summary>{{ diff.proposed[:200] }}…</summary>
+                    {{ diff.proposed }}
+                </details>
+            {% else %}
+                {{ diff.proposed or "—" }}
+            {% endif %}
+        </td>
+    {% else %}
+        <td class="diff-current">
+            {% if diff.current and diff.current|length > 200 %}
+                <details>
+                    <summary>{{ diff.current[:200] }}…</summary>
+                    {{ diff.current }}
+                </details>
+            {% else %}
+                {{ diff.current or "—" }}
+            {% endif %}
+        </td>
+        <td class="diff-proposed muted"><span class="diff-same">same</span></td>
+    {% endif %}
+</tr>

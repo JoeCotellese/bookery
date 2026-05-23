@@ -1,0 +1,51 @@
+{# ABOUTME: Diff panel for the apply-candidate flow — current vs proposed metadata. #}
+{# ABOUTME: Includes header, per-field rows, and Apply/Back-to-results/Cancel actions. #}
+<section class="enrich-diff" aria-labelledby="enrich-diff-heading">
+    <header class="enrich-diff-header">
+        <h3 id="enrich-diff-heading">
+            Apply candidate
+            · <span class="enrich-diff-provider">{{ candidate.source }}</span>
+            · <span class="enrich-diff-confidence">conf {{ "%.2f"|format(candidate.confidence) }}</span>
+        </h3>
+    </header>
+
+    <table class="enrich-diff-table">
+        <thead>
+            <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Current</th>
+                <th scope="col">Proposed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for diff in diffs %}
+                {% include "_field_diff_row.html" %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="enrich-diff-actions" role="group" aria-label="Diff actions">
+        <form class="enrich-diff-apply"
+              method="post"
+              action="{{ url_for('web.enrich_apply', book_id=book.id) }}"
+              hx-post="{{ url_for('web.enrich_apply', book_id=book.id) }}"
+              hx-swap="none">
+            <input type="hidden" name="provider" value="{{ provider_name }}">
+            <input type="hidden" name="query" value="{{ query }}">
+            <input type="hidden" name="candidate_id" value="{{ candidate_id }}">
+            <button type="submit" class="btn btn-primary">Apply</button>
+        </form>
+
+        <button type="button"
+                class="btn btn-secondary"
+                hx-get="{{ url_for('web.enrich_form', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Back to results</button>
+
+        <button type="button"
+                class="btn btn-muted"
+                hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Cancel</button>
+    </div>
+</section>
