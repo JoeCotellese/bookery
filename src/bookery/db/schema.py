@@ -147,10 +147,41 @@ ALTER TABLE books ADD COLUMN maturity_rating TEXT;
 INSERT INTO schema_version (version) VALUES (6);
 """
 
+# Decouple "this book has been matched against a metadata provider" from
+# "this book has a managed library location". Pre-V7, output_path served both
+# meanings; after the library-canonical migration every row has output_path,
+# so callers using `output_path IS NOT NULL` as a matched-flag broke silently.
+#
+# Backfill rule: a row counts as previously matched if its identifiers JSON
+# contains any known provider key (openlibrary_*, googlebooks_*, or any
+# isbn_* sub-id). Detection uses LIKE on the JSON text, which works without
+# the optional json1 extension. Backfilled rows take their date_modified
+# (falling back to date_added) as a best-effort timestamp.
+SCHEMA_V7 = """
+ALTER TABLE books ADD COLUMN metadata_matched_at TEXT;
+
+UPDATE books
+SET metadata_matched_at = COALESCE(date_modified, date_added)
+WHERE identifiers IS NOT NULL
+  AND (
+        identifiers LIKE '%"openlibrary_work"%'
+     OR identifiers LIKE '%"openlibrary_author_keys"%'
+     OR identifiers LIKE '%"googlebooks_volume"%'
+     OR identifiers LIKE '%"googlebooks_preview"%'
+     OR identifiers LIKE '%"googlebooks_info"%'
+     OR identifiers LIKE '%"isbn_10"%'
+     OR identifiers LIKE '%"isbn_13"%'
+     OR identifiers LIKE '%"isbn"%'
+  );
+
+INSERT INTO schema_version (version) VALUES (7);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
 ]

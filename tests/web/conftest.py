@@ -85,6 +85,7 @@ def make_book(
     file_hash: str = "abc123",
     date_added: str = "2026-01-01",
     date_modified: str = "2026-01-02",
+    metadata_matched_at: str | None = None,
 ) -> BookRecord:
     """Build a BookRecord for web template tests."""
     return BookRecord(
@@ -105,6 +106,7 @@ def make_book(
         output_path=output_path,
         date_added=date_added,
         date_modified=date_modified,
+        metadata_matched_at=metadata_matched_at,
     )
 
 

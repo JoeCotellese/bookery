@@ -8,7 +8,7 @@
         <td>{{ book.metadata.isbn or '' }}</td>
         <td>{{ book.metadata.language or '' }}</td>
         <td>{{ book.metadata.publisher or '' }}</td>
-        <td>{% if book.output_path %}&#10003;{% endif %}</td>
+        <td>{% if book.metadata_matched_at %}&#10003;{% endif %}</td>
     </tr>
     {% endfor %}
 {% elif query %}

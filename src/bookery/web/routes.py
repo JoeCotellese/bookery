@@ -534,6 +534,7 @@ def enrich_apply(book_id):
         **update_fields,
     )
     catalog.set_output_path(book_id, write_result.path)
+    catalog.set_matched_at(book_id)
 
     flash(
         f'Applied "{proposed.title}" from {provider.name}',
