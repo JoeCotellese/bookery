@@ -1,0 +1,52 @@
+{# ABOUTME: Delete confirmation panel — swapped into #book-content via htmx. #}
+{# ABOUTME: Two destructive actions (keep_file=0/1) plus Cancel back to detail. #}
+<section class="section delete-confirm" aria-labelledby="delete-confirm-heading">
+    <h2 id="delete-confirm-heading">Delete this book?</h2>
+
+    <dl class="metadata-grid">
+        <dt>Title</dt>
+        <dd>{{ book.metadata.title }}</dd>
+        <dt>Author</dt>
+        <dd>{{ book.metadata.author or "Unknown" }}</dd>
+        <dt>Path</dt>
+        <dd>
+            {% if book.output_path %}
+                <code>{{ book.output_path }}</code>
+            {% else %}
+                <em>(no file)</em>
+            {% endif %}
+        </dd>
+        <dt>Size</dt>
+        <dd>{{ file_info.size }}</dd>
+        <dt>Tags / Genres</dt>
+        <dd>{{ tag_count }} tags &middot; {{ genre_count }} genres</dd>
+    </dl>
+
+    {% if duplicate_count > 0 %}
+    <p class="delete-warning" role="status">
+        &#9888; {{ duplicate_count }} other catalog
+        {{ "entry" if duplicate_count == 1 else "entries" }} point at this file;
+        the file will be kept on disk regardless of mode.
+    </p>
+    {% endif %}
+
+    <form action="{{ url_for('web.delete_book', book_id=book.id) }}"
+          method="post"
+          hx-post="{{ url_for('web.delete_book', book_id=book.id) }}"
+          hx-swap="none"
+          class="delete-actions">
+        <button type="submit"
+                class="btn btn-destructive"
+                name="keep_file"
+                value="0">Delete book + file</button>
+        <button type="submit"
+                class="btn btn-destructive"
+                name="keep_file"
+                value="1">Delete row only</button>
+        <button type="button"
+                class="btn btn-secondary"
+                hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Cancel</button>
+    </form>
+</section>

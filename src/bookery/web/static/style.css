@@ -494,3 +494,56 @@ header h1 a {
     font-style: italic;
     padding: 0.5rem 0;
 }
+
+/* --- Flash messages (issue #113) ----------------------------------------- */
+
+.flashes {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+.flash {
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+}
+
+.flash-success {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+}
+
+.flash-warning {
+    background: #fffbeb;
+    color: #92400e;
+    border-color: #fde68a;
+}
+
+/* --- Delete confirm panel (issue #113) ----------------------------------- */
+
+.delete-confirm h2 {
+    color: var(--color-destructive);
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.delete-warning {
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+
+.delete-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
