@@ -444,3 +444,50 @@ class TestImportMetadataDedupCli:
         # Summary should contain breakdown info
         assert "hash" in result.output.lower()
         assert "title+author" in result.output.lower()
+
+
+class TestImporterOutputPath:
+    """E2E regression guard for output_path on unmatched imports (issue #59).
+
+    Plan-05 cluster: the CLI `import` command (without --match) must persist a
+    non-NULL output_path under library_root for every cataloged book. This
+    locks the invariant at the CLI boundary so a future refactor can't quietly
+    drop the copy-by-default behavior.
+    """
+
+    def test_unmatched_import_cli_populates_output_path(
+        self, sample_epub: Path, tmp_path: Path,
+    ) -> None:
+        """`bookery import` (no --match) records output_path under library_root."""
+        scan_dir = tmp_path / "scan"
+        scan_dir.mkdir()
+        shutil.copy(sample_epub, scan_dir / "rose.epub")
+
+        db_path = tmp_path / "test.db"
+        library_root = tmp_path / "lib"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, [
+                "import", str(scan_dir),
+                "--db", str(db_path),
+                "-o", str(library_root),
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        conn = open_library(db_path)
+        try:
+            catalog = LibraryCatalog(conn)
+            records = catalog.list_all()
+            assert len(records) == 1
+
+            output_path = records[0].output_path
+            assert output_path is not None, (
+                "unmatched CLI import left output_path NULL — regression on #59"
+            )
+            assert output_path.resolve().is_relative_to(library_root.resolve())
+            assert output_path.exists()
+        finally:
+            conn.close()
