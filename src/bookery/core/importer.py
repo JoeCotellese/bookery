@@ -138,6 +138,7 @@ def import_books(
 
         output_path: Path | None = None
         copied_to_library = False
+        matched_via_provider = False
 
         if match_fn is not None:
             match_result = match_fn(metadata, epub_path)
@@ -145,6 +146,7 @@ def import_books(
                 metadata = match_result.metadata
                 metadata.source_path = epub_path
                 output_path = match_result.output_path
+                matched_via_provider = True
                 if output_path is not None:
                     copied_to_library = True
 
@@ -195,6 +197,8 @@ def import_books(
             book_id = catalog.add_book(
                 metadata, file_hash=file_hash, output_path=output_path,
             )
+            if matched_via_provider:
+                catalog.set_matched_at(book_id)
             result.added += 1
             if dup_match is not None:
                 result.forced += 1

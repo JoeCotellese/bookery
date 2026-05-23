@@ -6,6 +6,76 @@ from pathlib import Path
 import pytest
 from ebooklib import epub
 
+# Real user paths that tests must never touch. Compared with resolved absolute
+# paths so symlinks and relative segments cannot sneak past the check.
+_REAL_BOOKERY_DIR = (Path.home() / ".bookery").resolve()
+_REAL_LIBRARY_DB = (_REAL_BOOKERY_DIR / "library.db").resolve()
+_REAL_LIBRARY_DIR = (_REAL_BOOKERY_DIR / "library").resolve()
+
+
+def _is_real_user_path(path: Path) -> bool:
+    """Return True if ``path`` points at the user's real catalog DB or any
+    location under their real library directory.
+    """
+    try:
+        resolved = path.expanduser().resolve()
+    except (OSError, RuntimeError):
+        # Unresolvable paths cannot be the real user path.
+        return False
+    if resolved == _REAL_LIBRARY_DB:
+        return True
+    try:
+        resolved.relative_to(_REAL_LIBRARY_DIR)
+    except ValueError:
+        return False
+    return True
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _guardrail_block_real_user_paths():
+    """Session-scoped guardrail: wrap ``sqlite3.connect`` so any test that
+    resolves to the user's real ``~/.bookery/library.db`` or anywhere under
+    ``~/.bookery/library/`` fails fast with a clear message.
+
+    Patching at the ``sqlite3.connect`` layer (rather than only
+    ``bookery.db.open_library``) catches callers that imported the helper as
+    ``from bookery.db import open_library`` — those bind the original function
+    object at import time, so monkeypatching the module attribute would miss
+    them.
+
+    This is best-effort: subprocesses that re-import the module do not inherit
+    this monkeypatch, but the autouse env-isolation fixture already covers that
+    case by pre-setting ``BOOKERY_DB`` and ``BOOKERY_LIBRARY_ROOT`` for child
+    processes. Audit shows no test currently spawns the bookery CLI via
+    ``subprocess`` (all ``subprocess.run`` references in ``tests/`` mock
+    external binaries like ``kepubify``).
+
+    See issue #77 (plan-05 step 5).
+    """
+    import sqlite3
+
+    real_connect = sqlite3.connect
+
+    def guarded_connect(database, *args, **kwargs):
+        # ``database`` is typically a str or PathLike. In-memory dbs (":memory:")
+        # and URIs are always safe — only filesystem paths can hit the user dir.
+        if isinstance(database, (str, Path)) and str(database) not in {":memory:", ""}:
+            candidate = Path(str(database))
+            if _is_real_user_path(candidate):
+                raise RuntimeError(
+                    "test isolation guardrail tripped: test attempted to open "
+                    f"the real user catalog path {candidate!s}. Use a "
+                    "tmp_path-scoped DB instead. See CONTRIBUTING.md "
+                    "'Recovering from test pollution'."
+                )
+        return real_connect(database, *args, **kwargs)
+
+    sqlite3.connect = guarded_connect  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        sqlite3.connect = real_connect  # type: ignore[assignment]
+
 
 @pytest.fixture(autouse=True)
 def _isolate_library_root(

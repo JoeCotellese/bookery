@@ -366,6 +366,28 @@ class LibraryCatalog:
         """Set the output_path for a cataloged book."""
         self.update_book(book_id, output_path=str(output_path))
 
+    def set_matched_at(self, book_id: int, timestamp: str | None = None) -> None:
+        """Mark a book as matched against a metadata provider.
+
+        Writes ``metadata_matched_at``; defaults to the current UTC ISO
+        timestamp. This is the explicit "this book has been matched" signal,
+        distinct from ``output_path`` (which only records the on-disk location).
+        """
+        if timestamp is None:
+            cursor = self._conn.execute(
+                "UPDATE books SET metadata_matched_at = "
+                "strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+                (book_id,),
+            )
+        else:
+            cursor = self._conn.execute(
+                "UPDATE books SET metadata_matched_at = ? WHERE id = ?",
+                (timestamp, book_id),
+            )
+        self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError(f"Book with id {book_id} not found")
+
     def delete_book(self, book_id: int) -> None:
         """Delete a book from the catalog.
 

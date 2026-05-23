@@ -120,14 +120,31 @@ class TestDetailSections:
 
 
 class TestEnrichedBadge:
-    def test_badge_shown_when_output_path_set(self, mock_catalog, client):
-        mock_catalog.get_by_id.return_value = make_book(1, output_path=Path("/library/test.epub"))
+    def test_badge_shown_when_metadata_matched(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(
+            1,
+            output_path=Path("/library/test.epub"),
+            metadata_matched_at="2026-05-01T00:00:00",
+        )
 
         html = client.get("/books/1").data.decode()
         assert "Enriched" in html
 
+    def test_badge_absent_when_not_matched_even_if_in_library(self, mock_catalog, client):
+        # output_path alone (library-canonical) must NOT trigger the badge —
+        # only an explicit metadata_matched_at counts.
+        mock_catalog.get_by_id.return_value = make_book(
+            1,
+            output_path=Path("/library/test.epub"),
+            metadata_matched_at=None,
+        )
+        html = client.get("/books/1").data.decode()
+        assert "Enriched" not in html
+
     def test_badge_absent_when_output_path_missing(self, mock_catalog, client):
-        mock_catalog.get_by_id.return_value = make_book(1, output_path=None)
+        mock_catalog.get_by_id.return_value = make_book(
+            1, output_path=None, metadata_matched_at=None,
+        )
         html = client.get("/books/1").data.decode()
         assert "Enriched" not in html
 

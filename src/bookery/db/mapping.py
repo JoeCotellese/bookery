@@ -32,6 +32,7 @@ class BookRecord:
     output_path: Path | None
     date_added: str
     date_modified: str
+    metadata_matched_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +133,10 @@ def row_to_metadata(row: Any) -> BookMetadata:
 def row_to_record(row: Any) -> BookRecord:
     """Convert a full database row to a BookRecord with metadata and DB fields."""
     output = row["output_path"]
+    try:
+        matched_at = row["metadata_matched_at"]
+    except (KeyError, IndexError):
+        matched_at = None
     return BookRecord(
         id=row["id"],
         metadata=row_to_metadata(row),
@@ -140,4 +145,5 @@ def row_to_record(row: Any) -> BookRecord:
         output_path=Path(output) if output else None,
         date_added=row["date_added"],
         date_modified=row["date_modified"],
+        metadata_matched_at=matched_at,
     )

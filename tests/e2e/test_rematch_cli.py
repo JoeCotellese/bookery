@@ -285,19 +285,22 @@ class TestRematchInteractive:
 class TestRematchResume:
     """E2E tests for --resume / --no-resume behavior."""
 
-    def test_resume_skips_books_with_output_path(
+    def test_resume_skips_books_with_metadata_matched_at(
         self, sample_epub: Path, tmp_path: Path,
     ) -> None:
-        """Books with output_path set are skipped in resume mode."""
+        """Books with metadata_matched_at set are skipped in resume mode."""
         db_path = tmp_path / "test.db"
         output_dir = tmp_path / "output"
 
         book_id = _import_book(sample_epub, db_path)
 
-        # Simulate a previous match by setting output_path
+        # Simulate a previous match. The library-canonical importer always
+        # records an output_path, so set both — the resume filter must key
+        # off metadata_matched_at, not output_path.
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         catalog.set_output_path(book_id, tmp_path / "already_matched.epub")
+        catalog.set_matched_at(book_id)
         conn.close()
 
         runner = CliRunner()

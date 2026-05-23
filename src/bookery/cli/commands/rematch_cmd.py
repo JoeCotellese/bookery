@@ -135,7 +135,7 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
 @click.option(
     "--resume/--no-resume",
     default=True,
-    help="Skip books that already have an output_path (default: --resume).",
+    help="Skip books already matched against a metadata provider (default: --resume).",
 )
 @click.option(
     "--no-cache",
@@ -179,10 +179,13 @@ def rematch(
                 console.print("[yellow]No books to rematch.[/yellow]")
             return
 
-        # Resume: filter out books that already have output_path
+        # Resume: filter out books already matched against a provider.
+        # Uses the explicit metadata_matched_at signal so library-canonical
+        # rows (which always have output_path set) aren't falsely treated as
+        # matched.
         if resume:
             original_count = len(books)
-            books = [b for b in books if b.output_path is None]
+            books = [b for b in books if b.metadata_matched_at is None]
             skipped_resume = original_count - len(books)
             if skipped_resume:
                 console.print(
@@ -248,6 +251,7 @@ def rematch(
                 )
                 if result.output_path:
                     catalog.set_output_path(record.id, result.output_path)
+                catalog.set_matched_at(record.id)
                 if not auto_accept:
                     locked = set(fields) - set(written)
                     if locked:

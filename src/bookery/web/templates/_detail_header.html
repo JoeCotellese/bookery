@@ -5,7 +5,7 @@
         <h2 id="detail-header">{{ book.metadata.title }}</h2>
         <p class="byline">by {{ book.metadata.author }}</p>
     </div>
-    {% if book.output_path %}
+    {% if book.metadata_matched_at %}
     <p class="enriched-badge" aria-label="Enriched">&#10003; Enriched</p>
     {% endif %}
     <div class="toolbar" role="toolbar" aria-label="Book actions">
