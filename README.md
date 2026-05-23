@@ -270,6 +270,12 @@ uv run ruff check src/ tests/
 uv run pytest tests/unit/test_scoring.py -v
 ```
 
+Tests are isolated from your real `~/.bookery/library.db` by an autouse
+guardrail. If you previously ran the suite without this guardrail and your
+catalog now reports `source missing: /private/var/folders/.../pytest-of-...`,
+see ["Recovering from test pollution"](CONTRIBUTING.md#recovering-from-test-pollution)
+in `CONTRIBUTING.md`.
+
 ## Roadmap
 
 Bookery is being built in phases:

@@ -110,6 +110,46 @@ uv run pytest tests/unit/test_scoring.py -v  # single file, verbose
 
 Test output must be clean — no warnings, no captured errors unless explicitly tested.
 
+### Test Isolation
+
+A session-scoped guardrail in `tests/conftest.py` wraps `sqlite3.connect` and
+raises `RuntimeError` if any test tries to open the real user catalog at
+`~/.bookery/library.db` or anywhere under `~/.bookery/library/`. Combined with
+the autouse `_isolate_library_root` fixture (which sets `BOOKERY_DB` and
+`BOOKERY_LIBRARY_ROOT` to per-test tmp paths), this prevents the regression in
+issue #77 where test runs polluted the user's real catalog with rows pointing
+at `/private/var/folders/.../pytest-of-...` paths that no longer exist.
+
+The guardrail is best-effort against subprocesses (a subprocess that re-imports
+`bookery.db` will not inherit the in-process monkeypatch) — but the env-var
+isolation already covers child processes, and the test suite does not currently
+shell out to the bookery CLI.
+
+### Recovering from test pollution
+
+If you have a pre-guardrail catalog that already contains rows pointing at
+deleted `pytest` tmp directories, you'll see warnings like this from
+`bookery sync kobo`:
+
+```
+- book.epub: source missing: /private/var/folders/.../pytest-of-joec/pytest-48/.../library/Unknown/book.epub
+```
+
+To prune them, run the following against your catalog (replace the path if
+yours is non-default):
+
+```bash
+sqlite3 ~/.bookery/library.db <<'SQL'
+DELETE FROM books
+ WHERE source_path LIKE '/tmp/%'
+    OR source_path LIKE '/private/var/folders/%';
+SQL
+```
+
+Foreign-key cascades will clean up the associated `book_genres`, `book_tags`,
+and `book_field_provenance` rows. The forthcoming `bookery prune` command
+(#101) will do this in a guided, dry-run-by-default form.
+
 ## Architecture
 
 ### Core Abstraction: BookMetadata
