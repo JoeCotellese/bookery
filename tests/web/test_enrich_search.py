@@ -222,7 +222,9 @@ class TestEnrichSearchPost:
         assert "1965" in html
         assert "0.91" in html
 
-    def test_view_button_present_but_inert(self, mock_catalog, client, open_library, google_books):
+    def test_view_button_wires_to_diff_route(
+        self, mock_catalog, client, open_library, google_books
+    ):
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_title_author = [make_candidate(title="X", confidence=0.5)]
         google_books.by_title_author = []
@@ -230,9 +232,9 @@ class TestEnrichSearchPost:
         html = client.post("/books/1/enrich/search", data={"query": "X"}).data.decode()
 
         assert "View" in html
-        # Inert: no hx-get/hx-post wired to the View button yet (Story 4).
-        # We assert disabled attribute is present on the View button.
-        assert "disabled" in html
+        # View now fires the diff fetch into #book-content (issue #115).
+        assert "/books/1/enrich/candidate" in html
+        assert 'hx-target="#book-content"' in html
 
     def test_missing_book_returns_404(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = None
