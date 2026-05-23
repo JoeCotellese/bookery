@@ -1,5 +1,5 @@
 {# ABOUTME: Detail header partial — title, author(s), enriched badge, toolbar. #}
-{# ABOUTME: Toolbar wires Edit + Enrich; Delete is reserved for a follow-up story. #}
+{# ABOUTME: Toolbar wires Edit, Enrich, and Delete (confirm panel via htmx). #}
 <section class="section section-header" aria-labelledby="detail-header">
     <div class="header-titles">
         <h2 id="detail-header">{{ book.metadata.title }}</h2>
@@ -21,8 +21,8 @@
                 hx-swap="innerHTML">Enrich</button>
         <button type="button"
                 class="btn btn-destructive"
-                disabled
-                aria-disabled="true"
-                title="Coming soon">Delete</button>
+                hx-get="{{ url_for('web.delete_confirm', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Delete</button>
     </div>
 </section>

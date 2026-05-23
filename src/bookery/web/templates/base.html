@@ -13,6 +13,15 @@
         <h1><a href="{{ url_for('web.books') }}">Bookery</a></h1>
     </header>
     <main id="main">
+        {% with messages = get_flashed_messages(with_categories=True) %}
+            {% if messages %}
+            <ul class="flashes" role="status" aria-live="polite">
+                {% for category, message in messages %}
+                <li class="flash flash-{{ category }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 </body>

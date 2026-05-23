@@ -1,6 +1,7 @@
 # ABOUTME: Flask app factory for the Bookery web UI.
 # ABOUTME: Creates the Flask application with catalog dependency injection.
 
+import os
 from collections.abc import Mapping
 
 from flask import Flask
@@ -24,6 +25,11 @@ def create_app(
             groups (route still functions for tests that don't need providers).
     """
     app = Flask(__name__)
+    # SECRET_KEY is required for Flask sessions (and therefore flashed
+    # messages). We ship a dev default so the local CLI/test workflows
+    # work out of the box, but operators should override via the
+    # BOOKERY_SECRET_KEY environment variable in any shared deployment.
+    app.config["SECRET_KEY"] = os.environ.get("BOOKERY_SECRET_KEY", "bookery-dev-secret")
     app.config["CATALOG"] = catalog
     app.config["PROVIDERS"] = dict(providers) if providers else {}
     app.register_blueprint(bp)

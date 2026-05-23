@@ -4,9 +4,20 @@
 import os
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
+from bookery.core.remove import remove_book
 
 
 def _file_context(book) -> dict[str, str]:
@@ -222,3 +233,73 @@ def enrich_search(book_id):
         results=results,
         any_results=any_results,
     )
+
+
+def _duplicate_cluster_count(catalog, output_path: Path | None, book_id: int) -> int:
+    """Return the number of OTHER catalog rows sharing this output_path.
+
+    Mirrors the duplicate-cluster query in ``core/remove.py`` so the
+    confirm panel can surface the same warning the destructive action
+    will eventually print.
+    """
+    if output_path is None:
+        return 0
+    cursor = catalog._conn.execute(
+        "SELECT COUNT(*) FROM books WHERE output_path = ? AND id != ?",
+        (str(output_path), book_id),
+    )
+    return int(cursor.fetchone()[0])
+
+
+@bp.route("/books/<int:book_id>/delete", methods=["GET"])
+def delete_confirm(book_id):
+    """Render the delete confirmation panel (htmx swap into #book-content)."""
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    tags = catalog.get_tags_for_book(book_id)
+    genres = catalog.get_genres_for_book(book_id)
+    file_info = _file_context(book)
+    duplicate_count = _duplicate_cluster_count(catalog, book.output_path, book_id)
+
+    return render_template(
+        "_delete_confirm.html",
+        book=book,
+        file_info=file_info,
+        tag_count=len(tags),
+        genre_count=len(genres),
+        duplicate_count=duplicate_count,
+    )
+
+
+@bp.route("/books/<int:book_id>/delete", methods=["POST"])
+def delete_book(book_id):
+    """Execute the remove and redirect (via HX-Redirect) to /books."""
+    catalog = current_app.config["CATALOG"]
+    if catalog.get_by_id(book_id) is None:
+        abort(404)
+
+    # Form field "keep_file" carries "1" or "0". Only the explicit "0"
+    # opts in to deleting the file from disk; anything else (missing,
+    # unexpected value, "1") preserves the file. We'd rather leak a file
+    # than destroy one on a malformed request.
+    keep_file = request.form.get("keep_file", "1") != "0"
+
+    try:
+        result = remove_book(catalog, book_id, keep_file=keep_file)
+    except ValueError:
+        # remove_book raises ValueError for unknown IDs; we already
+        # checked above, so this is a race — surface as 404.
+        abort(404)
+
+    flash(f'Removed "{result.title}" by {result.author}', "success")
+    for warning in result.warnings:
+        flash(warning, "warning")
+
+    # htmx clients honor HX-Redirect by navigating the browser; non-htmx
+    # callers get a normal 303 redirect back to the list.
+    response = make_response("", 200)
+    response.headers["HX-Redirect"] = url_for("web.books")
+    return response
