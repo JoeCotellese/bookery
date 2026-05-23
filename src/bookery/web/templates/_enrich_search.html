@@ -1,0 +1,43 @@
+{# ABOUTME: Search form partial for the multi-provider enrich flow. #}
+{# ABOUTME: Pre-fills ISBN when present; otherwise pre-fills "title author" free-text. #}
+<section class="enrich" aria-labelledby="enrich-heading">
+    <h3 id="enrich-heading">Search providers</h3>
+
+    <form class="enrich-form"
+          hx-post="{{ url_for('web.enrich_search', book_id=book.id) }}"
+          hx-target="#enrich-results"
+          hx-swap="innerHTML"
+          hx-indicator="#enrich-indicator">
+        <div class="form-group">
+            <label for="enrich-isbn">ISBN</label>
+            <input type="text"
+                   id="enrich-isbn"
+                   name="isbn"
+                   value="{{ prefill_isbn or '' }}"
+                   placeholder="9780441172719"
+                   autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label for="enrich-query">or free text / URL</label>
+            <input type="text"
+                   id="enrich-query"
+                   name="query"
+                   value="{{ prefill_query or '' }}"
+                   placeholder="title author or https://openlibrary.org/..."
+                   autocomplete="off">
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Go</button>
+            <button type="button"
+                    class="btn btn-secondary"
+                    hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
+                    hx-target="#book-content"
+                    hx-swap="innerHTML">Cancel</button>
+            <span id="enrich-indicator" class="htmx-indicator" aria-live="polite">Searching…</span>
+        </div>
+    </form>
+
+    <div id="enrich-results" aria-live="polite"></div>
+</section>

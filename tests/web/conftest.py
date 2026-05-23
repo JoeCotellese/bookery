@@ -1,14 +1,72 @@
 # ABOUTME: Shared fixtures for tests/web — Flask test client + BookRecord builders.
 # ABOUTME: Mirrors tests/unit/test_web_app.py helpers without coupling to that file.
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from bookery.db.mapping import BookRecord
+from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
 from bookery.web import create_app
+
+
+@dataclass
+class FakeProvider:
+    """Test double matching the MetadataProvider protocol.
+
+    Each method records the call args and returns the queued list/value so
+    tests can assert which dispatch path the route used.
+    """
+
+    name: str
+    by_isbn: list[MetadataCandidate] = field(default_factory=list)
+    by_title_author: list[MetadataCandidate] = field(default_factory=list)
+    by_url: MetadataCandidate | None = None
+    isbn_calls: list[str] = field(default_factory=list)
+    title_author_calls: list[tuple[str, str | None]] = field(default_factory=list)
+    url_calls: list[str] = field(default_factory=list)
+
+    def search_by_isbn(self, isbn: str) -> list[MetadataCandidate]:
+        self.isbn_calls.append(isbn)
+        return list(self.by_isbn)
+
+    def search_by_title_author(
+        self, title: str, author: str | None = None
+    ) -> list[MetadataCandidate]:
+        self.title_author_calls.append((title, author))
+        return list(self.by_title_author)
+
+    def lookup_by_url(self, url: str) -> MetadataCandidate | None:
+        self.url_calls.append(url)
+        return self.by_url
+
+
+def make_candidate(
+    title: str = "Sample",
+    authors: list[str] | None = None,
+    isbn: str | None = None,
+    publisher: str | None = None,
+    published_date: str | None = None,
+    confidence: float = 0.5,
+    source: str = "fake",
+    source_id: str = "fake:1",
+) -> MetadataCandidate:
+    """Build a MetadataCandidate for web tests."""
+    return MetadataCandidate(
+        metadata=BookMetadata(
+            title=title,
+            authors=authors or ["Author"],
+            isbn=isbn,
+            publisher=publisher,
+            published_date=published_date,
+        ),
+        confidence=confidence,
+        source=source,
+        source_id=source_id,
+    )
 
 
 def make_book(
@@ -63,9 +121,15 @@ def mock_catalog():
 
 
 @pytest.fixture
-def app(mock_catalog):
-    """Flask app wired to the mock catalog."""
-    app = create_app(mock_catalog)
+def providers():
+    """Default providers fixture: empty dict (tests override as needed)."""
+    return {}
+
+
+@pytest.fixture
+def app(mock_catalog, providers):
+    """Flask app wired to the mock catalog and provider registry."""
+    app = create_app(mock_catalog, providers=providers)
     app.config["TESTING"] = True
     return app
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from bookery.cli._match_helpers import build_active_providers
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
@@ -34,8 +35,9 @@ def serve(db_path: Path | None, host: str, port: int) -> None:
 
     conn = open_library(resolved, check_same_thread=False)
     catalog = LibraryCatalog(conn)
+    providers = build_active_providers()
 
-    app = create_app(catalog)
+    app = create_app(catalog, providers=providers)  # type: ignore[arg-type]
     try:
         app.run(host=host, port=port)
     finally:

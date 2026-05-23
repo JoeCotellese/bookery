@@ -6,6 +6,8 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
 
+from bookery.core.enrichment import dispatch_from_form, multi_provider_search
+
 
 def _file_context(book) -> dict[str, str]:
     """Best-effort file format + size for a BookRecord.
@@ -155,4 +157,68 @@ def update_book(book_id):
 
     return render_template(
         "_detail.html", book=book, tags=tags, genres=genres, file_info=file_info
+    )
+
+
+def _prefill_for_book(book) -> tuple[str | None, str | None]:
+    """Compute the search-form pre-fill values for a BookRecord.
+
+    Returns ``(isbn, free_text_query)``. ISBN is preferred when present;
+    otherwise a ``"title author"`` string is composed for the free-text input.
+    Either tuple slot may be ``None``.
+    """
+    isbn = book.metadata.isbn or None
+    if isbn:
+        return isbn, None
+    parts = [book.metadata.title or ""]
+    if book.metadata.authors:
+        parts.append(book.metadata.authors[0])
+    query = " ".join(p for p in parts if p).strip()
+    return None, query or None
+
+
+@bp.route("/books/<int:book_id>/enrich", methods=["GET"])
+def enrich_form(book_id):
+    """Render the multi-provider search form for a book."""
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    prefill_isbn, prefill_query = _prefill_for_book(book)
+    return render_template(
+        "_enrich_search.html",
+        book=book,
+        prefill_isbn=prefill_isbn,
+        prefill_query=prefill_query,
+    )
+
+
+@bp.route("/books/<int:book_id>/enrich/search", methods=["POST"])
+def enrich_search(book_id):
+    """Run multi-provider candidate search and render grouped results."""
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    providers = current_app.config.get("PROVIDERS", {})
+
+    dispatch = dispatch_from_form(
+        request.form.get("isbn", ""),
+        request.form.get("query", ""),
+    )
+
+    results = multi_provider_search(
+        providers,
+        isbn=dispatch.isbn,
+        url=dispatch.url,
+        title_author=dispatch.title_author,
+    )
+    any_results = any(not r.is_empty for r in results)
+
+    return render_template(
+        "_enrich_candidates.html",
+        results=results,
+        any_results=any_results,
     )

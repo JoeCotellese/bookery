@@ -1,0 +1,20 @@
+{# ABOUTME: Grouped multi-provider candidate results for the enrich search flow. #}
+{# ABOUTME: Renders one group per provider with confidence-ordered rows or empty-state copy. #}
+{% if not any_results %}
+    <p class="enrich-empty">No candidates found. Try a different query.</p>
+{% else %}
+    {% for result in results %}
+    <section class="enrich-group" aria-labelledby="enrich-group-{{ loop.index }}">
+        <h4 id="enrich-group-{{ loop.index }}">{{ result.name }} {% if result.is_empty %}(—){% else %}({{ result.count }}){% endif %}</h4>
+        {% if result.is_empty %}
+            <p class="enrich-empty-provider">No candidates from {{ result.name }}</p>
+        {% else %}
+            <ul class="enrich-candidates">
+                {% for candidate in result.candidates %}
+                    {% include "_enrich_candidate_row.html" %}
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+    {% endfor %}
+{% endif %}
