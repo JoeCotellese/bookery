@@ -123,12 +123,15 @@ class TestRematchPipeline:
         )
         book_id = catalog.add_book(metadata, file_hash="ghost123")
         record = catalog.get_by_id(book_id)
+        assert record is not None
 
         # Source file doesn't exist
+        assert record.source_path is not None
         assert not record.source_path.exists()
 
         # The rematch loop checks source_path.exists() before calling match_one
         unchanged = catalog.get_by_id(book_id)
+        assert unchanged is not None
         assert unchanged.metadata.title == "Ghost Book"
         assert unchanged.output_path is None
 

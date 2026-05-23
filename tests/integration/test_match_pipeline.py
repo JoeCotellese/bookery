@@ -140,6 +140,7 @@ class TestFullMatchPipeline:
 
         result = apply_metadata_safely(sample_epub, best.metadata, output_dir)
         assert result.success is True
+        assert result.path is not None
         first_output = result.path
 
         # Second pass with resume: should detect existing file via manifest

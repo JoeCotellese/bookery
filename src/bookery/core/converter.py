@@ -99,22 +99,25 @@ def convert_one(
 
     try:
         if extract_result.format == "epub":
+            assert extract_result.epub_path is not None
             shutil.copy2(extract_result.epub_path, output_path)
         else:
+            assert extract_result.html_path is not None
+            html_path = extract_result.html_path
             opf_metadata = parse_opf_metadata(extract_result.opf_path)
 
             # Parse NCX TOC and split HTML into chapters if available
             chapters = None
             nav_points = parse_ncx_toc(extract_result.ncx_path)
             if nav_points:
-                html_content = extract_result.html_path.read_text(
+                html_content = html_path.read_text(
                     encoding="utf-8", errors="replace",
                 )
                 chapters = split_html_by_anchors(html_content, nav_points)
                 if chapters:
                     logger.info(
                         "Split %s into %d chapters from NCX",
-                        extract_result.html_path.name,
+                        html_path.name,
                         len(chapters),
                     )
                 else:
@@ -124,7 +127,7 @@ def convert_one(
                     )
 
             assemble_epub_from_html(
-                extract_result.html_path,
+                html_path,
                 output_path,
                 metadata=opf_metadata,
                 images_dir=extract_result.images_dir,
