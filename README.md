@@ -144,6 +144,7 @@ bookery info 42
 | Command | Description |
 |---------|-------------|
 | `import <dir>` | Scan for EPUBs, copy into `library_root`, and catalog them (supports `--match`, `--move`) |
+| `remove <id>...` | Delete one or more books from the catalog and disk (`-y` skips prompt; `--keep-file` keeps the file) |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |
 | `info <id>` | Show detailed metadata for a book by ID |
 | `search <query>` | Search the catalog by title, author, or description |

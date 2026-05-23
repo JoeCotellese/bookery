@@ -18,6 +18,7 @@ from bookery.cli.commands import (
     ls_cmd,
     match_cmd,
     rematch_cmd,
+    remove_cmd,
     search_cmd,
     serve_cmd,
     sync_cmd,
@@ -66,6 +67,7 @@ cli.add_command(inventory_cmd.inventory)
 cli.add_command(ls_cmd.ls)
 cli.add_command(match_cmd.match)
 cli.add_command(rematch_cmd.rematch)
+cli.add_command(remove_cmd.remove)
 cli.add_command(search_cmd.search)
 cli.add_command(serve_cmd.serve)
 cli.add_command(sync_cmd.sync)
