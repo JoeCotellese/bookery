@@ -24,6 +24,10 @@
         </tbody>
     </table>
 
+    {# Apply only writes fields that actually change AND aren't a skipped clear. #}
+    {% set write_count = diffs|selectattr('changed')|rejectattr('skip_clear')|list|length %}
+    {% set skip_clear_count = diffs|selectattr('skip_clear')|list|length %}
+
     <div class="enrich-diff-actions" role="group" aria-label="Diff actions">
         <form class="enrich-diff-apply"
               method="post"
@@ -33,7 +37,14 @@
             <input type="hidden" name="provider" value="{{ provider_name }}">
             <input type="hidden" name="query" value="{{ query }}">
             <input type="hidden" name="candidate_id" value="{{ candidate_id }}">
-            <button type="submit" class="btn btn-primary">Apply</button>
+            <button type="submit" class="btn btn-primary">
+                Apply{% if write_count %} ({{ write_count }} change{{ '' if write_count == 1 else 's' }}){% endif %}
+            </button>
+            {% if skip_clear_count %}
+                <span class="enrich-diff-skip-summary">
+                    {{ skip_clear_count }} field{{ '' if skip_clear_count == 1 else 's' }} kept — provider had no value
+                </span>
+            {% endif %}
         </form>
 
         <button type="button"

@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from bookery.core.pipeline import WriteResult
+from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
 from bookery.web.diff import FieldDiff, metadata_diff
 from tests.web.conftest import FakeProvider, make_book, make_candidate
@@ -545,3 +546,267 @@ class TestCandidateRowViewWiring:
         assert "provider=Open+Library" in html or "provider=Open%20Library" in html
         assert "candidate_id=OL" in html
         assert "disabled" not in html.lower() or "View" in html
+
+
+# --- Skip-clear guard (issue #125) ------------------------------------------
+
+
+class TestMetadataDiffSkipClear:
+    """Diff helper flags rows where proposed is empty but current is set.
+
+    These rows must surface as ``skip_clear`` so the apply handler can drop
+    them and the diff UI can render the muted "current kept" treatment.
+    """
+
+    def test_empty_proposed_with_current_marked_skip_clear(self):
+        current = BookMetadata(title="Dune", authors=["Stephen King"])
+        proposed = BookMetadata(title="Dune", authors=[])
+
+        diffs = metadata_diff(current, proposed)
+        authors_diff = next(d for d in diffs if d.field == "authors")
+        assert authors_diff.skip_clear is True
+        assert authors_diff.changed is True
+
+    def test_empty_scalar_proposed_with_current_marked_skip_clear(self):
+        current = BookMetadata(title="Dune", publisher="Ace Books")
+        proposed = BookMetadata(title="Dune", publisher="")
+
+        diffs = metadata_diff(current, proposed)
+        publisher_diff = next(d for d in diffs if d.field == "publisher")
+        assert publisher_diff.skip_clear is True
+
+    def test_none_scalar_proposed_with_current_marked_skip_clear(self):
+        current = BookMetadata(title="Dune", isbn="9780441172719")
+        proposed = BookMetadata(title="Dune", isbn=None)
+
+        diffs = metadata_diff(current, proposed)
+        isbn_diff = next(d for d in diffs if d.field == "isbn")
+        assert isbn_diff.skip_clear is True
+
+    def test_both_empty_not_skip_clear(self):
+        current = BookMetadata(title="Dune", publisher=None)
+        proposed = BookMetadata(title="Dune", publisher="")
+
+        diffs = metadata_diff(current, proposed)
+        publisher_diff = next(d for d in diffs if d.field == "publisher")
+        # Both effectively empty → no change, not a skipped clear either.
+        assert publisher_diff.skip_clear is False
+        assert publisher_diff.changed is False
+
+    def test_non_empty_proposed_not_skip_clear(self):
+        current = BookMetadata(title="Dune", publisher="Ace Books")
+        proposed = BookMetadata(title="Dune", publisher="Penguin")
+
+        diffs = metadata_diff(current, proposed)
+        publisher_diff = next(d for d in diffs if d.field == "publisher")
+        assert publisher_diff.skip_clear is False
+        assert publisher_diff.changed is True
+
+
+class TestEnrichApplySkipClear:
+    """Server-side guard: never overwrite a non-empty field with an empty one."""
+
+    def test_empty_authors_does_not_overwrite_existing_authors(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="It", authors=["Stephen King"], source_path=source
+        )
+
+        # Candidate has empty authors — must NOT clobber existing "Stephen King".
+        # Build the candidate directly so we can pin authors to an empty list
+        # (make_candidate substitutes a default when given a falsy authors list).
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(title="It", authors=[]),
+            confidence=0.5,
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        # authors should NOT be passed (or, if passed, must equal current).
+        assert "authors" not in kwargs or kwargs["authors"] == ["Stephen King"]
+
+    def test_empty_scalar_does_not_overwrite_existing_scalar(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="Dune", publisher="Ace Books", source_path=source
+        )
+
+        candidate = make_candidate(
+            title="Dune",
+            authors=["Frank Herbert"],
+            publisher="",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        # publisher should not be sent through as an empty clearing value.
+        assert "publisher" not in kwargs or kwargs["publisher"] == "Ace Books"
+
+    def test_non_empty_proposed_still_overwrites(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="Old", authors=["Old Author"], source_path=source
+        )
+
+        candidate = make_candidate(
+            title="New",
+            authors=["New Author"],
+            publisher="Acme",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs["title"] == "New"
+        assert kwargs["authors"] == ["New Author"]
+        assert kwargs["publisher"] == "Acme"
+
+    def test_empty_proposed_when_current_also_empty_is_noop(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        # Current publisher is None; proposed publisher is "" — should be safe no-op.
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="Dune", publisher=None, source_path=source
+        )
+
+        candidate = make_candidate(
+            title="Dune",
+            authors=["Frank Herbert"],
+            publisher="",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        # Apply still succeeds; publisher simply not written.
+        assert response.headers.get("HX-Redirect") == "/books/1"
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "publisher" not in kwargs
+
+    def test_empty_title_does_not_overwrite_existing_title(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="It", authors=["Stephen King"], source_path=source
+        )
+
+        # Even though title is "required" elsewhere, defend against a
+        # candidate that somehow surfaces an empty title.
+        candidate = make_candidate(
+            title="",
+            authors=["Stephen King"],
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "title" not in kwargs or kwargs["title"] == "It"
+
+
+class TestEnrichDiffSkipClearRendering:
+    """The diff panel surfaces skip-clear rows with a muted indicator."""
+
+    def test_skip_clear_row_has_diff_clear_class(self, mock_catalog, client, open_library):
+        mock_catalog.get_by_id.return_value = make_book(1, title="It", authors=["Stephen King"])
+        # Empty authors on the candidate → skip_clear row in the diff table.
+        # Construct directly so the empty author list isn't replaced by a default.
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(title="It", authors=[]),
+            confidence=0.5,
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "query": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+
+        html = response.data.decode()
+        assert "diff-clear" in html
+        # User-visible note explaining the skipped clear.
+        assert "current kept" in html.lower()
