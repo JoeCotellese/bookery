@@ -1,0 +1,8 @@
+{# ABOUTME: Detail description partial — long-form blurb. #}
+{# ABOUTME: Section is omitted entirely when no description is available. #}
+{% if book.metadata.description %}
+<section class="section" aria-labelledby="detail-description">
+    <h3 id="detail-description">Description</h3>
+    <p>{{ book.metadata.description }}</p>
+</section>
+{% endif %}
