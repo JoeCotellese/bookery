@@ -59,6 +59,13 @@ def test_render_disables_multiline_tables_extension(monkeypatch, tmp_path: Path)
     assert "-multiline_tables" in fmt, (
         f"expected multiline_tables extension to be disabled; got -f {fmt!r}"
     )
+    # Folder→letter-bucket→note is three structural heading levels, so the
+    # TOC must walk to depth 3 for the Kobo navigation to surface notes.
+    assert "--toc-depth=3" in captured["cmd"], captured["cmd"]
+    # Also split chapters at the note level (H3) so each note becomes its own
+    # XHTML file. Without this, all notes under a folder pile into a single
+    # multi-megabyte XHTML that Kobo hangs trying to render.
+    assert "--split-level=3" in captured["cmd"], captured["cmd"]
 
 
 @pandoc_required

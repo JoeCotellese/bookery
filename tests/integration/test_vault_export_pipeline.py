@@ -17,10 +17,13 @@ def test_full_pipeline_produces_expected_markdown():
     result = assemble_vault(notes, vault_path=FIXTURE, include_index=True)
     md = result.markdown
 
-    # Folder chapters (H1) wrap note sections (H2) with anchors.
-    assert "## Note A {#note-a}" in md
-    assert "## Note B {#note-b}" in md
-    assert "## Lit One {#lit-one}" in md
+    # Folder chapters (H1) wrap letter buckets (H2) wrap note entries (H3).
+    assert "### Note A {#note-a}" in md
+    assert "### Note B {#note-b}" in md
+    assert "### Lit One {#lit-one}" in md
+    # Each folder gets its A-Z bucket for the notes within it.
+    assert "## N {#" in md  # Note A / Note B bucket
+    assert "## L {#" in md  # Lit One bucket
 
     # Resolved wiki-links.
     assert "[Note B](#note-b)" in md

@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from bookery.core.vault.note import Note, resolve_title, slugify
+from bookery.core.vault.note import Note, display_title, resolve_title, slugify
 
 
 class TestSlugify:
@@ -69,6 +69,33 @@ class TestResolveTitle:
             path=Path("x.md"),
         )
         assert title == "Real"
+
+
+class TestDisplayTitle:
+    def test_strips_8_digit_prefix_with_dash(self):
+        assert display_title("20240315 - Atomic Habits") == "Atomic Habits"
+
+    def test_strips_8_digit_prefix_no_space(self):
+        assert display_title("20240315-Atomic Habits") == "Atomic Habits"
+
+    def test_strips_12_digit_prefix(self):
+        assert display_title("202302010942 - Brand Men") == "Brand Men"
+
+    def test_strips_14_digit_prefix_with_space(self):
+        assert display_title("20230201094200 Brand Men") == "Brand Men"
+
+    def test_strips_underscore_separator(self):
+        assert display_title("20240315_Title") == "Title"
+
+    def test_passthrough_when_no_prefix(self):
+        assert display_title("Plain Title") == "Plain Title"
+
+    def test_passthrough_when_short_digit_run(self):
+        # Only 7 digits — not a Zettelkasten timestamp; keep verbatim.
+        assert display_title("1234567 - Misc") == "1234567 - Misc"
+
+    def test_empty_string_passthrough(self):
+        assert display_title("") == ""
 
 
 class TestNote:

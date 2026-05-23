@@ -86,10 +86,16 @@ def render_epub(
             "-t",
             "epub",
             "--toc",
-            # Folders are H1 chapters and notes are H2 sections. Depth 2 lets
-            # the Kobo TOC render an expandable folder→note tree while body
-            # H3/H4 subheadings stay in the note text without polluting it.
-            "--toc-depth=2",
+            # Folders are H1 chapters, letter buckets are H2 sections, and
+            # notes are H3 entries. Depth 3 lets the Kobo TOC render an
+            # expandable folder→letter→note tree while body H4/H5 subheadings
+            # stay in the note text without polluting it.
+            "--toc-depth=3",
+            # Split the EPUB into one XHTML file per note (H3). Without this,
+            # pandoc defaults to splitting at H1 only, which collapses every
+            # note in a folder into a single multi-megabyte XHTML chapter.
+            # Kobo hangs trying to lay out a 3 MB XHTML page in one go.
+            "--split-level=3",
             "--metadata",
             f"title={title}",
             "--metadata",
