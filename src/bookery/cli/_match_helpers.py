@@ -6,26 +6,26 @@ from pathlib import Path
 from rich.console import Console
 
 from bookery.core.importer import ImportResult, MatchFn, MatchResult, ProgressFn
+from bookery.metadata.provider import MetadataProvider
 from bookery.metadata.types import BookMetadata
 
 
-def build_metadata_provider(*, use_cache: bool = True):
-    """Build the configured metadata provider with optional response caching.
+def build_active_providers(*, use_cache: bool = True) -> dict[str, MetadataProvider]:
+    """Build a mapping of active MetadataProviders from configuration.
 
-    Reads ``[matching].providers`` and composes the listed providers in
-    priority order. A single provider is returned directly; multiple
-    providers are wrapped in a :class:`ConsensusProvider` that merges
-    per-field values and prefers cross-provider agreement.
+    Reads ``[matching].providers`` and instantiates each listed provider in
+    priority order. Unknown names log a warning and are skipped. Falls back
+    to a single Open Library provider when nothing else is configured.
 
-    When ``use_cache`` is true, each provider's HTTP client is wrapped
-    in a :class:`CachingHttpClient` backed by a SQLite cache at
-    ``{data_dir}/metadata_cache.db`` with a TTL from
-    ``[matching].cache_ttl_days``. The provider label on each cache row
-    keeps entries isolated per upstream API.
+    Each provider's HTTP client is wrapped in a :class:`CachingHttpClient`
+    when ``use_cache`` is true so repeated lookups (e.g. the web enrich
+    flow) hit the local cache.
+
+    Returns a dict keyed by provider name so callers can preserve order
+    and look providers up by key.
     """
     from bookery.core.config import get_data_dir, get_matching_config
     from bookery.metadata.cache import MetadataCache
-    from bookery.metadata.consensus import ConsensusProvider
     from bookery.metadata.googlebooks import GoogleBooksProvider
     from bookery.metadata.http import BookeryHttpClient, CachingHttpClient
     from bookery.metadata.openlibrary import OpenLibraryProvider
@@ -50,19 +50,36 @@ def build_metadata_provider(*, use_cache: bool = True):
             )
         return client
 
-    providers: list = []
+    providers: dict[str, MetadataProvider] = {}
     for name in provider_names:
         if name == "openlibrary":
-            providers.append(OpenLibraryProvider(http_client=_http_for("openlibrary")))  # type: ignore[arg-type]
+            providers[name] = OpenLibraryProvider(http_client=_http_for("openlibrary"))  # type: ignore[arg-type]
         elif name == "googlebooks":
-            providers.append(GoogleBooksProvider(http_client=_http_for("googlebooks")))  # type: ignore[arg-type]
+            providers[name] = GoogleBooksProvider(http_client=_http_for("googlebooks"))  # type: ignore[arg-type]
         else:
             import logging
+
             logging.getLogger(__name__).warning("Unknown metadata provider %r; skipping", name)
 
     if not providers:
-        providers.append(OpenLibraryProvider(http_client=_http_for("openlibrary")))  # type: ignore[arg-type]
+        providers["openlibrary"] = OpenLibraryProvider(
+            http_client=_http_for("openlibrary")  # type: ignore[arg-type]
+        )
 
+    return providers
+
+
+def build_metadata_provider(*, use_cache: bool = True) -> MetadataProvider:
+    """Build the configured metadata provider with optional response caching.
+
+    Wraps :func:`build_active_providers` so legacy single-provider/consensus
+    behavior is preserved. A single active provider is returned directly;
+    multiple providers are wrapped in a :class:`ConsensusProvider` that
+    merges per-field values and prefers cross-provider agreement.
+    """
+    from bookery.metadata.consensus import ConsensusProvider
+
+    providers = list(build_active_providers(use_cache=use_cache).values())
     if len(providers) == 1:
         return providers[0]
     return ConsensusProvider(providers)
@@ -93,29 +110,25 @@ def build_match_fn(
     )
 
     def match_fn(
-        _extracted: BookMetadata, epub_path: Path,
+        _extracted: BookMetadata,
+        epub_path: Path,
     ) -> MatchResult | None:
         del _extracted  # signature required by MatchFn protocol
         result = match_one(epub_path, provider, review, output_dir)
 
         if not quiet and result.normalization and result.normalization.was_modified:
-            console.print(
-                f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}"
-            )
+            console.print(f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}")
 
         if result.status == "matched" and result.metadata is not None:
             if not quiet:
-                console.print(
-                    f"  [green]Written:[/green] {result.output_path}"
-                )
+                console.print(f"  [green]Written:[/green] {result.output_path}")
             return MatchResult(
-                metadata=result.metadata, output_path=result.output_path,
+                metadata=result.metadata,
+                output_path=result.output_path,
             )
 
         if result.status == "error" and not quiet:
-            console.print(
-                f"  [red]Write failed:[/red] {result.error}"
-            )
+            console.print(f"  [red]Write failed:[/red] {result.error}")
 
         return None
 

@@ -409,3 +409,88 @@ header h1 a {
         max-width: 100%;
     }
 }
+
+/* --- Enrich search (issue #114) ------------------------------------------ */
+
+.enrich {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: white;
+}
+
+.enrich-form .form-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.enrich-form .form-group label {
+    min-width: 8rem;
+    color: var(--color-muted);
+}
+
+.enrich-form .form-group input {
+    flex: 1;
+}
+
+.enrich-form .form-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 200ms ease-in;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+.enrich-group {
+    margin-top: 1rem;
+}
+
+.enrich-group h4 {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+.enrich-candidates {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.enrich-candidate {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.enrich-candidate-title {
+    font-weight: 500;
+}
+
+.enrich-candidate-meta {
+    color: var(--color-muted);
+    font-size: 0.9rem;
+}
+
+.enrich-empty,
+.enrich-empty-provider {
+    color: var(--color-muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+}

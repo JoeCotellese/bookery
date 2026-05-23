@@ -119,13 +119,15 @@ class TestToolbar:
         assert "/books/1/edit" in html
         assert "Edit" in html
 
-    def test_toolbar_has_disabled_enrich_and_delete(self, mock_catalog, client):
+    def test_toolbar_has_enrich_active_and_delete_disabled(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(1)
         html = client.get("/books/1").data.decode()
         assert "Enrich" in html
         assert "Delete" in html
-        # Both placeholders carry a "Coming soon" affordance.
-        assert html.count('title="Coming soon"') >= 2
+        # Enrich is wired to the search route (#114).
+        assert "/books/1/enrich" in html
+        # Delete remains a "Coming soon" placeholder until the delete story ships.
+        assert 'title="Coming soon"' in html
         # Delete uses destructive styling.
         assert "btn-destructive" in html
 

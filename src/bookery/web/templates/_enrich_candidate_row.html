@@ -1,0 +1,28 @@
+{# ABOUTME: Single candidate row for the enrich search results. #}
+{# ABOUTME: Renders title, authors, ISBN, year, publisher, provider, confidence, inert View button. #}
+<li class="enrich-candidate">
+    <div class="enrich-candidate-body">
+        <p class="enrich-candidate-title">{{ candidate.metadata.title }}</p>
+        <p class="enrich-candidate-meta">
+            {% if candidate.metadata.author %}
+                <span class="enrich-author">{{ candidate.metadata.author }}</span>
+            {% endif %}
+            {% if candidate.metadata.isbn %}
+                · <span class="enrich-isbn">{{ candidate.metadata.isbn }}</span>
+            {% endif %}
+            {% if candidate.metadata.published_date %}
+                · <span class="enrich-year">{{ candidate.metadata.published_date }}</span>
+            {% endif %}
+            {% if candidate.metadata.publisher %}
+                · <span class="enrich-publisher">{{ candidate.metadata.publisher }}</span>
+            {% endif %}
+            · <span class="enrich-provider">{{ candidate.source }}</span>
+            · <span class="enrich-confidence">{{ "%.2f"|format(candidate.confidence) }}</span>
+        </p>
+    </div>
+    <button type="button"
+            class="btn btn-secondary"
+            disabled
+            aria-disabled="true"
+            title="Coming soon">View</button>
+</li>
