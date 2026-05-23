@@ -52,77 +52,107 @@ class TestMatchedSignal:
         finally:
             conn.close()
 
-    def test_v7_migration_backfills_rows_with_provider_identifiers(
+    def test_v7_migration_backfills_rows_with_provider_provenance(
         self, tmp_path: Path,
     ) -> None:
-        """Mixed V6 fixture: only rows with provider ids in identifiers get a ts."""
+        """V7 backfill is anchored on book_field_provenance, not identifiers JSON.
+
+        The backfill flips ``metadata_matched_at`` on for rows that have at
+        least one provenance row whose ``source`` names an actual metadata
+        provider (anything other than the internal ``extracted`` / ``user`` /
+        ``genres`` sources). This covers every path that recorded a real
+        provider write — importer ``--match``, ``rematch``, and the web
+        ``enrich_apply`` flow — while excluding rows whose only metadata came
+        from EPUB extraction (including Calibre EPUBs that declared an OPF
+        ``<dc:identifier opf:scheme="ISBN">`` entry).
+        """
         db_path = tmp_path / "mixed.db"
         conn = _make_v6_db(db_path)
 
-        # Row A: openlibrary_work identifier — should be backfilled
-        conn.execute(
-            "INSERT INTO books (title, authors, identifiers, source_path, file_hash, "
-            "date_modified) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "Has OL Work",
-                '["Author"]',
-                '{"openlibrary_work": "/works/OL1W"}',
-                "/a.epub",
-                "hash-a",
-                "2025-01-01T00:00:00",
-            ),
+        def _insert_book(
+            title: str, file_hash: str, identifiers: str | None, date_modified: str,
+        ) -> int:
+            cursor = conn.execute(
+                "INSERT INTO books (title, authors, identifiers, source_path, "
+                "file_hash, date_modified) VALUES (?, ?, ?, ?, ?, ?)",
+                (title, '["Author"]', identifiers,
+                 f"/{file_hash}.epub", file_hash, date_modified),
+            )
+            return cursor.lastrowid  # type: ignore[return-value]
+
+        def _add_provenance(book_id: int, source: str, field: str = "title") -> None:
+            conn.execute(
+                "INSERT INTO book_field_provenance (book_id, field_name, source) "
+                "VALUES (?, ?, ?)",
+                (book_id, field, source),
+            )
+
+        # Row A: matched via importer --match (openlibrary provider wrote
+        # provenance, identifiers JSON also carries a provider key). Should
+        # be backfilled.
+        a_id = _insert_book(
+            "Importer Match",
+            "hash-a",
+            '{"openlibrary_work": "/works/OL1W"}',
+            "2025-01-01T00:00:00",
         )
-        # Row B: googlebooks_volume — should be backfilled
-        conn.execute(
-            "INSERT INTO books (title, authors, identifiers, source_path, file_hash, "
-            "date_modified) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "Has Google Vol",
-                '["Author"]',
-                '{"googlebooks_volume": "abc123"}',
-                "/b.epub",
-                "hash-b",
-                "2025-02-02T00:00:00",
-            ),
+        _add_provenance(a_id, "openlibrary")
+
+        # Row B: matched via rematch (googlebooks). Should be backfilled.
+        b_id = _insert_book(
+            "Rematched",
+            "hash-b",
+            '{"googlebooks_volume": "abc123"}',
+            "2025-02-02T00:00:00",
         )
-        # Row C: an isbn_10 key — should be backfilled
-        conn.execute(
-            "INSERT INTO books (title, authors, identifiers, source_path, file_hash, "
-            "date_modified) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "Has ISBN id",
-                '["Author"]',
-                '{"isbn_10": "0123456789"}',
-                "/c.epub",
-                "hash-c",
-                "2025-03-03T00:00:00",
-            ),
+        _add_provenance(b_id, "googlebooks", field="description")
+
+        # Row C: matched via web enrich_apply — provider wrote provenance but
+        # NEVER updated the identifiers JSON column. The old heuristic missed
+        # these rows entirely; the new backfill catches them.
+        c_id = _insert_book(
+            "Web Enrich Applied",
+            "hash-c",
+            "{}",
+            "2025-03-03T00:00:00",
         )
-        # Row D: no provider identifiers at all — should stay NULL
-        conn.execute(
-            "INSERT INTO books (title, authors, identifiers, source_path, file_hash, "
-            "date_modified) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "Bare row",
-                '["Author"]',
-                "{}",
-                "/d.epub",
-                "hash-d",
-                "2025-04-04T00:00:00",
-            ),
+        _add_provenance(c_id, "openlibrary", field="title")
+
+        # Row D: EPUB-extraction-only Calibre row whose OPF declared an ISBN
+        # scheme. Extraction lowercases that into ``{"isbn": "..."}`` AND
+        # writes per-field provenance rows with source='extracted'. This is
+        # the false-positive case the old `'%"isbn"%'` LIKE clause hit. The
+        # new backfill leaves it NULL.
+        d_id = _insert_book(
+            "Calibre EPUB With ISBN",
+            "hash-d",
+            '{"isbn": "9781234567890"}',
+            "2025-04-04T00:00:00",
         )
-        # Row E: null identifiers — stays NULL
-        conn.execute(
-            "INSERT INTO books (title, authors, identifiers, source_path, file_hash, "
-            "date_modified) VALUES (?, ?, NULL, ?, ?, ?)",
-            (
-                "Null ids",
-                '["Author"]',
-                "/e.epub",
-                "hash-e",
-                "2025-05-05T00:00:00",
-            ),
+        _add_provenance(d_id, "extracted", field="title")
+        _add_provenance(d_id, "extracted", field="authors")
+
+        # Row E: EPUB-extraction-only row with no identifiers at all and only
+        # extracted provenance. Stays NULL.
+        e_id = _insert_book(
+            "Bare EPUB",
+            "hash-e",
+            "{}",
+            "2025-05-05T00:00:00",
         )
+        _add_provenance(e_id, "extracted", field="title")
+
+        # Row F: row with only user/genres provenance (manual edits + auto
+        # genre applier) but no provider ever ran. Stays NULL.
+        f_id = _insert_book(
+            "User Edited",
+            "hash-f",
+            "{}",
+            "2025-06-06T00:00:00",
+        )
+        _add_provenance(f_id, "user", field="title")
+        _add_provenance(f_id, "genres", field="primary_genre")
+
         conn.commit()
         conn.close()
 
@@ -135,11 +165,15 @@ class TestMatchedSignal:
             ).fetchall()
             ts = {r["title"]: r["metadata_matched_at"] for r in rows}
 
-            assert ts["Has OL Work"] == "2025-01-01T00:00:00"
-            assert ts["Has Google Vol"] == "2025-02-02T00:00:00"
-            assert ts["Has ISBN id"] == "2025-03-03T00:00:00"
-            assert ts["Bare row"] is None
-            assert ts["Null ids"] is None
+            # Provider-touched rows: backfilled.
+            assert ts["Importer Match"] == "2025-01-01T00:00:00"
+            assert ts["Rematched"] == "2025-02-02T00:00:00"
+            assert ts["Web Enrich Applied"] == "2025-03-03T00:00:00"
+
+            # Extraction-only / user-only rows: stay NULL.
+            assert ts["Calibre EPUB With ISBN"] is None
+            assert ts["Bare EPUB"] is None
+            assert ts["User Edited"] is None
         finally:
             conn.close()
 

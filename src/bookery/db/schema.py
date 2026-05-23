@@ -152,27 +152,34 @@ INSERT INTO schema_version (version) VALUES (6);
 # meanings; after the library-canonical migration every row has output_path,
 # so callers using `output_path IS NOT NULL` as a matched-flag broke silently.
 #
-# Backfill rule: a row counts as previously matched if its identifiers JSON
-# contains any known provider key (openlibrary_*, googlebooks_*, or any
-# isbn_* sub-id). Detection uses LIKE on the JSON text, which works without
-# the optional json1 extension. Backfilled rows take their date_modified
-# (falling back to date_added) as a best-effort timestamp.
+# Backfill rule: a row counts as previously matched if it has at least one
+# `book_field_provenance` entry written by a metadata provider — i.e. a source
+# that isn't one of the internal/non-provider sources we know about
+# (`extracted` for EPUB extraction inserts, `user` for manual edits via the
+# CLI / web form, `genres` for the auto-genre applier). Anything else
+# (`openlibrary`, `googlebooks`, `consensus:...`, future providers) is, by
+# definition, evidence that a provider touched the row. This is more accurate
+# than the `identifiers`-substring heuristic considered earlier, which both
+# missed rows matched via web `enrich_apply` (which writes provenance but not
+# the identifiers JSON) and produced false positives for Calibre EPUBs that
+# already declared `<dc:identifier opf:scheme="ISBN">` (extraction stores
+# those as `{"isbn": "..."}`).
+#
+# Backfilled rows take their date_modified (falling back to date_added) as a
+# best-effort timestamp — provenance rows have their own `fetched_at`, but the
+# books-table timestamps are the closest stable analogue for "when did the
+# match-flow finish for this row" and avoid having to pick a single field's
+# fetched_at.
 SCHEMA_V7 = """
 ALTER TABLE books ADD COLUMN metadata_matched_at TEXT;
 
 UPDATE books
 SET metadata_matched_at = COALESCE(date_modified, date_added)
-WHERE identifiers IS NOT NULL
-  AND (
-        identifiers LIKE '%"openlibrary_work"%'
-     OR identifiers LIKE '%"openlibrary_author_keys"%'
-     OR identifiers LIKE '%"googlebooks_volume"%'
-     OR identifiers LIKE '%"googlebooks_preview"%'
-     OR identifiers LIKE '%"googlebooks_info"%'
-     OR identifiers LIKE '%"isbn_10"%'
-     OR identifiers LIKE '%"isbn_13"%'
-     OR identifiers LIKE '%"isbn"%'
-  );
+WHERE id IN (
+    SELECT DISTINCT book_id
+    FROM book_field_provenance
+    WHERE source NOT IN ('extracted', 'user', 'genres')
+);
 
 INSERT INTO schema_version (version) VALUES (7);
 """
