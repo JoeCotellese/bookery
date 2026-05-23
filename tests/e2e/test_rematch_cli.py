@@ -127,6 +127,7 @@ class TestRematchQuietMode:
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         record = catalog.get_by_id(book_id)
+        assert record is not None
         assert record.metadata.title == "Il Nome della Rosa"
         assert record.output_path is not None
         conn.close()
@@ -276,6 +277,7 @@ class TestRematchInteractive:
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         record = catalog.get_by_id(book_id)
+        assert record is not None
         assert record.output_path is None
         conn.close()
 

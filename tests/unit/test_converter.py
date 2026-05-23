@@ -415,6 +415,7 @@ class TestConvertOneErrors:
             result = convert_one(mobi_file, output_dir)
 
         assert result.success is False
+        assert result.error is not None
         assert "DRM protected" in result.error
         assert result.epub_path is None
 

@@ -2,12 +2,14 @@
 # ABOUTME: Validates file existence checks, hash verification, and result aggregation.
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from bookery.core.verifier import VerifyResult, verify_library
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+from bookery.db.mapping import BookRecord
 from bookery.metadata.types import BookMetadata
 
 
@@ -49,7 +51,11 @@ class TestVerifyResult:
 
     def test_total_issues(self) -> None:
         """total_issues counts all problem categories."""
-        result = VerifyResult(ok=5, missing_source=["a"], missing_output=["b", "c"])
+        result = VerifyResult(
+            ok=5,
+            missing_source=cast(list[BookRecord], ["a"]),
+            missing_output=cast(list[BookRecord], ["b", "c"]),
+        )
         assert result.total_issues == 3
 
 

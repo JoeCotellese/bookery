@@ -413,6 +413,8 @@ class TestSubtitleRetry:
 
         assert len(results) == 2
         assert len(call_log) == 2
+        assert call_log[0] is not None
+        assert call_log[1] is not None
         assert call_log[0]["title"] == "The King's Deception: A Novel"
         assert call_log[1]["title"] == "The King's Deception"
 

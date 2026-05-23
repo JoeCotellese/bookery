@@ -795,6 +795,7 @@ class TestAssembleEpubFromHtml:
         root = ET.fromstring(opf)
         ns = {"opf": "http://www.idpf.org/2007/opf"}
         spine = root.find("opf:spine", ns)
+        assert spine is not None
         itemrefs = spine.findall("opf:itemref", ns)
         assert itemrefs[0].get("idref") == "cover", (
             "Expected cover as first spine item"
@@ -868,6 +869,7 @@ class TestAssembleEpubFromHtml:
         root = ET.fromstring(opf)
         ns = {"opf": "http://www.idpf.org/2007/opf"}
         spine = root.find("opf:spine", ns)
+        assert spine is not None
         idrefs = [ref.get("idref") for ref in spine.findall("opf:itemref", ns)]
         assert "cover" not in idrefs, "Cover should not be in spine without cover image"
 

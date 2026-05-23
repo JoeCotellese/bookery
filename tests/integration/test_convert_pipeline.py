@@ -316,6 +316,7 @@ class TestNcxSplitRoundTrip:
         root = ET.fromstring(opf)
         ns = {"opf": "http://www.idpf.org/2007/opf"}
         spine = root.find("opf:spine", ns)
+        assert spine is not None
         itemrefs = spine.findall("opf:itemref", ns)
         assert itemrefs[0].get("idref") == "cover", (
             "Expected cover as first spine item for Kobo rendering"
@@ -410,6 +411,7 @@ class TestConvertThenMatchPipeline:
             convert_result = convert_one(mobi_file, output_dir)
 
         assert convert_result.success
+        assert convert_result.epub_path is not None
         assert convert_result.epub_path.exists()
 
         # Now feed the converted EPUB into match_one with a mock provider
@@ -434,4 +436,5 @@ class TestConvertThenMatchPipeline:
         match_result = match_one(convert_result.epub_path, mock_provider, mock_review, output_dir)
 
         assert match_result.status == "matched"
+        assert match_result.metadata is not None
         assert match_result.metadata.title == "The Real Title"

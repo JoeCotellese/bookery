@@ -192,4 +192,5 @@ class TestMatchOne:
             result = match_one(epub_path, provider, review, output_dir)
 
         assert result.status == "error"
+        assert result.error is not None
         assert "Disk full" in result.error
