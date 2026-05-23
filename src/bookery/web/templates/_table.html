@@ -1,7 +1,9 @@
 {% if books %}
     {% for book in books %}
-    <tr onclick="window.location='{{ url_for('web.book_detail', book_id=book.id) }}'">
-        <td>{{ book.metadata.title }}</td>
+    <tr class="book-row">
+        <td class="book-row-title">
+            <a href="{{ url_for('web.book_detail', book_id=book.id) }}">{{ book.metadata.title }}</a>
+        </td>
         <td>{{ book.metadata.author }}</td>
         <td>{{ book.metadata.isbn or '' }}</td>
         <td>{{ book.metadata.language or '' }}</td>

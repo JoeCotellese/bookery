@@ -107,12 +107,18 @@ header h1 a {
     color: var(--color-muted);
 }
 
-.book-table tr[onclick] {
-    cursor: pointer;
+.book-table tbody tr.book-row:hover {
+    background: var(--color-hover);
 }
 
-.book-table tr[onclick]:hover {
-    background: var(--color-hover);
+.book-row-title a {
+    color: var(--color-link);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.book-row-title a:hover {
+    text-decoration: underline;
 }
 
 .empty-state {
