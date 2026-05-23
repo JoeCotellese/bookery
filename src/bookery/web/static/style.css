@@ -9,6 +9,40 @@
     --color-hover: #f5f5f0;
     --color-badge: #16a34a;
     --color-muted: #666;
+    --color-destructive: #dc2626;
+}
+
+/* Skip link — visually hidden until focused. */
+.skip-link {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    background: var(--color-link);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    z-index: 1000;
+}
+
+.skip-link:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
+}
+
+/* Visible focus outline for keyboard users across all interactive elements. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
 }
 
 * {
@@ -242,4 +276,136 @@ header h1 a {
 
 .btn-secondary:hover {
     background: var(--color-hover);
+}
+
+.btn-destructive {
+    background: white;
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+}
+
+.btn-destructive:hover:not(:disabled) {
+    background: var(--color-destructive);
+    color: white;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Sections (issue #112) */
+
+.section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.section:last-child {
+    border-bottom: none;
+}
+
+.section h3 {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    margin-bottom: 0.5rem;
+}
+
+.section h4 {
+    font-size: 0.85rem;
+    color: var(--color-muted);
+    margin: 0.5rem 0 0.25rem;
+}
+
+/* Header section layout — title block, badge, toolbar. */
+
+.section-header .header-titles h2 {
+    font-size: 1.75rem;
+    margin-bottom: 0.25rem;
+}
+
+.section-header .byline {
+    color: var(--color-muted);
+    margin-bottom: 0.75rem;
+}
+
+.enriched-badge {
+    display: inline-block;
+    background: var(--color-badge);
+    color: white;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    margin-bottom: 0.75rem;
+}
+
+.toolbar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+/* Metadata grid — two-column dl. */
+
+.metadata-grid {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 0.25rem 1rem;
+}
+
+.metadata-grid dt {
+    font-weight: 600;
+    color: var(--color-muted);
+}
+
+.metadata-grid code {
+    font-size: 0.85rem;
+    word-break: break-all;
+}
+
+/* Edit layout — two columns >=720px, stacked below. */
+
+.edit-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+}
+
+@media (min-width: 720px) {
+    .edit-layout {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
+}
+
+.provenance {
+    background: var(--color-hover);
+    padding: 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.provenance h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    margin-bottom: 0.5rem;
+}
+
+/* Mobile: collapse detail metadata-grid to single column. */
+
+@media (max-width: 600px) {
+    .metadata-grid {
+        grid-template-columns: 1fr;
+    }
+    .metadata-grid dt {
+        margin-top: 0.5rem;
+    }
+    .book-detail {
+        max-width: 100%;
+    }
 }

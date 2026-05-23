@@ -1,0 +1,21 @@
+{# ABOUTME: Detail file partial — format, size, paths, hash, dates. #}
+{# ABOUTME: Pure provenance — never mutated through the edit form. #}
+<section class="section" aria-labelledby="detail-file">
+    <h3 id="detail-file">File</h3>
+    <dl class="metadata-grid">
+        <dt>Format</dt>
+        <dd>{{ file_info.format or "—" }}</dd>
+        <dt>Size</dt>
+        <dd>{{ file_info.size }}</dd>
+        <dt>Source path</dt>
+        <dd><code>{{ book.source_path }}</code></dd>
+        <dt>Output path</dt>
+        <dd>{% if book.output_path %}<code>{{ book.output_path }}</code>{% else %}—{% endif %}</dd>
+        <dt>File hash</dt>
+        <dd><code>{{ book.file_hash }}</code></dd>
+        <dt>Added</dt>
+        <dd>{{ book.date_added }}</dd>
+        <dt>Modified</dt>
+        <dd>{{ book.date_modified }}</dd>
+    </dl>
+</section>

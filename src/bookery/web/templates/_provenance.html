@@ -1,0 +1,21 @@
+{# ABOUTME: Read-only provenance panel for the edit page — paths, hash, dates. #}
+{# ABOUTME: Mirrors _detail_file.html content so editors see file context alongside the form. #}
+<aside class="provenance" aria-labelledby="edit-provenance">
+    <h3 id="edit-provenance">Provenance</h3>
+    <dl class="metadata-grid">
+        <dt>Format</dt>
+        <dd>{{ file_info.format or "—" }}</dd>
+        <dt>Size</dt>
+        <dd>{{ file_info.size }}</dd>
+        <dt>Source path</dt>
+        <dd><code>{{ book.source_path }}</code></dd>
+        <dt>Output path</dt>
+        <dd>{% if book.output_path %}<code>{{ book.output_path }}</code>{% else %}—{% endif %}</dd>
+        <dt>File hash</dt>
+        <dd><code>{{ book.file_hash }}</code></dd>
+        <dt>Added</dt>
+        <dd>{{ book.date_added }}</dd>
+        <dt>Modified</dt>
+        <dd>{{ book.date_modified }}</dd>
+    </dl>
+</aside>

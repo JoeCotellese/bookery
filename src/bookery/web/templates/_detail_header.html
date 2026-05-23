@@ -1,0 +1,28 @@
+{# ABOUTME: Detail header partial — title, author(s), enriched badge, toolbar. #}
+{# ABOUTME: Toolbar reserves disabled Enrich + Delete slots for follow-up stories. #}
+<section class="section section-header" aria-labelledby="detail-header">
+    <div class="header-titles">
+        <h2 id="detail-header">{{ book.metadata.title }}</h2>
+        <p class="byline">by {{ book.metadata.author }}</p>
+    </div>
+    {% if book.output_path %}
+    <p class="enriched-badge" aria-label="Enriched">&#10003; Enriched</p>
+    {% endif %}
+    <div class="toolbar" role="toolbar" aria-label="Book actions">
+        <button type="button"
+                class="btn btn-secondary"
+                hx-get="{{ url_for('web.edit_form', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Edit</button>
+        <button type="button"
+                class="btn btn-secondary"
+                disabled
+                aria-disabled="true"
+                title="Coming soon">Enrich</button>
+        <button type="button"
+                class="btn btn-destructive"
+                disabled
+                aria-disabled="true"
+                title="Coming soon">Delete</button>
+    </div>
+</section>

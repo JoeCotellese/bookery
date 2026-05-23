@@ -1,0 +1,21 @@
+{# ABOUTME: Detail identity partial — ISBN, language, and series fields. #}
+{# ABOUTME: Renders only when at least one identity field is set. #}
+{% if book.metadata.isbn or book.metadata.language or book.metadata.series %}
+<section class="section" aria-labelledby="detail-identity">
+    <h3 id="detail-identity">Identity</h3>
+    <dl class="metadata-grid">
+        {% if book.metadata.isbn %}
+        <dt>ISBN</dt>
+        <dd>{{ book.metadata.isbn }}</dd>
+        {% endif %}
+        {% if book.metadata.language %}
+        <dt>Language</dt>
+        <dd>{{ book.metadata.language }}</dd>
+        {% endif %}
+        {% if book.metadata.series %}
+        <dt>Series</dt>
+        <dd>{{ book.metadata.series }}{% if book.metadata.series_index %} #{{ book.metadata.series_index }}{% endif %}</dd>
+        {% endif %}
+    </dl>
+</section>
+{% endif %}
