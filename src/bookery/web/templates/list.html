@@ -4,8 +4,13 @@
 
 {% block content %}
 <h1 class="page-title">Library</h1>
-<div class="search-bar">
+<form class="search-bar"
+      action="{{ url_for('web.books') }}"
+      method="get"
+      role="search">
+    <label class="visually-hidden" for="search-q">Search books</label>
     <input type="search"
+           id="search-q"
            name="q"
            placeholder="Search books..."
            value="{{ query.q }}"
@@ -14,7 +19,8 @@
            hx-target="#book-list"
            hx-include="this"
            hx-push-url="true">
-</div>
+    <button type="submit" class="btn btn-secondary">Search</button>
+</form>
 
 <div id="book-list">
     {% include "_book_list.html" %}
