@@ -1,17 +1,20 @@
-{# ABOUTME: Plan-01 paginated list partial — count label, sortable table, pager. #}
+{# ABOUTME: Plan-01 paginated list partial — chip strip, count label, sortable table, pager. #}
 {# Rendered standalone for htmx swaps into #book-list. #}
+
+{% include "_filter_chips.html" %}
 
 {% if page.total > 0 %}
     <p class="result-count">Showing {{ page.start }}&ndash;{{ page.end }} of {{ page.total }}</p>
 
     {# Sortable header link macro. Clicking the active column flips direction;
        clicking an inactive column starts at ``asc``. Page resets to 1 on any
-       sort change — the user has new ordering, the old page index is stale. #}
+       sort change — the user has new ordering, the old page index is stale.
+       Active filters ride along so the user's filter set survives a re-sort. #}
     {% macro sort_link(label, key) -%}
         {%- set is_active = (query.sort == key) -%}
         {%- set next_dir = 'desc' if (is_active and query.dir == 'asc') else 'asc' -%}
         <a class="sort-link{% if is_active %} sort-active{% endif %}"
-           href="{{ url_for('web.books', q=query.q or none, sort=key, dir=next_dir) }}"
+           href="{{ url_for('web.books', q=query.q or none, sort=key, dir=next_dir, **query.filters) }}"
            aria-sort="{{ 'descending' if (is_active and query.dir == 'desc') else ('ascending' if is_active else 'none') }}">
             {{ label }}{% if is_active %} <span class="sort-chevron" aria-hidden="true">{% if query.dir == 'desc' %}&#9660;{% else %}&#9650;{% endif %}</span>{% endif %}
         </a>
@@ -50,8 +53,8 @@
     <nav class="pager" aria-label="Pagination">
         {% if page.has_prev %}
             <a class="pager-prev"
-               href="{{ url_for('web.books', q=query.q or none, page=page.page - 1, sort=query.sort, dir=query.dir) }}"
-               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page - 1, sort=query.sort, dir=query.dir) }}"
+               href="{{ url_for('web.books', q=query.q or none, page=page.page - 1, sort=query.sort, dir=query.dir, **query.filters) }}"
+               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page - 1, sort=query.sort, dir=query.dir, **query.filters) }}"
                hx-target="#book-list"
                hx-push-url="true">&laquo; Previous</a>
         {% else %}
@@ -62,8 +65,8 @@
 
         {% if page.has_next %}
             <a class="pager-next"
-               href="{{ url_for('web.books', q=query.q or none, page=page.page + 1, sort=query.sort, dir=query.dir) }}"
-               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page + 1, sort=query.sort, dir=query.dir) }}"
+               href="{{ url_for('web.books', q=query.q or none, page=page.page + 1, sort=query.sort, dir=query.dir, **query.filters) }}"
+               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page + 1, sort=query.sort, dir=query.dir, **query.filters) }}"
                hx-target="#book-list"
                hx-push-url="true">Next &raquo;</a>
         {% else %}
@@ -71,6 +74,12 @@
         {% endif %}
     </nav>
     {% endif %}
+{% elif query.filters %}
+    {# Filtered-to-zero state. Preserve the search query in the clear-filters
+       link so a user who typed a query and then filtered into empty results
+       can drop only the filters, not their search. #}
+    <p class="empty-state">No books match these filters.</p>
+    <p><a class="clear-filters" href="{{ url_for('web.books', q=query.q or none) }}">Clear filters</a></p>
 {% elif query.q %}
     <p class="empty-state">No books matching '{{ query.q }}'</p>
 {% else %}

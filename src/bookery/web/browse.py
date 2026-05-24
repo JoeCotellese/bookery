@@ -18,14 +18,27 @@ ALLOWED_DIRS: frozenset[str] = frozenset({"asc", "desc"})
 DEFAULT_SORT = "author"
 DEFAULT_DIR = "asc"
 
+# Allowed filter keys for the /books list controller. Anything else falls off
+# silently — bookmarks and stale links shouldn't be able to either crash the
+# query or smuggle unexpected SQL columns through. Bumping this set is a
+# behavior change and needs the chip template's label map updated in lock-step.
+ALLOWED_FILTERS: frozenset[str] = frozenset({"enriched", "format", "language"})
+
+# Value whitelists. ``enriched`` is a strict 0/1 toggle so any other value is
+# nonsense. ``format`` and ``language`` are open-ended (any extension or BCP-47
+# tag), but we lowercase and trim so the URL form is normalized for chip
+# rendering and parameter binding.
+_ENRICHED_VALUES: frozenset[str] = frozenset({"0", "1"})
+
 
 @dataclass(frozen=True)
 class BrowseQuery:
     """Parsed URL state for the /books list controller.
 
-    ``filters`` is reserved for plan-01 step 4. ``sort`` and ``dir`` are
-    validated at parse time so the controller and the catalog can trust them
-    without re-checking.
+    ``sort``, ``dir``, and ``filters`` are validated at parse time so the
+    controller and the catalog can trust them without re-checking. ``filters``
+    is a mapping of whitelisted filter keys (see ``ALLOWED_FILTERS``) to
+    their normalized values.
     """
 
     q: str = ""
@@ -47,6 +60,23 @@ class BrowseQuery:
             sort=self.sort,
             dir=self.dir,
             filters=self.filters,
+        )
+
+    def without_filter(self, key: str) -> "BrowseQuery":
+        """Return a copy with ``key`` removed from filters and page reset to 1.
+
+        Changing the active filter set invalidates the page index (same
+        convention as a sort change), so callers don't have to remember to
+        reset the page when wiring chip dismiss links.
+        """
+        new_filters = {k: v for k, v in self.filters.items() if k != key}
+        return BrowseQuery(
+            q=self.q,
+            page=1,
+            page_size=self.page_size,
+            sort=self.sort,
+            dir=self.dir,
+            filters=new_filters,
         )
 
 
@@ -80,6 +110,32 @@ def _coerce_dir(value: str | None) -> str:
     return DEFAULT_DIR
 
 
+def _coerce_filters(args: Mapping[str, str]) -> dict[str, str]:
+    """Pick out the known filter keys from ``args`` and normalize their values.
+
+    Unknown keys are dropped silently (stale URLs shouldn't 400 the front
+    door). Empty / whitespace-only values are also dropped — they encode
+    "no filter" and shouldn't show up as a chip. ``enriched`` is whitelisted
+    to ``{"0","1"}``; ``format`` and ``language`` are lowercased + trimmed so
+    the URL form normalizes for chip rendering and SQL binding.
+    """
+    out: dict[str, str] = {}
+    for key in ALLOWED_FILTERS:
+        raw = args.get(key)
+        if raw is None:
+            continue
+        value = raw.strip()
+        if not value:
+            continue
+        if key == "enriched":
+            if value not in _ENRICHED_VALUES:
+                continue
+            out[key] = value
+        else:
+            out[key] = value.lower()
+    return out
+
+
 def from_request_args(
     args: Mapping[str, str], *, default_page_size: int = DEFAULT_PAGE_SIZE
 ) -> BrowseQuery:
@@ -89,7 +145,9 @@ def from_request_args(
     ``page`` is clamped to ``>= 1``; the upper bound (total pages) is the
     controller's responsibility once it has a result count. ``sort`` and
     ``dir`` are validated against the allow-lists so unknown values render
-    the default ordering instead of crashing the catalog query.
+    the default ordering instead of crashing the catalog query. Filter
+    keys not in ``ALLOWED_FILTERS`` (and values failing per-key validation)
+    are dropped silently.
     """
     return BrowseQuery(
         q=(args.get("q") or "").strip(),
@@ -97,6 +155,7 @@ def from_request_args(
         page_size=default_page_size,
         sort=_coerce_sort(args.get("sort")),
         dir=_coerce_dir(args.get("dir")),
+        filters=_coerce_filters(args),
     )
 
 

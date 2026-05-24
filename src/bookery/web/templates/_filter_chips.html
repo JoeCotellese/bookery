@@ -1,0 +1,35 @@
+{# ABOUTME: Plan-01 step 4 chip strip — renders dismissible pills for the active filter set. #}
+{# Each chip's dismiss link rebuilds the /books URL without that filter (and resets page=1). #}
+
+{%- macro chip_label(key, value) -%}
+    {%- if key == 'enriched' -%}
+        {%- if value == '1' -%}Enriched{%- else -%}Not enriched{%- endif -%}
+    {%- elif key == 'format' -%}
+        Format: {{ value|upper }}
+    {%- elif key == 'language' -%}
+        Language: {{ value }}
+    {%- else -%}
+        {{ key }}: {{ value }}
+    {%- endif -%}
+{%- endmacro -%}
+
+{% if query.filters %}
+<div class="filter-chips" aria-label="Active filters">
+    {% for key, value in query.filters.items() %}
+        {%- set remaining = {} -%}
+        {%- for fk, fv in query.filters.items() if fk != key -%}
+            {%- set _ = remaining.update({fk: fv}) -%}
+        {%- endfor -%}
+        <span class="filter-chip">
+            <span class="filter-chip-label">{{ chip_label(key, value) }}</span>
+            <a class="filter-chip-dismiss"
+               href="{{ url_for('web.books',
+                                q=query.q or none,
+                                sort=query.sort,
+                                dir=query.dir,
+                                **remaining) }}"
+               aria-label="Remove filter {{ chip_label(key, value) }}">&times;</a>
+        </span>
+    {% endfor %}
+</div>
+{% endif %}

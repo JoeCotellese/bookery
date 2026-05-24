@@ -241,6 +241,9 @@ class LibraryCatalog:
         limit: int = 50,
         sort: str = "",
         dir: str = "",
+        enriched: str | None = None,
+        format: str | None = None,
+        language: str | None = None,
     ) -> tuple[list[BookRecord], int]:
         """Paginated browse over the catalog.
 
@@ -253,37 +256,85 @@ class LibraryCatalog:
         (independent of ``offset`` and ``limit``) so the controller can drive
         paging UI without a second round-trip.
 
-        Unknown ``sort`` / ``dir`` values fall back to the default ordering
+        Filters (``enriched`` / ``format`` / ``language``) AND together and
+        with ``q``. ``enriched`` accepts the strings ``"1"`` / ``"0"`` and
+        maps to ``metadata_matched_at IS NOT NULL`` / ``IS NULL`` — the
+        explicit "matched against a provider" signal landed in V7. ``format``
+        is matched against the lowercase extension of ``source_path`` (the
+        only path column guaranteed to be present per the schema NOT NULL
+        constraint); ``output_path`` shares the same extension after a copy.
+        ``language`` is an exact match on the ``language`` column. Unknown
+        ``sort`` / ``dir`` values and unknown ``enriched`` values fall back
         silently — callers are expected to validate at the URL layer
-        (``BrowseQuery``) but the catalog stays robust on its own.
+        (``BrowseQuery``) but the catalog stays robust on its own. All
+        filter values bind as parameters; nothing string-interpolates.
         """
+        filter_sql, filter_params = self._filter_clauses(
+            enriched=enriched, format=format, language=language
+        )
         match = _fts_match_expression(q) if q else ""
         if match:
+            where = "WHERE books_fts MATCH ?" + (
+                " AND " + " AND ".join(filter_sql) if filter_sql else ""
+            )
+            params: list[object] = [match, *filter_params]
             total_row = self._conn.execute(
-                "SELECT COUNT(*) FROM books "
-                "JOIN books_fts ON books.id = books_fts.rowid "
-                "WHERE books_fts MATCH ?",
-                (match,),
+                f"SELECT COUNT(*) FROM books JOIN books_fts ON books.id = books_fts.rowid {where}",
+                params,
             ).fetchone()
             total = int(total_row[0]) if total_row else 0
             cursor = self._conn.execute(
-                "SELECT books.* FROM books "
-                "JOIN books_fts ON books.id = books_fts.rowid "
-                "WHERE books_fts MATCH ? "
-                "ORDER BY books_fts.rank "
-                "LIMIT ? OFFSET ?",
-                (match, limit, offset),
+                f"SELECT books.* FROM books "
+                f"JOIN books_fts ON books.id = books_fts.rowid {where} "
+                f"ORDER BY books_fts.rank "
+                f"LIMIT ? OFFSET ?",
+                [*params, limit, offset],
             )
         else:
-            total_row = self._conn.execute("SELECT COUNT(*) FROM books").fetchone()
+            where = ("WHERE " + " AND ".join(filter_sql)) if filter_sql else ""
+            total_row = self._conn.execute(
+                f"SELECT COUNT(*) FROM books {where}".strip(),
+                filter_params,
+            ).fetchone()
             total = int(total_row[0]) if total_row else 0
             order_clause = _order_clause_for(sort, dir)
             cursor = self._conn.execute(
-                f"SELECT * FROM books ORDER BY {order_clause} LIMIT ? OFFSET ?",
-                (limit, offset),
+                f"SELECT * FROM books {where} ORDER BY {order_clause} LIMIT ? OFFSET ?".strip(),
+                [*filter_params, limit, offset],
             )
         records = [row_to_record(row) for row in cursor.fetchall()]
         return records, total
+
+    @staticmethod
+    def _filter_clauses(
+        *,
+        enriched: str | None,
+        format: str | None,
+        language: str | None,
+    ) -> tuple[list[str], list[object]]:
+        """Translate browse filter args into SQL fragments + bind values.
+
+        Returns a list of WHERE-clause fragments (each fully parenthesized
+        and AND-safe) plus the parameters they consume, in order. Unknown
+        ``enriched`` values are dropped — defense in depth on top of the URL
+        layer's ``ALLOWED_FILTERS`` whitelist. Format matching uses
+        ``LOWER(source_path) LIKE '%.' || ?`` rather than SQLite's
+        ``substr``/``instr`` so the extension comparison is case-insensitive
+        without forcing the input to a particular case.
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if enriched == "1":
+            clauses.append("metadata_matched_at IS NOT NULL")
+        elif enriched == "0":
+            clauses.append("metadata_matched_at IS NULL")
+        if format:
+            clauses.append("LOWER(source_path) LIKE '%.' || ?")
+            params.append(format.lower())
+        if language:
+            clauses.append("language = ?")
+            params.append(language)
+        return clauses, params
 
     def update_book(
         self,
