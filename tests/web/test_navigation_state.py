@@ -231,3 +231,68 @@ class TestReturnToMechanism:
         push = response.headers.get("HX-Push-Url", "")
         assert push.startswith("/books/1")
         assert "return_to=" in push
+
+
+class TestBookContextSubhead:
+    """Step 4 / issue #127 — persistent book context subhead.
+
+    Edit / enrich / diff sub-flows render a subhead with the book title and
+    author and a link back to the detail view. The subhead survives htmx
+    swaps because every fragment that replaces ``#book-content`` includes it
+    at the top.
+    """
+
+    def _subhead_match(self, html: str):
+        return re.search(
+            r'<nav[^>]+class="book-subhead"[^>]*>(?P<body>.*?)</nav>',
+            html,
+            re.DOTALL,
+        )
+
+    def test_edit_form_renders_subhead(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", authors=["Frank Herbert"])
+        html = client.get("/books/1/edit", headers={"HX-Request": "true"}).data.decode()
+        match = self._subhead_match(html)
+        assert match, "expected book-subhead nav in edit fragment"
+        body = match.group("body")
+        assert "Dune" in body
+        assert "Frank Herbert" in body
+        assert 'href="/books/1' in body
+
+    def test_edit_full_page_renders_subhead(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", authors=["Frank Herbert"])
+        html = client.get("/books/1/edit").data.decode()
+        assert self._subhead_match(html), "expected book-subhead nav on full-page edit"
+
+    def test_enrich_form_renders_subhead(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", authors=["Frank Herbert"])
+        html = client.get("/books/1/enrich").data.decode()
+        match = self._subhead_match(html)
+        assert match, "expected book-subhead nav in enrich form"
+        body = match.group("body")
+        assert "Dune" in body
+        assert "Frank Herbert" in body
+
+    def test_subhead_link_carries_return_to(self, mock_catalog, client):
+        """The subhead's back-to-detail link threads return_to forward."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", authors=["Frank Herbert"])
+        html = client.get("/books/1/edit?return_to=%2Fbooks%3Fq%3Ddune").data.decode()
+        match = self._subhead_match(html)
+        assert match
+        href_match = re.search(r'href="([^"]+)"', match.group("body"))
+        assert href_match
+        href = href_match.group(1)
+        assert href.startswith("/books/1")
+        assert _extract_return_to(href) == "/books?q=dune"
+
+    def test_detail_page_omits_subhead(self, mock_catalog, client):
+        """Detail's own header already shows title + author — no subhead needed."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune")
+        html = client.get("/books/1").data.decode()
+        assert not self._subhead_match(html)
+
+    def test_detail_enrich_button_carries_return_to(self, mock_catalog, client):
+        """Enrich affordance preserves the return_to chain into the sub-flow."""
+        mock_catalog.get_by_id.return_value = make_book(1)
+        html = client.get("/books/1?return_to=%2Fbooks%3Fpage%3D2").data.decode()
+        assert "/books/1/enrich?return_to=" in html

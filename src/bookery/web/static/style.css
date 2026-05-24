@@ -91,6 +91,22 @@ header .logo {
     border-radius: 4px;
 }
 
+/* Persistent book-context subhead on edit / enrich / diff sub-flows. */
+.book-subhead {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+}
+
+.book-subhead a {
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+.book-subhead a:hover,
+.book-subhead a:focus {
+    text-decoration: underline;
+}
+
 /* Visually hide content but keep it available to screen readers. */
 .visually-hidden {
     position: absolute;
