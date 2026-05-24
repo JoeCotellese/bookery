@@ -1,0 +1,28 @@
+{# ABOUTME: Plan-01 step 6 mobile card partial — one stacked card per book. #}
+{# Renders inside .book-cards alongside the desktop table; CSS swaps which is visible. #}
+
+<a class="book-card{% if book.metadata_matched_at %} book-card-enriched{% endif %}"
+   href="{{ url_for('web.book_detail', book_id=book.id) }}">
+    <img class="book-cover-thumb book-card-cover"
+         src="{{ url_for('web.book_cover', book_id=book.id) }}"
+         alt=""
+         loading="lazy"
+         width="48"
+         height="72">
+    <div class="book-card-body">
+        <div class="book-card-title">{{ book.metadata.title }}</div>
+        <div class="book-card-author">{{ book.metadata.author }}</div>
+        {%- set badges = [] -%}
+        {%- if book.metadata.language -%}{%- set _ = badges.append(book.metadata.language) -%}{%- endif -%}
+        {%- if book.metadata_matched_at or badges -%}
+        <div class="book-card-meta">
+            {%- for badge in badges %}
+            <span class="book-card-badge">{{ badge }}</span>
+            {%- endfor %}
+            {%- if book.metadata_matched_at %}
+            <span class="book-card-badge book-card-badge-enriched" aria-label="Enriched">&#10003; Enriched</span>
+            {%- endif %}
+        </div>
+        {%- endif %}
+    </div>
+</a>

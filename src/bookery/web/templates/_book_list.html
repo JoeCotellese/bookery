@@ -60,6 +60,15 @@
         </tbody>
     </table>
 
+    {# Mobile-only stacked card layout. Same data, different shell — CSS at
+       768px hides the table and shows this block. Whole card is one link
+       so the entire row is tappable on touch devices. #}
+    <ul class="book-cards" aria-label="Books">
+        {% for book in page.books %}
+        <li>{% include "_book_card.html" %}</li>
+        {% endfor %}
+    </ul>
+
     {% if page.total_pages > 1 %}
     <nav class="pager" aria-label="Pagination">
         {% if page.has_prev %}
