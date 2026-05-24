@@ -128,8 +128,21 @@ class TestBookList:
 
         response = client.get("/books")
         html = response.data.decode()
-        # There should be exactly one checkmark for the enriched book
-        assert html.count("&#10003;") == 1
+        # Only the enriched book shows the badge — never the plain one. With
+        # the responsive layout (plan-01 step 6) the indicator appears once
+        # in the desktop table cell and once in the mobile card, both for
+        # the same book, so the total count is the number of layouts (2).
+        assert html.count("&#10003;") == 2
+        # And it's the enriched book — the plain one carries no badge class.
+        assert "book-card-enriched" in html
+        # The plain book's id (2) must not appear inside an enriched card.
+        import re
+
+        enriched_cards = re.findall(
+            r'<a class="book-card book-card-enriched"[^>]*href="[^"]*/books/(\d+)"',
+            html,
+        )
+        assert enriched_cards == ["1"]
 
     def test_books_table_columns(self, mock_catalog, client):
         book = _make_book(
