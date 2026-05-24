@@ -1,0 +1,17 @@
+{# ABOUTME: Full-page wrapper for the edit form — direct nav, refresh, share. #}
+{# ABOUTME: htmx requests get the bare _edit_form.html fragment instead. #}
+{% extends "base.html" %}
+
+{% block title %}Edit: {{ book.metadata.title }} - Bookery{% endblock %}
+
+{% block content %}
+<div class="book-detail">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ url_for('web.book_detail', book_id=book.id) }}">&larr; Back to book</a>
+    </nav>
+
+    <div id="book-content" aria-live="polite">
+        {% include "_edit_form.html" %}
+    </div>
+</div>
+{% endblock %}

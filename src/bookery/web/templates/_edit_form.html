@@ -57,6 +57,7 @@
                     class="btn btn-secondary"
                     id="edit-cancel"
                     hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
+                    hx-push-url="{{ url_for('web.book_detail', book_id=book.id) }}"
                     hx-target="#book-content"
                     hx-swap="innerHTML">Cancel</button>
         </div>
