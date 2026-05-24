@@ -17,6 +17,7 @@
         <button type="button"
                 class="btn btn-secondary"
                 hx-get="{{ url_for('web.edit_form', book_id=book.id) }}"
+                hx-push-url="{{ url_for('web.edit_form', book_id=book.id) }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Edit</button>
         <button type="button"

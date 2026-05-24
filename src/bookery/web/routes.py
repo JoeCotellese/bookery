@@ -182,14 +182,22 @@ def book_cover(book_id):
 
 @bp.route("/books/<int:book_id>/edit", methods=["GET"])
 def edit_form(book_id):
-    """Return the edit form partial for a book."""
+    """Render the edit form for a book.
+
+    htmx GET (``HX-Request`` header set) returns the bare partial for an
+    in-place swap into ``#book-content``. A plain GET — direct nav, browser
+    refresh, shared link — returns the full styled page so the user lands
+    on a real URL rather than an unstyled fragment.
+    """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
     if book is None:
         abort(404)
 
     file_info = _file_context(book)
-    return render_template("_edit_form.html", book=book, file_info=file_info)
+    if request.headers.get("HX-Request"):
+        return render_template("_edit_form.html", book=book, file_info=file_info)
+    return render_template("edit.html", book=book, file_info=file_info)
 
 
 @bp.route("/books/<int:book_id>/edit", methods=["POST"])
@@ -248,9 +256,16 @@ def update_book(book_id):
     genres = catalog.get_genres_for_book(book_id)
     file_info = _file_context(book)
 
-    return render_template(
-        "_detail.html", book=book, tags=tags, genres=genres, file_info=file_info
+    response = make_response(
+        render_template(
+            "_detail.html", book=book, tags=tags, genres=genres, file_info=file_info
+        )
     )
+    # If the user came from the edit URL (/books/<id>/edit), push the URL
+    # back to /books/<id> so refresh/share lands on detail, not on a stale
+    # edit URL that would re-render the form.
+    response.headers["HX-Push-Url"] = url_for("web.book_detail", book_id=book_id)
+    return response
 
 
 def _prefill_for_book(book) -> tuple[str | None, str | None]:

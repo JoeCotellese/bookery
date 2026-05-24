@@ -294,10 +294,11 @@ class TestEditForm:
         assert response.status_code == 200
         assert "<form" in html
 
-    def test_edit_form_returns_partial_only(self, mock_catalog, client):
+    def test_edit_form_htmx_get_returns_partial_only(self, mock_catalog, client):
+        """htmx GET still swaps in the bare fragment — no base layout."""
         mock_catalog.get_by_id.return_value = _make_book(1)
 
-        response = client.get("/books/1/edit")
+        response = client.get("/books/1/edit", headers={"HX-Request": "true"})
         html = response.data.decode()
         assert "<html" not in html
         assert "<head" not in html
