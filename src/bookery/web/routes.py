@@ -361,11 +361,13 @@ def enrich_form(book_id):
         abort(404)
 
     prefill_isbn, prefill_query = _prefill_for_book(book)
+    return_to = _safe_return_to(request.args.get("return_to"))
     return render_template(
         "_enrich_search.html",
         book=book,
         prefill_isbn=prefill_isbn,
         prefill_query=prefill_query,
+        return_to=return_to,
     )
 
 
@@ -577,6 +579,7 @@ def enrich_candidate(book_id):
         abort(404)
 
     diffs = metadata_diff(book.metadata, candidate.metadata)
+    return_to = _safe_return_to(request.args.get("return_to"))
 
     return render_template(
         "_enrich_diff.html",
@@ -586,6 +589,7 @@ def enrich_candidate(book_id):
         provider_name=provider_name,
         query=query,
         candidate_id=candidate_id,
+        return_to=return_to,
     )
 
 

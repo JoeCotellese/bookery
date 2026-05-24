@@ -1,0 +1,7 @@
+{# ABOUTME: Persistent book context subhead — included by edit / enrich / diff sub-flows. #}
+{# ABOUTME: Renders as a back-link to the detail view so the user never loses track of which book they're editing. #}
+<nav class="book-subhead" aria-label="Book context">
+    <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=return_to or none) }}">
+        &larr; {{ book.metadata.title }}{% if book.metadata.author %} &mdash; {{ book.metadata.author }}{% endif %}
+    </a>
+</nav>

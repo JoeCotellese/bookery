@@ -21,9 +21,11 @@
                 hx-push-url="{{ edit_url }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Edit</button>
+        {%- set enrich_url = url_for('web.enrich_form', book_id=book.id, return_to=return_to or none) -%}
         <button type="button"
                 class="btn btn-secondary"
-                hx-get="{{ url_for('web.enrich_form', book_id=book.id) }}"
+                hx-get="{{ enrich_url }}"
+                hx-push-url="{{ enrich_url }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Enrich</button>
         <button type="button"
