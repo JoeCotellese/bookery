@@ -257,9 +257,7 @@ def update_book(book_id):
     file_info = _file_context(book)
 
     response = make_response(
-        render_template(
-            "_detail.html", book=book, tags=tags, genres=genres, file_info=file_info
-        )
+        render_template("_detail.html", book=book, tags=tags, genres=genres, file_info=file_info)
     )
     # If the user came from the edit URL (/books/<id>/edit), push the URL
     # back to /books/<id> so refresh/share lands on detail, not on a stale
