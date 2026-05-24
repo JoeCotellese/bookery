@@ -1,0 +1,17 @@
+{# ABOUTME: Full-page wrapper for the enrich search form — direct nav, refresh, share. #}
+{# ABOUTME: htmx requests get the bare _enrich_search.html fragment instead. #}
+{% extends "base.html" %}
+
+{% block title %}Enrich: {{ book.metadata.title }} - Bookery{% endblock %}
+
+{% block content %}
+<div class="book-detail">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=return_to or none) }}">&larr; Back to book</a>
+    </nav>
+
+    <div id="book-content" aria-live="polite">
+        {% include "_enrich_search.html" %}
+    </div>
+</div>
+{% endblock %}

@@ -354,7 +354,13 @@ def _prefill_for_book(book) -> tuple[str | None, str | None]:
 
 @bp.route("/books/<int:book_id>/enrich", methods=["GET"])
 def enrich_form(book_id):
-    """Render the multi-provider search form for a book."""
+    """Render the multi-provider search form for a book.
+
+    htmx GET (``HX-Request`` header set) returns the bare partial for an
+    in-place swap into ``#book-content``. A plain GET — direct nav, browser
+    refresh, shared link — returns the full styled page so the user lands
+    on a real URL rather than an unstyled fragment.
+    """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
     if book is None:
@@ -362,8 +368,9 @@ def enrich_form(book_id):
 
     prefill_isbn, prefill_query = _prefill_for_book(book)
     return_to = _safe_return_to(request.args.get("return_to"))
+    template = "_enrich_search.html" if request.headers.get("HX-Request") else "enrich.html"
     return render_template(
-        "_enrich_search.html",
+        template,
         book=book,
         prefill_isbn=prefill_isbn,
         prefill_query=prefill_query,
@@ -559,6 +566,11 @@ def enrich_candidate(book_id):
     Re-fetches the candidate from its provider using the original query so
     no per-session state is required. The diff panel includes an Apply form
     that POSTs back to ``enrich_apply`` with the same dispatch params.
+
+    htmx GET (``HX-Request`` header set) returns the bare partial for an
+    in-place swap into ``#book-content``. A plain GET — direct nav, browser
+    refresh, shared link — returns the full styled page so the user lands
+    on a real URL rather than an unstyled fragment.
     """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
@@ -581,8 +593,11 @@ def enrich_candidate(book_id):
     diffs = metadata_diff(book.metadata, candidate.metadata)
     return_to = _safe_return_to(request.args.get("return_to"))
 
+    template = (
+        "_enrich_diff.html" if request.headers.get("HX-Request") else "enrich_candidate.html"
+    )
     return render_template(
-        "_enrich_diff.html",
+        template,
         book=book,
         candidate=candidate,
         diffs=diffs,
