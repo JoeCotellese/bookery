@@ -37,7 +37,7 @@
             {% for book in page.books %}
             <tr class="book-row">
                 <td class="book-row-cover">
-                    <a href="{{ url_for('web.book_detail', book_id=book.id) }}" tabindex="-1" aria-hidden="true">
+                    <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=list_url or none) }}" tabindex="-1" aria-hidden="true">
                         <img class="book-cover-thumb"
                              src="{{ url_for('web.book_cover', book_id=book.id) }}"
                              alt=""
@@ -47,7 +47,7 @@
                     </a>
                 </td>
                 <td class="book-row-title">
-                    <a href="{{ url_for('web.book_detail', book_id=book.id) }}">{{ book.metadata.title }}</a>
+                    <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=list_url or none) }}">{{ book.metadata.title }}</a>
                 </td>
                 <td>{{ book.metadata.author }}</td>
                 <td>{{ book.metadata.isbn or '' }}</td>

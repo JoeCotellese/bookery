@@ -138,8 +138,9 @@ class TestBookList:
         # The plain book's id (2) must not appear inside an enriched card.
         import re
 
+        # href may carry a trailing ?return_to=… (plan-02 step 3).
         enriched_cards = re.findall(
-            r'<a class="book-card book-card-enriched"[^>]*href="[^"]*/books/(\d+)"',
+            r'<a class="book-card book-card-enriched"[^>]*href="[^"]*/books/(\d+)(?:\?[^"]*)?"',
             html,
         )
         assert enriched_cards == ["1"]

@@ -2,8 +2,16 @@
 # ABOUTME: Each test row maps to a row in plans/02-web-navigation-url-state.md.
 
 import re
+from urllib.parse import parse_qs, urlsplit
 
 from tests.web.conftest import make_book
+
+
+def _extract_return_to(href: str) -> str | None:
+    """Pull the ``return_to`` value out of an href, decoded."""
+    qs = parse_qs(urlsplit(href).query)
+    values = qs.get("return_to") or []
+    return values[0] if values else None
 
 
 class TestEditUrlIsReal:
@@ -136,3 +144,90 @@ class TestSearchFormFallback:
         mock_catalog.browse.return_value = ([], 0)
         html = client.get("/books?q=tolkien").data.decode()
         assert 'value="tolkien"' in html
+
+
+class TestReturnToMechanism:
+    """Step 3 / issue #122 — back navigation honors the originating list URL.
+
+    The list page stamps each row anchor with ``?return_to=<list URL>``. Detail,
+    edit, and enrich/diff routes thread the param through and use it as the
+    back-link target, falling back to ``/books`` on deep-link entry. ``return_to``
+    is sanitized to internal paths only — anything with a scheme or host is
+    dropped to prevent open-redirect.
+    """
+
+    def test_list_row_anchors_carry_return_to(self, mock_catalog, client):
+        """Each row's detail link encodes the current list URL as return_to."""
+        mock_catalog.browse.return_value = ([make_book(1, title="A")], 1)
+        html = client.get("/books?q=king").data.decode()
+        # Find a row anchor and decode its return_to value back to the list URL.
+        match = re.search(r'href="(/books/1\?[^"]*return_to=[^"]+)"', html)
+        assert match, "expected a row anchor with return_to"
+        decoded = _extract_return_to(match.group(1))
+        assert decoded == "/books?q=king"
+
+    def test_detail_back_link_honors_return_to(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1)
+        html = client.get("/books/1?return_to=%2Fbooks%3Fq%3Dking").data.decode()
+        # The breadcrumb anchor targets the originating list URL, not /books.
+        assert 'href="/books?q=king"' in html
+
+    def test_detail_back_link_falls_back_to_books_on_deep_link(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1)
+        html = client.get("/books/1").data.decode()
+        # No return_to → breadcrumb points at the unfiltered list.
+        assert 'href="/books"' in html
+
+    def test_detail_back_link_rejects_external_return_to(self, mock_catalog, client):
+        """Open-redirect defense: scheme or host means we ignore return_to."""
+        mock_catalog.get_by_id.return_value = make_book(1)
+        for evil in ("https://evil.com", "//evil.com", "javascript:alert(1)"):
+            html = client.get(f"/books/1?return_to={evil}").data.decode()
+            assert "evil.com" not in html
+            assert "javascript:" not in html
+
+    def test_edit_button_carries_return_to(self, mock_catalog, client):
+        """Clicking Edit on detail keeps the return_to chain intact."""
+        mock_catalog.get_by_id.return_value = make_book(1)
+        html = client.get("/books/1?return_to=%2Fbooks%3Fpage%3D3").data.decode()
+        # Edit affordance points at /books/1/edit?return_to=…
+        assert "/books/1/edit?return_to=" in html
+
+    def test_edit_full_page_back_link_honors_return_to(self, mock_catalog, client):
+        """Edit's breadcrumb back-to-book preserves the return_to chain.
+
+        Two-step: from edit, "back to book" → detail with same return_to so
+        from detail another "back" lands on the originating list.
+        """
+        mock_catalog.get_by_id.return_value = make_book(1)
+        html = client.get("/books/1/edit?return_to=%2Fbooks%3Fpage%3D3").data.decode()
+        # Back-to-book breadcrumb threads return_to so popping pages
+        # eventually lands on the originating list URL.
+        match = re.search(r'class="back-link"[^>]*>\s*<a href="([^"]+)"', html)
+        assert match, "expected back-link anchor"
+        href = match.group(1)
+        assert href.startswith("/books/1")
+        assert _extract_return_to(href) == "/books?page=3"
+
+    def test_edit_save_pushes_url_with_return_to(self, mock_catalog, client):
+        """After save, HX-Push-Url lands on detail with return_to preserved."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Saved")
+        response = client.post(
+            "/books/1/edit?return_to=%2Fbooks%3Fq%3Dking",
+            data={
+                "title": "Saved",
+                "authors": "Author",
+                "isbn": "",
+                "language": "",
+                "publisher": "",
+                "description": "",
+                "series": "",
+                "series_index": "",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # HX-Push-Url should include return_to so the detail URL preserves the chain.
+        push = response.headers.get("HX-Push-Url", "")
+        assert push.startswith("/books/1")
+        assert "return_to=" in push
