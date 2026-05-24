@@ -1,5 +1,6 @@
 {# ABOUTME: Inline edit form with read-only provenance panel and Esc-to-cancel. #}
 {# ABOUTME: Two-column on >=720px viewports, stacked on mobile (handled by CSS). #}
+<h1 class="page-title">Edit: {{ book.metadata.title }}</h1>
 <div class="edit-layout">
     <form class="edit-form"
           hx-post="{{ url_for('web.update_book', book_id=book.id) }}"

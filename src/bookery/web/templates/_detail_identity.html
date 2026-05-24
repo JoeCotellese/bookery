@@ -2,7 +2,7 @@
 {# ABOUTME: Renders only when at least one identity field is set. #}
 {% if book.metadata.isbn or book.metadata.language or book.metadata.series %}
 <section class="section" aria-labelledby="detail-identity">
-    <h3 id="detail-identity">Identity</h3>
+    <h2 id="detail-identity">Identity</h2>
     <dl class="metadata-grid">
         {% if book.metadata.isbn %}
         <dt>ISBN</dt>

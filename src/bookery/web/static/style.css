@@ -61,14 +61,18 @@ body {
     padding: 1rem 2rem;
 }
 
-header h1 {
+header .logo {
+    display: inline-block;
     font-size: 1.5rem;
+    font-weight: bold;
     margin-bottom: 1.5rem;
-}
-
-header h1 a {
     color: var(--color-text);
     text-decoration: none;
+}
+
+.page-title {
+    font-size: 1.75rem;
+    margin: 0 0 1rem;
 }
 
 /* Search */

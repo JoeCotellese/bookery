@@ -2,7 +2,7 @@
 {# ABOUTME: Section is omitted entirely when no description is available. #}
 {% if book.metadata.description %}
 <section class="section" aria-labelledby="detail-description">
-    <h3 id="detail-description">Description</h3>
+    <h2 id="detail-description">Description</h2>
     {{ book.metadata.description | description_paragraphs }}
 </section>
 {% endif %}

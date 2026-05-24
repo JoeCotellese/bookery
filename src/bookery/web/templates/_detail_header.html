@@ -2,7 +2,7 @@
 {# ABOUTME: Toolbar wires Edit, Enrich, and Delete (confirm panel via htmx). #}
 <section class="section section-header" aria-labelledby="detail-header">
     <div class="header-titles">
-        <h2 id="detail-header">{{ book.metadata.title }}</h2>
+        <h1 id="detail-header">{{ book.metadata.title }}</h1>
         <p class="byline">by {{ book.metadata.author }}</p>
     </div>
     {% if book.metadata_matched_at %}

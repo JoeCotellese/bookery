@@ -10,7 +10,7 @@
 <body>
     <a class="skip-link" href="#main">Skip to main content</a>
     <header>
-        <h1><a href="{{ url_for('web.books') }}">Bookery</a></h1>
+        <a class="logo" href="{{ url_for('web.books') }}">Bookery</a>
     </header>
     <main id="main">
         {% with messages = get_flashed_messages(with_categories=True) %}
