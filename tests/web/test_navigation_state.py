@@ -4,7 +4,9 @@
 import re
 from urllib.parse import parse_qs, urlsplit
 
-from tests.web.conftest import make_book
+import pytest
+
+from tests.web.conftest import FakeProvider, make_book, make_candidate
 
 
 def _extract_return_to(href: str) -> str | None:
@@ -296,3 +298,97 @@ class TestBookContextSubhead:
         mock_catalog.get_by_id.return_value = make_book(1)
         html = client.get("/books/1?return_to=%2Fbooks%3Fpage%3D2").data.decode()
         assert "/books/1/enrich?return_to=" in html
+
+
+class TestEnrichUrlIsReal:
+    """Issue #171 — GET /books/<id>/enrich and /enrich/candidate are real URLs.
+
+    Same defect plan-02 step 1 fixed for /books/<id>/edit: direct nav, refresh,
+    or shared link previously landed on a bare fragment. Plain GET now returns
+    the full styled page; htmx GET still returns the fragment for in-place swap.
+    """
+
+    @pytest.fixture
+    def providers(self, fake_provider):
+        return {"fake": fake_provider}
+
+    @pytest.fixture
+    def fake_provider(self):
+        provider = FakeProvider(name="fake")
+        provider.by_isbn = [make_candidate(source="fake", source_id="fake:1")]
+        return provider
+
+    # --- /books/<id>/enrich (search form) -------------------------------------
+
+    def test_search_plain_get_returns_full_styled_page(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Book One")
+        response = client.get("/books/1/enrich")
+        assert response.status_code == 200
+        html = response.data.decode()
+        # Base layout markers: doctype, site header, skip link.
+        assert "<!DOCTYPE html>" in html
+        assert "Skip to main content" in html
+        assert 'class="logo"' in html
+        # Search form is still rendered.
+        assert 'name="isbn"' in html
+        assert 'name="query"' in html
+
+    def test_search_htmx_get_returns_fragment_only(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Book One")
+        response = client.get("/books/1/enrich", headers={"HX-Request": "true"})
+        assert response.status_code == 200
+        html = response.data.decode()
+        # No base layout — bare fragment for in-place swap.
+        assert "<!DOCTYPE html>" not in html
+        assert "Skip to main content" not in html
+        # Form fields still present in the partial.
+        assert 'name="isbn"' in html
+        assert 'name="query"' in html
+
+    def test_search_refresh_renders_full_page(self, mock_catalog, client):
+        """Browser refresh sends no HX-Request header — same path as direct nav."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Refreshed")
+        response = client.get("/books/1/enrich")
+        html = response.data.decode()
+        assert "<!DOCTYPE html>" in html
+        assert "Refreshed" in html
+
+    def test_search_missing_book_returns_404(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = None
+        assert client.get("/books/999/enrich").status_code == 404
+
+    # --- /books/<id>/enrich/candidate (diff panel) ----------------------------
+
+    def _candidate_url(self) -> str:
+        return "/books/1/enrich/candidate?provider=fake&query=9780441172719&candidate_id=fake:1"
+
+    def test_candidate_plain_get_returns_full_styled_page(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Diff Book")
+        response = client.get(self._candidate_url())
+        assert response.status_code == 200
+        html = response.data.decode()
+        # Base layout markers.
+        assert "<!DOCTYPE html>" in html
+        assert "Skip to main content" in html
+        assert 'class="logo"' in html
+        # Diff table still rendered.
+        assert "enrich-diff-table" in html
+        assert "Apply" in html
+
+    def test_candidate_htmx_get_returns_fragment_only(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Diff Book")
+        response = client.get(self._candidate_url(), headers={"HX-Request": "true"})
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "<!DOCTYPE html>" not in html
+        assert "Skip to main content" not in html
+        assert "enrich-diff-table" in html
+
+    def test_candidate_missing_book_returns_404(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = None
+        assert client.get(self._candidate_url()).status_code == 404
+
+    def test_candidate_missing_provider_returns_404(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1)
+        bad = "/books/1/enrich/candidate?provider=ghost&query=q&candidate_id=x"
+        assert client.get(bad).status_code == 404
