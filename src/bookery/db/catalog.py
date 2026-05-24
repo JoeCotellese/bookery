@@ -25,6 +25,26 @@ class DuplicateBookError(Exception):
     """Raised when attempting to add a book with a file_hash that already exists."""
 
 
+def _fts_match_expression(q: str) -> str:
+    """Build a safe FTS5 MATCH expression from raw user input.
+
+    FTS5 reserves characters like ``:`` (column filter), ``"`` (phrase),
+    ``*`` (prefix), ``()`` (grouping), and bare words ``AND``/``OR``/``NOT``/
+    ``NEAR`` as operators. Passing raw user input through directly will
+    raise ``sqlite3.OperationalError`` when those tokens appear (e.g.
+    ``dune:`` is read as a column filter against a non-existent column).
+
+    The fix is to wrap each whitespace-separated token as an FTS5 phrase
+    (``"token"``) with internal double-quotes doubled to escape them.
+    Multiple phrases combine via FTS5's implicit AND, so ``rose garden``
+    still requires both tokens.
+    """
+    tokens = q.split()
+    if not tokens:
+        return ""
+    return " ".join('"' + tok.replace('"', '""') + '"' for tok in tokens)
+
+
 class LibraryCatalog:
     """Wraps a sqlite3 connection and provides typed CRUD for the books table."""
 
@@ -169,12 +189,15 @@ class LibraryCatalog:
         Returns:
             List of matching BookRecords, best matches first.
         """
+        match = _fts_match_expression(query)
+        if not match:
+            return []
         cursor = self._conn.execute(
             "SELECT books.* FROM books "
             "JOIN books_fts ON books.id = books_fts.rowid "
             "WHERE books_fts MATCH ? "
             "ORDER BY books_fts.rank",
-            (query,),
+            (match,),
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
@@ -194,12 +217,13 @@ class LibraryCatalog:
         count for the query (independent of ``offset`` and ``limit``) so the
         controller can drive paging UI without a second round-trip.
         """
-        if q:
+        match = _fts_match_expression(q) if q else ""
+        if match:
             total_row = self._conn.execute(
                 "SELECT COUNT(*) FROM books "
                 "JOIN books_fts ON books.id = books_fts.rowid "
                 "WHERE books_fts MATCH ?",
-                (q,),
+                (match,),
             ).fetchone()
             total = int(total_row[0]) if total_row else 0
             cursor = self._conn.execute(
@@ -208,7 +232,7 @@ class LibraryCatalog:
                 "WHERE books_fts MATCH ? "
                 "ORDER BY books_fts.rank "
                 "LIMIT ? OFFSET ?",
-                (q, limit, offset),
+                (match, limit, offset),
             )
         else:
             total_row = self._conn.execute("SELECT COUNT(*) FROM books").fetchone()

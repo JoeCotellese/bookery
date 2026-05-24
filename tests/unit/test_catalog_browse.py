@@ -97,6 +97,36 @@ class TestBrowseSearch:
         assert titles == ["Another Rose Story", "The Rose Garden"]
         assert total == 2
 
+    def test_q_with_fts_punctuation_does_not_crash(self, catalog):
+        """User input like 'dune:' is FTS5 column-filter syntax that crashes
+        sqlite if passed through raw. browse() must treat it as plain text."""
+        meta = BookMetadata(
+            title="Dune Chronicles",
+            authors=["Herbert"],
+            source_path=Path("/tmp/dune.epub"),
+        )
+        catalog.add_book(meta, file_hash="dune".ljust(64, "0"))
+        # All of these are valid user input that previously raised
+        # sqlite3.OperationalError because FTS5 reserves these characters.
+        for raw in ["dune:", 'dune"', "dune AND", "AND", "*foo", "(dune)"]:
+            rows, total = catalog.browse(q=raw)
+            assert isinstance(rows, list)
+            assert isinstance(total, int)
+
+    def test_q_multi_word_still_matches(self, catalog):
+        """Phrase-escaping per token must preserve implicit AND across tokens."""
+        for title in ["The Rose Garden", "Rose of Sharon", "Garden Tools"]:
+            meta = BookMetadata(
+                title=title, authors=["A"], source_path=Path(f"/tmp/{title}.epub")
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+        rows, total = catalog.browse(q="rose garden")
+        titles = [r.metadata.title for r in rows]
+        assert "The Rose Garden" in titles
+        assert "Garden Tools" not in titles
+        assert "Rose of Sharon" not in titles
+        assert total == 1
+
     def test_q_with_pagination(self, catalog):
         for i in range(5):
             meta = BookMetadata(
