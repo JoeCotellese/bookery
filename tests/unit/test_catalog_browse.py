@@ -198,3 +198,111 @@ class TestBrowseSort:
         # Unknown key should not crash; behaves like default (author asc).
         rows, _ = catalog.browse(sort="bogus", dir="desc")
         assert len(rows) == 3
+
+
+class TestBrowseFilters:
+    def _seed_mix(self, catalog: LibraryCatalog) -> dict[str, int]:
+        """Seed a fixed catalog and return a name->id map for assertions.
+
+        Mix of formats (epub/pdf), languages (en/fr), and matched status so
+        each filter axis has signal to detect.
+        """
+        spec = [
+            ("en-epub-matched", "en", "/tmp/a.epub", True),
+            ("en-epub-unmatched", "en", "/tmp/b.epub", False),
+            ("fr-epub-matched", "fr", "/tmp/c.epub", True),
+            ("en-pdf-unmatched", "en", "/tmp/d.pdf", False),
+            ("fr-pdf-matched", "fr", "/tmp/e.pdf", True),
+        ]
+        name_to_id: dict[str, int] = {}
+        for name, lang, path, matched in spec:
+            meta = BookMetadata(
+                title=name,
+                authors=["A"],
+                language=lang,
+                source_path=Path(path),
+            )
+            book_id = catalog.add_book(meta, file_hash=name.ljust(64, "0"))
+            if matched:
+                catalog.set_matched_at(book_id)
+            name_to_id[name] = book_id
+        return name_to_id
+
+    def test_enriched_1_returns_only_matched_books(self, catalog):
+        ids = self._seed_mix(catalog)
+        rows, total = catalog.browse(enriched="1")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"en-epub-matched", "fr-epub-matched", "fr-pdf-matched"}
+        assert total == 3
+        del ids
+
+    def test_enriched_0_returns_only_unmatched_books(self, catalog):
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(enriched="0")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"en-epub-unmatched", "en-pdf-unmatched"}
+        assert total == 2
+
+    def test_format_epub_matches_path_extension(self, catalog):
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(format="epub")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"en-epub-matched", "en-epub-unmatched", "fr-epub-matched"}
+        assert total == 3
+
+    def test_format_pdf_matches_path_extension(self, catalog):
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(format="pdf")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"en-pdf-unmatched", "fr-pdf-matched"}
+        assert total == 2
+
+    def test_language_filter_exact_match(self, catalog):
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(language="fr")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"fr-epub-matched", "fr-pdf-matched"}
+        assert total == 2
+
+    def test_filters_combine_with_and(self, catalog):
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(enriched="1", format="epub", language="fr")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"fr-epub-matched"}
+        assert total == 1
+
+    def test_total_reflects_filters(self, catalog):
+        self._seed_mix(catalog)
+        _, total = catalog.browse(enriched="0", limit=1)
+        # Total counts the filtered set, not the page.
+        assert total == 2
+
+    def test_unknown_filter_value_silently_ignored(self, catalog):
+        self._seed_mix(catalog)
+        # Bogus enriched value should be a no-op (return everything).
+        rows, total = catalog.browse(enriched="maybe")
+        assert total == 5
+        assert len(rows) == 5
+
+    def test_filters_apply_with_search_query(self, catalog):
+        self._seed_mix(catalog)
+        # FTS search for "epub" appears in titles — combined with enriched=0.
+        rows, total = catalog.browse(q="epub", enriched="0")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"en-epub-unmatched"}
+        assert total == 1
+
+    def test_format_uses_parameter_binding_not_string_interpolation(self, catalog):
+        """A malicious format value should not be able to inject SQL.
+
+        We don't expect to ever receive such input (the URL layer whitelists
+        format values too), but defense in depth — the catalog must use
+        parameter binding so the worst case is "no rows matched".
+        """
+        self._seed_mix(catalog)
+        rows, total = catalog.browse(format="epub'; DROP TABLE books; --")
+        assert rows == []
+        assert total == 0
+        # Sanity: catalog still has its rows.
+        all_rows, _ = catalog.browse()
+        assert len(all_rows) == 5

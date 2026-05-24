@@ -336,3 +336,197 @@ class TestBooksRouteSort:
         # Both prev and next should carry the active sort + dir.
         assert "sort=author" in html
         assert "dir=desc" in html
+
+
+# --- BrowseQuery filter parsing ---
+
+
+class TestBrowseQueryFilterParsing:
+    def test_no_filters_when_args_empty(self):
+        q = from_request_args({})
+        assert dict(q.filters) == {}
+
+    def test_parses_known_filter_keys(self):
+        q = from_request_args({"enriched": "1", "format": "epub", "language": "en"})
+        assert q.filters == {"enriched": "1", "format": "epub", "language": "en"}
+
+    @pytest.mark.parametrize("bad", ["author", "title", "sort", "page", "q", "drop_table"])
+    def test_unknown_filter_keys_silently_dropped(self, bad):
+        q = from_request_args({bad: "anything"})
+        assert bad not in q.filters
+
+    @pytest.mark.parametrize("bad", ["yes", "true", "2", "", "-1"])
+    def test_enriched_only_accepts_0_or_1(self, bad):
+        q = from_request_args({"enriched": bad})
+        assert "enriched" not in q.filters
+
+    def test_enriched_zero_kept(self):
+        q = from_request_args({"enriched": "0"})
+        assert q.filters["enriched"] == "0"
+
+    def test_format_lowercased(self):
+        q = from_request_args({"format": "EPUB"})
+        assert q.filters["format"] == "epub"
+
+    def test_format_empty_dropped(self):
+        q = from_request_args({"format": ""})
+        assert "format" not in q.filters
+
+    def test_language_lowercased_and_trimmed(self):
+        q = from_request_args({"language": "  EN  "})
+        assert q.filters["language"] == "en"
+
+    def test_language_empty_dropped(self):
+        q = from_request_args({"language": ""})
+        assert "language" not in q.filters
+
+    def test_with_page_preserves_filters(self):
+        q = from_request_args({"enriched": "1", "format": "epub", "page": "2"})
+        bumped = q.with_page(5)
+        assert bumped.filters == {"enriched": "1", "format": "epub"}
+        assert bumped.page == 5
+
+
+# --- /books route: filter chips ---
+
+
+class TestBooksRouteFilters:
+    def test_route_passes_filters_to_catalog(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[], total=0)
+
+        client.get("/books?enriched=1&format=epub&language=en")
+
+        kwargs = mock_catalog.browse.call_args.kwargs
+        assert kwargs.get("enriched") == "1"
+        assert kwargs.get("format") == "epub"
+        assert kwargs.get("language") == "en"
+
+    def test_route_omits_filters_when_none_provided(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[], total=0)
+
+        client.get("/books")
+
+        kwargs = mock_catalog.browse.call_args.kwargs
+        # Filters absent or explicitly None — catalog default is "no filter".
+        assert kwargs.get("enriched") in (None, "")
+        assert kwargs.get("format") in (None, "")
+        assert kwargs.get("language") in (None, "")
+
+    def test_route_renders_chip_for_each_active_filter(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?enriched=0&format=epub&language=en")
+        html = response.data.decode()
+
+        # Each active filter shows up as a chip with its label
+        assert "filter-chip" in html
+        # Human-readable labels for known filter keys
+        assert "Not enriched" in html or "not enriched" in html.lower()
+        assert "epub" in html.lower()
+        assert "en" in html.lower()
+
+    def test_chip_dismiss_link_drops_that_filter_only(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?enriched=1&format=epub")
+        html = response.data.decode()
+
+        # The dismiss link for `format` should keep enriched=1 but drop format.
+        # We don't pin exact URL format, just that a link exists matching the
+        # remaining filter set.
+        assert "enriched=1" in html
+        # Look for a dismiss link that does NOT include format=epub
+        import re
+
+        dismiss_links = re.findall(r'href="([^"]*/books[^"]*)"', html)
+        # At least one chip dismiss link should drop format while keeping enriched.
+        assert any("enriched=1" in link and "format=epub" not in link for link in dismiss_links), (
+            f"no dismiss link drops format: {dismiss_links}"
+        )
+
+    def test_chip_dismiss_resets_page_to_one(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?enriched=1&format=epub&page=3")
+        html = response.data.decode()
+
+        # Chip dismiss links should not carry page=3 — filter changes reset
+        # to page 1 (same convention as sort).
+        import re
+
+        chip_links = re.findall(r'class="filter-chip-dismiss"[^>]*href="([^"]*)"', html)
+        for link in chip_links:
+            assert "page=3" not in link
+
+    def test_no_chips_rendered_when_no_filters_active(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books")
+        html = response.data.decode()
+
+        assert "filter-chip" not in html
+
+    def test_unknown_filter_value_silently_ignored(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?enriched=maybe")
+
+        assert response.status_code == 200
+        kwargs = mock_catalog.browse.call_args.kwargs
+        # Filter dropped at the query layer
+        assert kwargs.get("enriched") in (None, "")
+
+    def test_empty_filter_result_shows_clear_filters_action(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[], total=0)
+
+        response = client.get("/books?enriched=1&format=epub")
+        html = response.data.decode()
+
+        assert "No books match these filters." in html
+        # "Clear filters" link returns to /books (without the filter args).
+        assert "Clear filters" in html
+        import re
+
+        clear_links = re.findall(r'href="([^"]*)"[^>]*>\s*Clear filters', html)
+        assert clear_links, "Clear filters link missing"
+        for link in clear_links:
+            assert "enriched=" not in link
+            assert "format=" not in link
+
+    def test_filter_chip_preserves_search_query_in_dismiss(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?q=dune&enriched=1")
+        html = response.data.decode()
+
+        # Dismissing the enriched chip should retain q=dune.
+        import re
+
+        dismiss_links = re.findall(r'class="filter-chip-dismiss"[^>]*href="([^"]*)"', html)
+        assert dismiss_links
+        for link in dismiss_links:
+            assert "q=dune" in link
+
+    def test_pager_links_preserve_filters(self, mock_catalog, client):
+        books = [make_book(i) for i in range(1, 51)]
+        _stub_browse(mock_catalog, books=books, total=120)
+
+        response = client.get("/books?enriched=1&format=epub&page=2")
+        html = response.data.decode()
+
+        assert "enriched=1" in html
+        assert "format=epub" in html
+
+    def test_sort_header_links_preserve_filters(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        response = client.get("/books?enriched=1&sort=title&dir=asc")
+        html = response.data.decode()
+
+        # The author header link (inactive sort) should preserve the filter.
+        import re
+
+        sort_hrefs = re.findall(r'class="sort-link[^"]*"\s*href="([^"]*)"', html)
+        assert sort_hrefs
+        for href in sort_hrefs:
+            assert "enriched=1" in href

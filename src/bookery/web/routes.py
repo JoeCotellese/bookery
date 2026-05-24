@@ -94,6 +94,7 @@ def books():
         limit=query.page_size,
         sort=query.sort,
         dir=query.dir,
+        **query.filters,
     )
 
     # Clamp out-of-range page requests to the last valid page rather than
@@ -107,6 +108,7 @@ def books():
             limit=clamped.page_size,
             sort=clamped.sort,
             dir=clamped.dir,
+            **clamped.filters,
         )
         query = clamped
 
