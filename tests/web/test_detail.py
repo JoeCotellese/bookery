@@ -24,7 +24,7 @@ class TestDetailSections:
 
         html = client.get("/books/1").data.decode()
         assert 'aria-labelledby="detail-identity"' in html
-        assert "<h3" in html and "Identity" in html
+        assert "<h2" in html and "Identity" in html
         assert "9780441172719" in html
         assert "en" in html
         assert "Dune Chronicles" in html
