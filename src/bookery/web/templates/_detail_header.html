@@ -1,6 +1,11 @@
 {# ABOUTME: Detail header partial — title, author(s), enriched badge, toolbar. #}
 {# ABOUTME: Toolbar wires Edit, Enrich, and Delete (confirm panel via htmx). #}
 <section class="section section-header" aria-labelledby="detail-header">
+    <img class="book-cover-hero"
+         src="{{ url_for('web.book_cover', book_id=book.id) }}"
+         alt=""
+         width="160"
+         height="240">
     <div class="header-titles">
         <h1 id="detail-header">{{ book.metadata.title }}</h1>
         <p class="byline">by {{ book.metadata.author }}</p>

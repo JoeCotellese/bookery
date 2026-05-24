@@ -76,6 +76,19 @@ def _detect_isbn(identifiers: dict[str, str]) -> str | None:
 
 def _extract_cover_image(book: epub.EpubBook) -> bytes | None:
     """Extract cover image data from an EPUB, if present."""
+    item = _find_cover_item(book)
+    return item.get_content() if item is not None else None
+
+
+def _find_cover_item(book: epub.EpubBook):
+    """Locate the cover image manifest item, or None.
+
+    Follows the EPUB cover convention: an OPF meta tag ``<meta name="cover"
+    content="cover-id"/>`` points at the manifest entry. Falls back to any
+    item with ``cover`` in its id or filename whose type registers as an
+    image or cover. Used by both metadata extraction and the web cover
+    route so the same resolution rules apply everywhere.
+    """
     # Check for cover image in metadata
     cover_id = None
     meta_entries = book.get_metadata("OPF", "cover")
@@ -84,8 +97,8 @@ def _extract_cover_image(book: epub.EpubBook) -> bytes | None:
 
     if cover_id:
         cover_item = book.get_item_with_id(cover_id)
-        if cover_item:
-            return cover_item.get_content()
+        if cover_item is not None:
+            return cover_item
 
     # Fallback: look for items with "cover" in the id or filename
     for item in book.get_items():
@@ -94,9 +107,59 @@ def _extract_cover_image(book: epub.EpubBook) -> bytes | None:
         if "cover" in item_id.lower() or "cover" in item_name.lower():
             content_type = item.get_type()
             if content_type in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
-                return item.get_content()
-
+                return item
     return None
+
+
+_IMAGE_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"RIFF", "image/webp"),  # WEBP starts with RIFF....WEBP
+)
+
+
+def _guess_image_content_type(data: bytes, fallback: str | None = None) -> str:
+    """Best-effort image content-type from magic bytes.
+
+    The OPF media-type attribute is the authoritative answer, but it's not
+    always set or reliable. Sniffing the file header recovers JPEG/PNG/GIF/WEBP
+    without pulling in Pillow. Falls back to the supplied ``fallback`` (typically
+    the manifest's media_type), then ``image/jpeg`` as a last resort — every
+    modern browser will still render the bytes correctly with that guess.
+    """
+    for magic, content_type in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return content_type
+    if fallback:
+        return fallback
+    return "image/jpeg"
+
+
+def extract_cover_bytes(path: Path) -> tuple[bytes, str] | None:
+    """Read an EPUB and return ``(cover_bytes, content_type)`` if present.
+
+    Returns ``None`` when the file is missing, unreadable, or has no cover
+    image. The content type is sniffed from the image header so callers can
+    set an accurate ``Content-Type`` without parsing OPF media-type
+    attributes themselves. Used by the web ``/books/<id>/cover`` route via
+    the on-disk cover cache.
+    """
+    if not path.exists():
+        return None
+    try:
+        book = epub.read_epub(str(path), options={"ignore_ncx": True})
+    except Exception:
+        return None
+    item = _find_cover_item(book)
+    if item is None:
+        return None
+    data = item.get_content()
+    if not data:
+        return None
+    fallback = getattr(item, "media_type", None) or None
+    return data, _guess_image_content_type(data, fallback=fallback)
 
 
 def read_epub_metadata(path: Path) -> BookMetadata:
@@ -179,13 +242,16 @@ def _scrub_none_metadata(book: epub.EpubBook) -> None:
             if len(cleaned) < len(entries):
                 logger.debug(
                     "Scrubbed %d None metadata entries from %s/%s",
-                    len(entries) - len(cleaned), ns, name,
+                    len(entries) - len(cleaned),
+                    ns,
+                    name,
                 )
                 book.metadata[ns][name] = cleaned
 
     # If scrubbing removed the uid identifier, generate a replacement
     if book.uid is None:
         import uuid
+
         new_uid = str(uuid.uuid4())
         book.set_unique_metadata("DC", "identifier", new_uid, {"id": "bookery-uid"})
         book.uid = new_uid
@@ -199,7 +265,8 @@ def _scrub_none_guide(book: epub.EpubBook) -> None:
     """
     original_len = len(book.guide)
     book.guide = [
-        entry for entry in book.guide
+        entry
+        for entry in book.guide
         if entry.get("href") is not None and entry.get("type") is not None
     ]
     removed = original_len - len(book.guide)
