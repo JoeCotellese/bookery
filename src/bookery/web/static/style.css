@@ -577,3 +577,40 @@ header .logo {
     font-size: 0.85rem;
     font-style: italic;
 }
+
+/* --- Cover thumbnails and hero (issue #139, plan-01 step 5) ------------- */
+
+.book-table th.book-row-cover,
+.book-table td.book-row-cover {
+    width: 48px;
+    padding: 0.25rem 0.5rem;
+}
+
+.book-cover-thumb {
+    display: block;
+    width: 40px;
+    height: 60px;
+    object-fit: cover;
+    border: 1px solid var(--color-border);
+    background: #f0f0f0;
+}
+
+/* Hero cover floats to the left of the title block. The section-header
+   selectors above target the title/byline siblings; the hero is a new
+   sibling so the grid stays linear while the float pulls the image. */
+.book-cover-hero {
+    float: left;
+    width: 160px;
+    height: 240px;
+    object-fit: cover;
+    margin: 0 1rem 0.5rem 0;
+    border: 1px solid var(--color-border);
+    background: #f0f0f0;
+}
+
+@media (max-width: 600px) {
+    .book-cover-hero {
+        width: 96px;
+        height: 144px;
+    }
+}

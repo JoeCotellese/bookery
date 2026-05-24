@@ -16,6 +16,7 @@ from flask import (
     url_for,
 )
 
+from bookery.core.config import get_library_root
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
 from bookery.core.pipeline import apply_metadata_safely
 from bookery.core.remove import remove_book
@@ -23,6 +24,7 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
 from bookery.web.browse import BrowsePage, from_request_args
+from bookery.web.covers import get_or_extract_cover
 from bookery.web.diff import metadata_diff
 
 
@@ -144,6 +146,38 @@ def book_detail(book_id):
         )
 
     return render_template("detail.html", book=book, tags=tags, genres=genres, file_info=file_info)
+
+
+@bp.route("/books/<int:book_id>/cover")
+def book_cover(book_id):
+    """Serve a book's cover image (lazy-extracted, on-disk cached).
+
+    Resolves the cover from the library copy (``output_path``) if present,
+    otherwise the source file. Missing books 404; books with no extractable
+    cover get the inline SVG placeholder (200) so the ``<img>`` tag in the
+    list/detail templates never falls back to a broken-image glyph. Successful
+    extractions are cached under ``<library_root>/.covers/<book_id>.<ext>``;
+    every response — placeholder included — sets a long ``Cache-Control`` so
+    the browser handles the repeat case.
+    """
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    epub_path: Path | None = book.output_path or book.source_path
+    library_root = get_library_root()
+
+    data, content_type = get_or_extract_cover(
+        book_id=book_id,
+        epub_path=epub_path,
+        library_root=library_root,
+    )
+
+    response = make_response(data)
+    response.headers["Content-Type"] = content_type
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @bp.route("/books/<int:book_id>/edit", methods=["GET"])

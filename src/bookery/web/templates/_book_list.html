@@ -23,6 +23,7 @@
     <table class="book-table">
         <thead>
             <tr>
+                <th class="book-row-cover" aria-label="Cover"></th>
                 <th>{{ sort_link('Title', 'title') }}</th>
                 <th>{{ sort_link('Author', 'author') }}</th>
                 <th>ISBN</th>
@@ -35,6 +36,16 @@
         <tbody>
             {% for book in page.books %}
             <tr class="book-row">
+                <td class="book-row-cover">
+                    <a href="{{ url_for('web.book_detail', book_id=book.id) }}" tabindex="-1" aria-hidden="true">
+                        <img class="book-cover-thumb"
+                             src="{{ url_for('web.book_cover', book_id=book.id) }}"
+                             alt=""
+                             loading="lazy"
+                             width="40"
+                             height="60">
+                    </a>
+                </td>
                 <td class="book-row-title">
                     <a href="{{ url_for('web.book_detail', book_id=book.id) }}">{{ book.metadata.title }}</a>
                 </td>
