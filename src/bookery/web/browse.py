@@ -6,22 +6,33 @@ from dataclasses import dataclass, field
 
 DEFAULT_PAGE_SIZE = 50
 
+# Allowed sort keys for the /books list controller. Anything else falls back
+# to ``DEFAULT_SORT`` silently — we never 400 the front door on a malformed
+# query string. Bumping or renaming a key here is a behavior change and needs
+# the template's header links updated in lock-step.
+ALLOWED_SORTS: frozenset[str] = frozenset({"title", "author", "added"})
+ALLOWED_DIRS: frozenset[str] = frozenset({"asc", "desc"})
+# Default ordering matches the pre-sortable behavior of the list controller —
+# books sorted by ``author_sort`` then ``title``, ascending — so unbookmarked
+# users see no change after sortable columns land.
+DEFAULT_SORT = "author"
+DEFAULT_DIR = "asc"
+
 
 @dataclass(frozen=True)
 class BrowseQuery:
     """Parsed URL state for the /books list controller.
 
-    Fields not yet exercised by the controller (``sort``, ``dir``, ``filters``)
-    are reserved for plan-01 steps 3 and 4. Keeping them on the dataclass now
-    lets the route plumbing land once and the later steps add behavior in
-    isolation.
+    ``filters`` is reserved for plan-01 step 4. ``sort`` and ``dir`` are
+    validated at parse time so the controller and the catalog can trust them
+    without re-checking.
     """
 
     q: str = ""
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
-    sort: str = ""
-    dir: str = ""
+    sort: str = DEFAULT_SORT
+    dir: str = DEFAULT_DIR
     filters: Mapping[str, str] = field(default_factory=dict)
 
     @property
@@ -50,6 +61,25 @@ def _coerce_int(value: str | None, default: int, minimum: int) -> int:
     return max(minimum, parsed)
 
 
+def _coerce_sort(value: str | None) -> str:
+    """Return ``value`` if it's an allowed sort key; otherwise ``DEFAULT_SORT``.
+
+    Unknown values (including the empty string, mis-cased variants, and
+    obvious injection attempts) fall back silently — the list page is the
+    front door and a stale URL shouldn't 400.
+    """
+    if value in ALLOWED_SORTS:
+        return value
+    return DEFAULT_SORT
+
+
+def _coerce_dir(value: str | None) -> str:
+    """Return ``value`` if it's an allowed direction; otherwise ``DEFAULT_DIR``."""
+    if value in ALLOWED_DIRS:
+        return value
+    return DEFAULT_DIR
+
+
 def from_request_args(
     args: Mapping[str, str], *, default_page_size: int = DEFAULT_PAGE_SIZE
 ) -> BrowseQuery:
@@ -57,14 +87,16 @@ def from_request_args(
 
     Tolerates missing or malformed inputs by falling back to defaults.
     ``page`` is clamped to ``>= 1``; the upper bound (total pages) is the
-    controller's responsibility once it has a result count.
+    controller's responsibility once it has a result count. ``sort`` and
+    ``dir`` are validated against the allow-lists so unknown values render
+    the default ordering instead of crashing the catalog query.
     """
     return BrowseQuery(
         q=(args.get("q") or "").strip(),
         page=_coerce_int(args.get("page"), default=1, minimum=1),
         page_size=default_page_size,
-        sort=(args.get("sort") or "").strip(),
-        dir=(args.get("dir") or "").strip(),
+        sort=_coerce_sort(args.get("sort")),
+        dir=_coerce_dir(args.get("dir")),
     )
 
 

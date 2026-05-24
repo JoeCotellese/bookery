@@ -45,6 +45,38 @@ def _fts_match_expression(q: str) -> str:
     return " ".join('"' + tok.replace('"', '""') + '"' for tok in tokens)
 
 
+# Map URL-layer sort keys to the column expressions used in ORDER BY clauses.
+# ``added`` resolves to ``date_added`` (the schema column), with a stable
+# tiebreaker on ``id`` so equal timestamps still produce a deterministic order.
+# ``title`` and ``author`` carry ``title`` as a secondary key so two books by
+# the same author come back in alphabetical order.
+_SORT_COLUMNS: dict[str, str] = {
+    "title": "title COLLATE NOCASE",
+    "author": "author_sort COLLATE NOCASE, title COLLATE NOCASE",
+    "added": "date_added, id",
+}
+_DEFAULT_ORDER = "author_sort COLLATE NOCASE, title COLLATE NOCASE"
+
+
+def _order_clause_for(sort: str, dir: str) -> str:
+    """Build an ORDER BY fragment for the browse query.
+
+    Whitelist-driven — the inputs come from the trusted ``BrowseQuery`` layer
+    but the catalog re-validates because it's the actual SQL boundary. Unknown
+    keys fall back to the historical default ordering. The direction is
+    appended to every key in the column expression so multi-key sorts flip
+    together.
+    """
+    columns = _SORT_COLUMNS.get(sort)
+    direction = "DESC" if dir == "desc" else "ASC"
+    if columns is None:
+        return _DEFAULT_ORDER
+    # Apply the direction to each comma-separated key so secondary sort
+    # tiebreakers respect the user's chosen direction.
+    parts = [part.strip() for part in columns.split(",")]
+    return ", ".join(f"{part} {direction}" for part in parts)
+
+
 class LibraryCatalog:
     """Wraps a sqlite3 connection and provides typed CRUD for the books table."""
 
@@ -207,15 +239,23 @@ class LibraryCatalog:
         q: str = "",
         offset: int = 0,
         limit: int = 50,
+        sort: str = "",
+        dir: str = "",
     ) -> tuple[list[BookRecord], int]:
         """Paginated browse over the catalog.
 
-        Empty ``q`` returns rows ordered by ``author_sort, title``; a
-        non-empty ``q`` runs an FTS5 MATCH ranked by relevance. ``offset``
-        and ``limit`` are applied server-side so the caller never sees rows
-        beyond the requested page. The second tuple element is the total
-        count for the query (independent of ``offset`` and ``limit``) so the
-        controller can drive paging UI without a second round-trip.
+        Empty ``q`` returns rows ordered by ``sort`` + ``dir`` (default:
+        ``author_sort, title`` ascending). A non-empty ``q`` runs an FTS5
+        MATCH ranked by relevance and ignores ``sort`` — relevance is the
+        useful ordering for a search. ``offset`` and ``limit`` are applied
+        server-side so the caller never sees rows beyond the requested page.
+        The second tuple element is the total count for the query
+        (independent of ``offset`` and ``limit``) so the controller can drive
+        paging UI without a second round-trip.
+
+        Unknown ``sort`` / ``dir`` values fall back to the default ordering
+        silently — callers are expected to validate at the URL layer
+        (``BrowseQuery``) but the catalog stays robust on its own.
         """
         match = _fts_match_expression(q) if q else ""
         if match:
@@ -237,8 +277,9 @@ class LibraryCatalog:
         else:
             total_row = self._conn.execute("SELECT COUNT(*) FROM books").fetchone()
             total = int(total_row[0]) if total_row else 0
+            order_clause = _order_clause_for(sort, dir)
             cursor = self._conn.execute(
-                "SELECT * FROM books ORDER BY author_sort, title LIMIT ? OFFSET ?",
+                f"SELECT * FROM books ORDER BY {order_clause} LIMIT ? OFFSET ?",
                 (limit, offset),
             )
         records = [row_to_record(row) for row in cursor.fetchall()]

@@ -116,9 +116,7 @@ class TestBrowseSearch:
     def test_q_multi_word_still_matches(self, catalog):
         """Phrase-escaping per token must preserve implicit AND across tokens."""
         for title in ["The Rose Garden", "Rose of Sharon", "Garden Tools"]:
-            meta = BookMetadata(
-                title=title, authors=["A"], source_path=Path(f"/tmp/{title}.epub")
-            )
+            meta = BookMetadata(title=title, authors=["A"], source_path=Path(f"/tmp/{title}.epub"))
             catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
         rows, total = catalog.browse(q="rose garden")
         titles = [r.metadata.title for r in rows]
@@ -143,3 +141,60 @@ class TestBrowseSearch:
         rows, total = catalog.browse(q="rose", limit=2, offset=0)
         assert total == 5
         assert len(rows) == 2
+
+
+class TestBrowseSort:
+    def _seed_three(self, catalog: LibraryCatalog) -> None:
+        for title, author in [
+            ("Apple", "Zelda"),
+            ("Banana", "Adams"),
+            ("Cherry", "Murphy"),
+        ]:
+            meta = BookMetadata(
+                title=title,
+                authors=[author],
+                author_sort=author,
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+
+    def test_sort_by_title_asc(self, catalog):
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="title", dir="asc")
+        assert [r.metadata.title for r in rows] == ["Apple", "Banana", "Cherry"]
+
+    def test_sort_by_title_desc(self, catalog):
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="title", dir="desc")
+        assert [r.metadata.title for r in rows] == ["Cherry", "Banana", "Apple"]
+
+    def test_sort_by_author_asc(self, catalog):
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="author", dir="asc")
+        assert [r.metadata.author_sort for r in rows] == ["Adams", "Murphy", "Zelda"]
+
+    def test_sort_by_author_desc(self, catalog):
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="author", dir="desc")
+        assert [r.metadata.author_sort for r in rows] == ["Zelda", "Murphy", "Adams"]
+
+    def test_sort_by_added_desc_newest_first(self, catalog):
+        # Inserts happen in order; date_added defaults to "now". Use ids to
+        # confirm newest-first ordering since timestamps may collide at
+        # sub-second resolution.
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="added", dir="desc")
+        ids = [r.id for r in rows]
+        assert ids == sorted(ids, reverse=True)
+
+    def test_sort_by_added_asc_oldest_first(self, catalog):
+        self._seed_three(catalog)
+        rows, _ = catalog.browse(sort="added", dir="asc")
+        ids = [r.id for r in rows]
+        assert ids == sorted(ids)
+
+    def test_unknown_sort_falls_back_to_default(self, catalog):
+        self._seed_three(catalog)
+        # Unknown key should not crash; behaves like default (author asc).
+        rows, _ = catalog.browse(sort="bogus", dir="desc")
+        assert len(rows) == 3

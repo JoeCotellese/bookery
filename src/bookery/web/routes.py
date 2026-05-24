@@ -88,7 +88,13 @@ def books():
     catalog = current_app.config["CATALOG"]
     query = from_request_args(request.args)
 
-    books_page, total = catalog.browse(q=query.q, offset=query.offset, limit=query.page_size)
+    books_page, total = catalog.browse(
+        q=query.q,
+        offset=query.offset,
+        limit=query.page_size,
+        sort=query.sort,
+        dir=query.dir,
+    )
 
     # Clamp out-of-range page requests to the last valid page rather than
     # 404ing — bookmarks and stale links shouldn't break the front door.
@@ -96,7 +102,11 @@ def books():
         last_page = max(1, (total + query.page_size - 1) // query.page_size)
         clamped = query.with_page(last_page)
         books_page, total = catalog.browse(
-            q=clamped.q, offset=clamped.offset, limit=clamped.page_size
+            q=clamped.q,
+            offset=clamped.offset,
+            limit=clamped.page_size,
+            sort=clamped.sort,
+            dir=clamped.dir,
         )
         query = clamped
 
