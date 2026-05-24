@@ -3,7 +3,7 @@
 <h1 class="page-title">Edit: {{ book.metadata.title }}</h1>
 <div class="edit-layout">
     <form class="edit-form"
-          hx-post="{{ url_for('web.update_book', book_id=book.id) }}"
+          hx-post="{{ url_for('web.update_book', book_id=book.id, return_to=return_to or none) }}"
           hx-target="#book-content"
           hx-swap="innerHTML">
         {% if error %}
@@ -53,11 +53,12 @@
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save</button>
+            {%- set cancel_url = url_for('web.book_detail', book_id=book.id, return_to=return_to or none) -%}
             <button type="button"
                     class="btn btn-secondary"
                     id="edit-cancel"
-                    hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
-                    hx-push-url="{{ url_for('web.book_detail', book_id=book.id) }}"
+                    hx-get="{{ cancel_url }}"
+                    hx-push-url="{{ cancel_url }}"
                     hx-target="#book-content"
                     hx-swap="innerHTML">Cancel</button>
         </div>

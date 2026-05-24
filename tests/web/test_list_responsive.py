@@ -48,9 +48,10 @@ class TestMobileCardMarkup:
         # The card itself should be wrapped in <a href="/books/42">.
         # Match an <a ...> tag whose href points at the book detail and which
         # carries the book-card class.
+        # Allow a trailing ``?return_to=…`` (plan-02 step 3) inside the href.
         pattern = re.compile(
-            r'<a[^>]+class="book-card"[^>]*href="[^"]*/books/42"'
-            r'|<a[^>]+href="[^"]*/books/42"[^>]*class="book-card"'
+            r'<a[^>]+class="book-card[^"]*"[^>]*href="[^"]*/books/42(\?[^"]*)?"'
+            r'|<a[^>]+href="[^"]*/books/42(\?[^"]*)?"[^>]*class="book-card[^"]*"'
         )
         assert pattern.search(html), f"book-card anchor not found in: {html[:2000]}"
 

@@ -14,10 +14,11 @@
     <p class="enriched-badge" aria-label="Enriched">&#10003; Enriched</p>
     {% endif %}
     <div class="toolbar" role="toolbar" aria-label="Book actions">
+        {%- set edit_url = url_for('web.edit_form', book_id=book.id, return_to=return_to or none) -%}
         <button type="button"
                 class="btn btn-secondary"
-                hx-get="{{ url_for('web.edit_form', book_id=book.id) }}"
-                hx-push-url="{{ url_for('web.edit_form', book_id=book.id) }}"
+                hx-get="{{ edit_url }}"
+                hx-push-url="{{ edit_url }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Edit</button>
         <button type="button"

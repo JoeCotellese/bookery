@@ -5,7 +5,7 @@
 {% block content %}
 <div class="book-detail">
     <nav aria-label="Breadcrumb" class="back-link">
-        <a href="{{ url_for('web.books') }}" aria-current="page">&larr; Back to library</a>
+        <a href="{{ return_to or url_for('web.books') }}" aria-current="page">&larr; Back to library</a>
     </nav>
 
     <div id="book-content" aria-live="polite">

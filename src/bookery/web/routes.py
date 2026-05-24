@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
@@ -26,6 +27,42 @@ from bookery.util.text import strip_html
 from bookery.web.browse import BrowsePage, from_request_args
 from bookery.web.covers import get_or_extract_cover
 from bookery.web.diff import metadata_diff
+
+
+def _safe_return_to(value: str | None) -> str | None:
+    """Sanitize a ``return_to`` query param to an internal path.
+
+    The list controller stamps each row anchor with the originating list
+    URL so detail / edit / diff back-links can return the user to the
+    exact view they came from (filters, page, sort all intact). Because
+    the value is user-controllable, we accept only absolute internal
+    paths — anything with a scheme (``https://``), an authority
+    (``//evil.com``), or a non-``/``-leading path falls back to ``None``
+    so the consumer renders the default ``/books`` back-link. This
+    prevents the param from being used as an open-redirect or a
+    ``javascript:`` URL smuggle.
+    """
+    if not value:
+        return None
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc:
+        return None
+    if not parsed.path.startswith("/"):
+        return None
+    return value
+
+
+def _current_list_url() -> str:
+    """Return the current request's path+query, suitable for ``return_to``.
+
+    Flask's ``request.full_path`` always appends ``?`` even when the query
+    string is empty, so we trim a lone trailing ``?`` to keep the value
+    tidy for round-tripping through ``url_for``.
+    """
+    full = request.full_path
+    if full.endswith("?"):
+        return full[:-1]
+    return full
 
 
 def _file_context(book) -> dict[str, str]:
@@ -122,10 +159,14 @@ def books():
         query=query,
     )
 
+    # ``list_url`` is what row anchors stamp into ``?return_to=`` so detail /
+    # edit / diff back-links can return to this exact view (filters, page,
+    # sort all preserved). Same value on both htmx and full-page paths.
+    list_url = _current_list_url()
     if request.headers.get("HX-Request"):
-        return render_template("_book_list.html", page=page, query=query)
+        return render_template("_book_list.html", page=page, query=query, list_url=list_url)
 
-    return render_template("list.html", page=page, query=query)
+    return render_template("list.html", page=page, query=query, list_url=list_url)
 
 
 @bp.route("/books/<int:book_id>")
@@ -139,13 +180,26 @@ def book_detail(book_id):
     tags = catalog.get_tags_for_book(book_id)
     genres = catalog.get_genres_for_book(book_id)
     file_info = _file_context(book)
+    return_to = _safe_return_to(request.args.get("return_to"))
 
     if request.headers.get("HX-Request"):
         return render_template(
-            "_detail.html", book=book, tags=tags, genres=genres, file_info=file_info
+            "_detail.html",
+            book=book,
+            tags=tags,
+            genres=genres,
+            file_info=file_info,
+            return_to=return_to,
         )
 
-    return render_template("detail.html", book=book, tags=tags, genres=genres, file_info=file_info)
+    return render_template(
+        "detail.html",
+        book=book,
+        tags=tags,
+        genres=genres,
+        file_info=file_info,
+        return_to=return_to,
+    )
 
 
 @bp.route("/books/<int:book_id>/cover")
@@ -195,9 +249,12 @@ def edit_form(book_id):
         abort(404)
 
     file_info = _file_context(book)
+    return_to = _safe_return_to(request.args.get("return_to"))
     if request.headers.get("HX-Request"):
-        return render_template("_edit_form.html", book=book, file_info=file_info)
-    return render_template("edit.html", book=book, file_info=file_info)
+        return render_template(
+            "_edit_form.html", book=book, file_info=file_info, return_to=return_to
+        )
+    return render_template("edit.html", book=book, file_info=file_info, return_to=return_to)
 
 
 @bp.route("/books/<int:book_id>/edit", methods=["POST"])
@@ -256,13 +313,25 @@ def update_book(book_id):
     genres = catalog.get_genres_for_book(book_id)
     file_info = _file_context(book)
 
+    return_to = _safe_return_to(request.args.get("return_to"))
     response = make_response(
-        render_template("_detail.html", book=book, tags=tags, genres=genres, file_info=file_info)
+        render_template(
+            "_detail.html",
+            book=book,
+            tags=tags,
+            genres=genres,
+            file_info=file_info,
+            return_to=return_to,
+        )
     )
     # If the user came from the edit URL (/books/<id>/edit), push the URL
     # back to /books/<id> so refresh/share lands on detail, not on a stale
-    # edit URL that would re-render the form.
-    response.headers["HX-Push-Url"] = url_for("web.book_detail", book_id=book_id)
+    # edit URL that would re-render the form. ``return_to`` rides along so
+    # the breadcrumb on the now-pushed detail URL still resolves to the
+    # originating list view.
+    response.headers["HX-Push-Url"] = url_for(
+        "web.book_detail", book_id=book_id, return_to=return_to or None
+    )
     return response
 
 
