@@ -7,26 +7,15 @@
     <input type="search"
            name="q"
            placeholder="Search books..."
-           value="{{ query or '' }}"
+           value="{{ query.q }}"
            hx-get="{{ url_for('web.books') }}"
            hx-trigger="keyup changed delay:300ms"
-           hx-target="#book-table-body"
-           hx-include="this">
+           hx-target="#book-list"
+           hx-include="this"
+           hx-push-url="true">
 </div>
 
-<table class="book-table">
-    <thead>
-        <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>ISBN</th>
-            <th>Language</th>
-            <th>Publisher</th>
-            <th>Enriched</th>
-        </tr>
-    </thead>
-    <tbody id="book-table-body">
-        {% include "_table.html" %}
-    </tbody>
-</table>
+<div id="book-list">
+    {% include "_book_list.html" %}
+</div>
 {% endblock %}

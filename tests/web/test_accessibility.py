@@ -52,26 +52,27 @@ class TestBookListRowAnchors:
     """Issue #124 — book list rows must use real anchors, not onclick JS."""
 
     def test_row_has_real_anchor_to_detail(self, mock_catalog, client):
-        mock_catalog.list_all_by_author.return_value = [
-            make_book(book_id=42, title="The Test Book", authors=["Jane Author"])
-        ]
+        mock_catalog.browse.return_value = (
+            [make_book(book_id=42, title="The Test Book", authors=["Jane Author"])],
+            1,
+        )
         html = client.get("/books").data.decode()
         assert 'href="/books/42"' in html
 
     def test_row_has_no_onclick_attribute(self, mock_catalog, client):
-        mock_catalog.list_all_by_author.return_value = [
-            make_book(book_id=42, title="The Test Book", authors=["Jane Author"])
-        ]
+        mock_catalog.browse.return_value = (
+            [make_book(book_id=42, title="The Test Book", authors=["Jane Author"])],
+            1,
+        )
         html = client.get("/books").data.decode()
         assert "onclick" not in html.lower()
 
     def test_anchor_wraps_title_text(self, mock_catalog, client):
-        mock_catalog.list_all_by_author.return_value = [
-            make_book(book_id=42, title="The Test Book", authors=["Jane Author"])
-        ]
+        mock_catalog.browse.return_value = (
+            [make_book(book_id=42, title="The Test Book", authors=["Jane Author"])],
+            1,
+        )
         html = client.get("/books").data.decode()
         # Anchor must contain the title text so keyboard users land on a
         # focusable element whose accessible name is the book title.
-        assert re.search(
-            r'<a[^>]+href="/books/42"[^>]*>\s*The Test Book\s*</a>', html
-        )
+        assert re.search(r'<a[^>]+href="/books/42"[^>]*>\s*The Test Book\s*</a>', html)

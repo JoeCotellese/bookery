@@ -55,6 +55,7 @@ def mock_catalog():
     catalog = Mock()
     catalog.list_all_by_author.return_value = []
     catalog.search.return_value = []
+    catalog.browse.return_value = ([], 0)
     catalog.get_by_id.return_value = None
     catalog.get_tags_for_book.return_value = []
     catalog.get_genres_for_book.return_value = []
@@ -100,7 +101,7 @@ class TestBookList:
     def test_books_lists_all_books_sorted_by_author(self, mock_catalog, client):
         book_a = _make_book(1, title="Zebra", authors=["Adams, John"], author_sort="Adams, John")
         book_b = _make_book(2, title="Apple", authors=["Brown, Dan"], author_sort="Brown, Dan")
-        mock_catalog.list_all_by_author.return_value = [book_a, book_b]
+        mock_catalog.browse.return_value = ([book_a, book_b], 2)
 
         response = client.get("/books")
         html = response.data.decode()
@@ -123,7 +124,7 @@ class TestBookList:
             output_path=Path("/out/plain.epub"),
             metadata_matched_at=None,
         )
-        mock_catalog.list_all_by_author.return_value = [enriched, plain]
+        mock_catalog.browse.return_value = ([enriched, plain], 2)
 
         response = client.get("/books")
         html = response.data.decode()
@@ -139,7 +140,7 @@ class TestBookList:
             language="en",
             publisher="Scribner",
         )
-        mock_catalog.list_all_by_author.return_value = [book]
+        mock_catalog.browse.return_value = ([book], 1)
 
         response = client.get("/books")
         html = response.data.decode()
@@ -225,23 +226,24 @@ class TestBookDetail:
 class TestSearch:
     def test_search_returns_matching_books(self, mock_catalog, client):
         book = _make_book(1, title="The Rose Garden")
-        mock_catalog.search.return_value = [book]
+        mock_catalog.browse.return_value = ([book], 1)
 
         response = client.get("/books?q=rose")
         html = response.data.decode()
         assert response.status_code == 200
         assert "The Rose Garden" in html
-        mock_catalog.search.assert_called_once_with("rose")
+        mock_catalog.browse.assert_called_once()
+        assert mock_catalog.browse.call_args.kwargs["q"] == "rose"
 
     def test_search_no_results_message(self, mock_catalog, client):
-        mock_catalog.search.return_value = []
+        mock_catalog.browse.return_value = ([], 0)
 
         response = client.get("/books?q=zzzzz")
         html = response.data.decode()
         assert "No books matching &#39;zzzzz&#39;" in html or "No books matching 'zzzzz'" in html
 
     def test_htmx_request_returns_partial_only(self, mock_catalog, client):
-        mock_catalog.search.return_value = []
+        mock_catalog.browse.return_value = ([], 0)
 
         response = client.get("/books?q=test", headers={"HX-Request": "true"})
         html = response.data.decode()
@@ -249,7 +251,7 @@ class TestSearch:
         assert "<head" not in html
 
     def test_non_htmx_search_returns_full_page(self, mock_catalog, client):
-        mock_catalog.search.return_value = []
+        mock_catalog.browse.return_value = ([], 0)
 
         response = client.get("/books?q=test")
         html = response.data.decode()
