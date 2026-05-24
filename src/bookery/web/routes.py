@@ -22,6 +22,7 @@ from bookery.core.remove import remove_book
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
+from bookery.web.browse import BrowsePage, from_request_args
 from bookery.web.diff import metadata_diff
 
 
@@ -75,16 +76,42 @@ def index():
 
 @bp.route("/books")
 def books():
-    """List all books, with optional search via query param."""
-    catalog = current_app.config["CATALOG"]
-    query = request.args.get("q", "").strip()
+    """List books with URL-driven browse state (q, page).
 
-    book_list = catalog.search(query) if query else catalog.list_all_by_author()
+    Single source of truth is a parsed ``BrowseQuery``. Pagination is
+    server-side: ``catalog.browse`` returns the rows for the requested
+    page plus the total match count so the controller can clamp an
+    out-of-range page and render ``Showing X-Y of Z`` without a second
+    query. Both htmx and full-page responses go through the same
+    ``BrowsePage`` so the count, rows, and pager stay in lock-step.
+    """
+    catalog = current_app.config["CATALOG"]
+    query = from_request_args(request.args)
+
+    books_page, total = catalog.browse(q=query.q, offset=query.offset, limit=query.page_size)
+
+    # Clamp out-of-range page requests to the last valid page rather than
+    # 404ing — bookmarks and stale links shouldn't break the front door.
+    if total > 0 and not books_page and query.page > 1:
+        last_page = max(1, (total + query.page_size - 1) // query.page_size)
+        clamped = query.with_page(last_page)
+        books_page, total = catalog.browse(
+            q=clamped.q, offset=clamped.offset, limit=clamped.page_size
+        )
+        query = clamped
+
+    page = BrowsePage(
+        books=books_page,
+        total=total,
+        page=query.page,
+        page_size=query.page_size,
+        query=query,
+    )
 
     if request.headers.get("HX-Request"):
-        return render_template("_table.html", books=book_list, query=query)
+        return render_template("_book_list.html", page=page, query=query)
 
-    return render_template("list.html", books=book_list, query=query)
+    return render_template("list.html", page=page, query=query)
 
 
 @bp.route("/books/<int:book_id>")

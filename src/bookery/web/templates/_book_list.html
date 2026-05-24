@@ -1,0 +1,63 @@
+{# ABOUTME: Plan-01 paginated list partial — count label, table, pager. #}
+{# Rendered standalone for htmx swaps into #book-list. #}
+
+{% if page.total > 0 %}
+    <p class="result-count">Showing {{ page.start }}&ndash;{{ page.end }} of {{ page.total }}</p>
+
+    <table class="book-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Author</th>
+                <th>ISBN</th>
+                <th>Language</th>
+                <th>Publisher</th>
+                <th>Enriched</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for book in page.books %}
+            <tr class="book-row">
+                <td class="book-row-title">
+                    <a href="{{ url_for('web.book_detail', book_id=book.id) }}">{{ book.metadata.title }}</a>
+                </td>
+                <td>{{ book.metadata.author }}</td>
+                <td>{{ book.metadata.isbn or '' }}</td>
+                <td>{{ book.metadata.language or '' }}</td>
+                <td>{{ book.metadata.publisher or '' }}</td>
+                <td>{% if book.metadata_matched_at %}&#10003;{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page.total_pages > 1 %}
+    <nav class="pager" aria-label="Pagination">
+        {% if page.has_prev %}
+            <a class="pager-prev"
+               href="{{ url_for('web.books', q=query.q or none, page=page.page - 1) }}"
+               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page - 1) }}"
+               hx-target="#book-list"
+               hx-push-url="true">&laquo; Previous</a>
+        {% else %}
+            <span class="pager-prev pager-disabled" aria-hidden="true">&laquo; Previous</span>
+        {% endif %}
+
+        <span class="pager-status">Page {{ page.page }} of {{ page.total_pages }}</span>
+
+        {% if page.has_next %}
+            <a class="pager-next"
+               href="{{ url_for('web.books', q=query.q or none, page=page.page + 1) }}"
+               hx-get="{{ url_for('web.books', q=query.q or none, page=page.page + 1) }}"
+               hx-target="#book-list"
+               hx-push-url="true">Next &raquo;</a>
+        {% else %}
+            <span class="pager-next pager-disabled" aria-hidden="true">Next &raquo;</span>
+        {% endif %}
+    </nav>
+    {% endif %}
+{% elif query.q %}
+    <p class="empty-state">No books matching '{{ query.q }}'</p>
+{% else %}
+    <p class="empty-state">Your library is empty. Run <code>bookery import</code> to add books.</p>
+{% endif %}

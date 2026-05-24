@@ -116,6 +116,7 @@ def mock_catalog():
     catalog = Mock()
     catalog.list_all_by_author.return_value = []
     catalog.search.return_value = []
+    catalog.browse.return_value = ([], 0)
     catalog.get_by_id.return_value = None
     catalog.get_tags_for_book.return_value = []
     catalog.get_genres_for_book.return_value = []

@@ -178,6 +178,48 @@ class LibraryCatalog:
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
+    def browse(
+        self,
+        *,
+        q: str = "",
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[BookRecord], int]:
+        """Paginated browse over the catalog.
+
+        Empty ``q`` returns rows ordered by ``author_sort, title``; a
+        non-empty ``q`` runs an FTS5 MATCH ranked by relevance. ``offset``
+        and ``limit`` are applied server-side so the caller never sees rows
+        beyond the requested page. The second tuple element is the total
+        count for the query (independent of ``offset`` and ``limit``) so the
+        controller can drive paging UI without a second round-trip.
+        """
+        if q:
+            total_row = self._conn.execute(
+                "SELECT COUNT(*) FROM books "
+                "JOIN books_fts ON books.id = books_fts.rowid "
+                "WHERE books_fts MATCH ?",
+                (q,),
+            ).fetchone()
+            total = int(total_row[0]) if total_row else 0
+            cursor = self._conn.execute(
+                "SELECT books.* FROM books "
+                "JOIN books_fts ON books.id = books_fts.rowid "
+                "WHERE books_fts MATCH ? "
+                "ORDER BY books_fts.rank "
+                "LIMIT ? OFFSET ?",
+                (q, limit, offset),
+            )
+        else:
+            total_row = self._conn.execute("SELECT COUNT(*) FROM books").fetchone()
+            total = int(total_row[0]) if total_row else 0
+            cursor = self._conn.execute(
+                "SELECT * FROM books ORDER BY author_sort, title LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+        records = [row_to_record(row) for row in cursor.fetchall()]
+        return records, total
+
     def update_book(
         self,
         book_id: int,
@@ -250,8 +292,7 @@ class LibraryCatalog:
             cleared = [k for k in written if fields[k] in (None, "", "[]", "{}")]
             if cleared:
                 self._conn.executemany(
-                    "DELETE FROM book_field_provenance "
-                    "WHERE book_id = ? AND field_name = ?",
+                    "DELETE FROM book_field_provenance WHERE book_id = ? AND field_name = ?",
                     [(book_id, k) for k in cleared],
                 )
 
@@ -329,8 +370,7 @@ class LibraryCatalog:
             )
         else:
             self._conn.execute(
-                "UPDATE book_field_provenance SET locked = 0 "
-                "WHERE book_id = ? AND field_name = ?",
+                "UPDATE book_field_provenance SET locked = 0 WHERE book_id = ? AND field_name = ?",
                 (book_id, field_name),
             )
         self._conn.commit()
@@ -338,8 +378,7 @@ class LibraryCatalog:
     def get_locked_fields(self, book_id: int) -> set[str]:
         """Return the set of field names currently locked on this book."""
         rows = self._conn.execute(
-            "SELECT field_name FROM book_field_provenance "
-            "WHERE book_id = ? AND locked = 1",
+            "SELECT field_name FROM book_field_provenance WHERE book_id = ? AND locked = 1",
             (book_id,),
         ).fetchall()
         return {row["field_name"] for row in rows}
