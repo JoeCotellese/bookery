@@ -201,6 +201,58 @@ def test_body_h2_demoted_to_h5(tmp_path: Path):
     assert "##### Subsection" in md
 
 
+def test_body_h3_demoted_below_toc(tmp_path: Path):
+    # Notes own H3. Any body H3 must cascade to H6 so it never appears as a
+    # sibling note entry in the TOC and never causes a pandoc --split-level=3
+    # spine split.
+    notes = [_note("T", "F", "### Inner Heading\n\nbody\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    h3_lines = [ln for ln in md.splitlines() if ln.startswith("### ")]
+    assert h3_lines == ["### T {#t}"]
+    assert "###### Inner Heading" in md
+
+
+def test_body_h4_and_h5_clamped_to_h6(tmp_path: Path):
+    # H4 and H5 already sit below the TOC depth, but demote to H6 anyway so
+    # every body heading lands at a single predictable level.
+    notes = [_note("T", "F", "#### Four\n\n##### Five\n\nbody\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "###### Four" in md
+    assert "###### Five" in md
+    # No H4 or H5 heading lines should survive.
+    assert not any(ln.startswith("#### ") for ln in md.splitlines())
+    assert not any(ln.startswith("##### ") for ln in md.splitlines())
+
+
+def test_body_h6_left_at_h6(tmp_path: Path):
+    notes = [_note("T", "F", "###### Already Deep\n\nbody\n")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    assert "###### Already Deep" in result.markdown
+
+
+def test_literature_note_with_many_h3_subsections_yields_one_toc_entry(tmp_path: Path):
+    # Real-world shape: a book note containing per-chapter H2 sections each
+    # holding ### Key Points and ### Chapter Questions. None of those body
+    # headings may surface at H3 or shallower in the assembled markdown.
+    body = (
+        "# Book Title\n\n"
+        "## Chapter 1\n\n"
+        "### Key Points\n- point\n\n"
+        "### Chapter Questions\n1. Q?\n\n"
+        "## Chapter 2\n\n"
+        "### Key Points\n- point\n\n"
+        "### Chapter Questions\n1. Q?\n"
+    )
+    notes = [_note("The Loop", "Lit", body)]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    h3_lines = [ln for ln in md.splitlines() if ln.startswith("### ")]
+    # Exactly one H3 entry — the note title itself.
+    assert h3_lines == ["### The Loop {#the-loop}"]
+
+
 def test_duplicate_titles_in_same_folder_use_filename_hint(tmp_path: Path):
     # Two "Reference" literature notes in the same folder — common in a real
     # vault where every book note has its own References.md. The folder alone

@@ -81,8 +81,7 @@ def _disambiguate(notes: list[Note], display_for: dict[int, str]) -> dict[int, t
     return result
 
 
-_H1_LINE_RE = re.compile(r"^# (.+)$", re.MULTILINE)
-_H2_LINE_RE = re.compile(r"^## (.+)$", re.MULTILINE)
+_BODY_HEADING_RE = re.compile(r"^(#{1,6}) (.+)$", re.MULTILINE)
 _FOLDER_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -103,17 +102,24 @@ def _folder_label(folder: str) -> str:
 
 
 def _demote_body_headings(body: str) -> str:
-    """Demote body H1/H2 down so they sit beneath the note's H3 heading.
+    """Demote every body heading so none compete with the note's H3 entry.
 
     Folders are H1 chapters, letter buckets are H2 sections, and notes are H3
-    entries. Any in-body H1 or H2 would compete with those structural headings
-    in the TOC, so push body H1->H4 and body H2->H5. The H2 substitution runs
-    first so demoted H1s (now starting with ``## ``) are not re-matched as
-    H2s. pandoc ``--toc-depth=3`` only walks folder->bucket->note.
+    entries. pandoc ``--toc-depth=3`` walks folder->bucket->note and
+    ``--split-level=3`` splits the spine at H3. Any in-body H1/H2/H3 would
+    pollute both the TOC and the spine, and body H4/H5/H6 also get pushed to
+    H6 so the rendered note has a single, predictable subheading level.
+
+    Mapping: H1->H4, H2->H5, H3-H6->H6. Implemented as one pass over a
+    leading-hash regex so demoted headings cannot be re-matched.
     """
-    body = _H2_LINE_RE.sub(r"##### \1", body)
-    body = _H1_LINE_RE.sub(r"#### \1", body)
-    return body
+
+    def _shift(match: re.Match[str]) -> str:
+        level = len(match.group(1))
+        new_level = min(level + 3, 6)
+        return f"{'#' * new_level} {match.group(2)}"
+
+    return _BODY_HEADING_RE.sub(_shift, body)
 
 
 @dataclass(slots=True)
