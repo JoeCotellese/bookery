@@ -6,7 +6,7 @@ Bookery takes the "metadata-first" approach that made beets great for music and 
 
 ## Status
 
-**Early development** — Bookery is functional but not yet feature-complete. EPUB metadata extraction, MOBI-to-EPUB conversion, matching against Open Library, SQLite catalog, and non-destructive write-back are working. Device sync and plugins are on the roadmap.
+**Active development** — daily-driver usable. EPUB metadata extraction, MOBI/PDF-to-EPUB conversion, multi-provider matching (Open Library + Google Books) with consensus merging, a SQLite catalog with per-field provenance, non-destructive write-back, Kobo device sync, a local web UI for browsing/editing, and Obsidian vault-export are all working. Plugin architecture is the main item still on the roadmap.
 
 See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
@@ -16,10 +16,14 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
 - **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
 - **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
-- **Open Library matching** — searches by ISBN (precise) or title/author (fuzzy), with confidence scoring
+- **Multi-provider metadata matching** — Open Library and Google Books in a consensus merger that prefers values agreed on by ≥2 providers and falls back to a priority order otherwise. ISBN-10/13 lookups are normalized and provider responses are cached.
+- **Per-field provenance & locking** — every cataloged field records which provider supplied it and when. User edits are stamped as `user` and locked against `rematch`; individual fields can be locked/unlocked explicitly with `bookery info --lock` / `--unlock`.
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
 - **Smart normalization** — splits mangled filenames like `SteveBerry-TheTemplarLegacy` into clean search queries, detects embedded author names
 - **SQLite catalog** — imports books into a local database for querying, tagging, and integrity checks
+- **Web UI** — `bookery serve` launches a local browser UI for paginated/sortable browsing of the catalog, filter chips, cover thumbnails, a responsive mobile card layout, per-book detail/edit pages, search-active-providers, and "apply candidate metadata with diff" rematch flow.
+- **Genre management** — `bookery genre` auto-maps raw provider subjects to a canonical genre vocabulary, with `assign` / `apply` / `auto` / `stats` / `unmatched` for curation.
+- **Obsidian vault-export** — `bookery vault-export` turns an Obsidian vault into a single EPUB with a hierarchical folder/note TOC, A-Z buckets within each folder, leading-article-aware filing ("The Loop" files under L), resolved `[[wiki-links]]` and `![[image]]` embeds, and an optional tag index. Can auto-catalog the export so it ships on the next Kobo sync.
 - **Non-destructive** — metadata writes always go to a copy; original file contents are never modified. `import` copies each source into your library by default (`--move` deletes the source after a successful catalog insert)
 
 ## Installation
@@ -143,12 +147,15 @@ bookery info 42
 
 | Command | Description |
 |---------|-------------|
+| `add <file>` | Add a single EPUB or PDF to the library in one step (copies into `library_root`, matches, catalogs; `--move` deletes the source) |
 | `import <dir>` | Scan for EPUBs, copy into `library_root`, and catalog them (supports `--match`, `--move`) |
 | `remove <id>...` | Delete one or more books from the catalog and disk (`-y` skips prompt; `--keep-file` keeps the file) |
+| `prune` | Remove catalog rows whose underlying files are missing |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |
-| `info <id>` | Show detailed metadata for a book by ID |
+| `info <id>` | Show detailed metadata for a book by ID (`--provenance`, `--set field=value`, `--lock field`, `--unlock field`) |
 | `search <query>` | Search the catalog by title, author, or description |
 | `inventory <path>` | Scan a directory tree and report ebook format coverage |
+| `folder <query>` | Open the on-disk folder for a book (`--print` to print the path instead) |
 
 ### Organization
 
@@ -157,7 +164,21 @@ bookery info 42
 | `tag add <id> <tag>` | Add a tag to a book |
 | `tag rm <id> <tag>` | Remove a tag from a book |
 | `tag ls` | List all tags with book counts |
+| `genre assign <id> <genre>` | Assign a canonical genre to a book |
+| `genre apply` | Batch-assign genres from subjects for cataloged books |
+| `genre auto` | Auto-map provider subjects to canonical genres across the catalog |
+| `genre ls` | List all canonical genres with book counts |
+| `genre stats` | Show the most common subjects that don't map to a canonical genre |
+| `genre unmatched` | Show books with subjects but no genre assigned |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
+
+### Web UI
+
+| Command | Description |
+|---------|-------------|
+| `serve` | Launch the local web UI (`--host`, `--port`; default `127.0.0.1:5000`) |
+
+The web UI provides paginated and sortable browsing, filter chips, cover thumbnails, a responsive mobile card layout, per-book detail and edit pages, a "search active providers" flow that lets you apply candidate metadata with a side-by-side diff, and inline delete.
 
 ### Device sync
 
@@ -281,12 +302,15 @@ in `CONTRIBUTING.md`.
 Bookery is being built in phases:
 
 1. ~~EPUB metadata read/write + CLI skeleton~~
-2. ~~Open Library matching + interactive review~~
-3. ~~SQLite catalog, import pipeline, query commands~~
+2. ~~Multi-provider matching (Open Library + Google Books) with consensus merger and interactive review~~
+3. ~~SQLite catalog, import pipeline, per-field provenance, query commands~~
 4. ~~MOBI-to-EPUB conversion~~
-5. **Next:** Plugin architecture (format and provider plugins)
-6. Kobo device integration
-7. Polish (config, covers, progress bars, performance)
+5. ~~PDF-to-EPUB conversion (semantic, local-LLM)~~
+6. ~~Kobo device sync~~
+7. ~~Obsidian vault-export to EPUB~~
+8. ~~Web UI for browse/search/edit~~
+9. **Next:** Plugin architecture (format and provider plugins)
+10. Polish (covers cache, performance benchmarks, config polish)
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed checklists.
 

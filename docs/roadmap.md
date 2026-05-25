@@ -30,38 +30,75 @@
 - [x] `bookery tag` command group (add, rm, ls)
 - [x] `bookery info` shows tags, `bookery ls --tag` filter
 
-## Phase 4: Query DSL + Search + Browse
+## Phase 4: Query + Search + Browse
 - [ ] Hand-rolled recursive descent parser
 - [ ] Query types: FieldQuery, SubstringQuery, RegexpQuery, NotQuery, AndQuery, OrQuery
 - [ ] Bare text → FTS5, field:value → WHERE clause
-- [ ] `bookery ls` with query filters, sort, pagination
-- [ ] `bookery info <query>` detailed view
-- [ ] `bookery tag add/rm`
-- [ ] `bookery edit` interactive metadata editor
-- [ ] Output modes: table (Rich), --json, --quiet
-- [ ] Search < 200ms on 2000-book library
+- [x] `bookery ls` with `--series` / `--tag` filters, sort, pagination
+- [x] `bookery info <id>` detailed view
+- [x] `bookery tag add/rm/ls`
+- [ ] `bookery edit` interactive metadata editor (in-CLI; web UI ships the edit flow)
+- [x] Output modes: table (Rich), --json
+- [ ] Search < 200ms on 2000-book library (not yet benchmarked)
 
-## Phase 5: Plugin Architecture
+## Phase 5: Multi-Provider Metadata
+- [x] Google Books provider alongside Open Library
+- [x] Consensus merger across providers (≥2 agree → win, else priority order)
+- [x] Provider response cache (`metadata_cache.db`, TTL configurable)
+- [x] ISBN-10/13 normalization
+- [x] Per-field provenance table (`book_field_provenance`)
+- [x] Field-level lock/unlock via `bookery info --lock` / `--unlock`
+- [x] Hand-edit support via `bookery info --set field=value` (stamped as `user`)
+
+## Phase 6: Kobo Device Sync
+- [x] Kobo detection (auto-scan mount points)
+- [x] `bookery sync kobo` — convert EPUBs to `.kepub.epub` and copy to device
+- [x] `--target <path>` override and `--dry-run`
+- [x] Sync caching keyed on source hash + kepubify version (`kepub_cache.db`)
+- [x] Additive sync (existing device files never deleted)
+- [x] Tested against real Kobo hardware
+- [ ] `bookery device ls` — list books on device (not yet implemented)
+- [ ] `bookery device rm <query>` — remove from device (not yet implemented)
+
+## Phase 7: Web UI
+- [x] `bookery serve` — local Flask UI bound to 127.0.0.1
+- [x] Paginated `/books` with `BrowseQuery` + result count
+- [x] Sortable column headers
+- [x] Filter chips
+- [x] Responsive mobile card layout
+- [x] Cover thumbnails on list and detail
+- [x] Per-book detail and edit pages (real URLs, `?return_to` threading)
+- [x] Search active metadata providers from the UI
+- [x] Apply candidate metadata with side-by-side diff
+- [x] Delete book from detail page
+- [x] Persistent book context subhead on sub-flows
+
+## Phase 8: Vault-Export
+- [x] Obsidian vault → single EPUB pipeline (pandoc)
+- [x] Hierarchical folder/note TOC
+- [x] A-Z letter buckets within each folder
+- [x] Leading-article-aware filing (The/A/An stripped; `filing_title` frontmatter override)
+- [x] One TOC entry per note (body H1-H6 demoted)
+- [x] `[[wiki-link]]` and `![[image]]` embed resolution
+- [x] Optional tag index
+- [x] `--catalog` flag: auto-import the export into the library
+- [x] Stable UUID across re-exports for in-place Kobo updates
+- [x] `exclude_tags` to drop ephemeral notes (meetings, dailies)
+
+## Phase 9: Plugin Architecture (Next)
 - [ ] pluggy hookspecs (extract_metadata, match_metadata, detect_device, etc.)
 - [ ] Plugin manager: discovery via entry_points
 - [ ] Refactor EPUB format as built-in plugin
-- [ ] Refactor Open Library as built-in plugin
+- [ ] Refactor Open Library + Google Books as built-in plugins
 - [ ] `bookery plugins` command
 - [ ] `prepare_for_device` hook (kepub conversion path)
 
-## Phase 6: Kobo Device Integration
-- [ ] Kobo detection (scan /Volumes, verify .kobo/ directory)
-- [ ] `bookery send <query>` — copy books to device
-- [ ] `bookery device ls` — list books on device
-- [ ] `bookery device rm <query>` — remove from device
-- [ ] Device sync tracking (device_syncs table)
-- [ ] Free space reporting, --dry-run
-- [ ] Test against real Kobo hardware
-
-## Phase 7: Polish
-- [ ] Cover extraction + cache (~/.config/bookery/covers/)
-- [ ] Progress bars (Rich) for import and send
-- [ ] Pydantic config model (YAML, env var, CLI flag layering)
-- [ ] `bookery verify` — scan for missing/moved/changed files
+## Phase 10: Polish
+- [x] Progress bars (Rich) for import and sync
+- [x] `bookery verify` — scan for missing/moved/changed files
+- [x] `bookery prune` — remove catalog rows with missing files
+- [x] Test guardrail: tests can no longer touch real `~/.bookery`
+- [ ] Cover extraction + cache (`~/.config/bookery/covers/`)
+- [ ] Pydantic config model (TOML + env var + CLI flag layering)
 - [ ] Performance benchmarks (search, import rate)
 - [ ] E2e test suite covering full user flows
