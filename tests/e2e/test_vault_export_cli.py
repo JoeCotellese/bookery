@@ -55,6 +55,25 @@ def test_vault_export_produces_valid_epub(tmp_path: Path):
     assert "Note B" in titles
 
 
+def test_vault_export_one_toc_entry_per_note(tmp_path: Path):
+    """Body H3+ inside a note must never reach the EPUB TOC. A literature note
+    full of `### Key Points` / `### Chapter Questions` per chapter must appear
+    as a single TOC entry (the note title), not as a fan of sibling chapters.
+    """
+    result, out = _run(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    book = epub.read_epub(str(out))
+    titles = _flatten_toc_titles(book.toc)
+
+    assert "Book With Chapters" in titles
+    # Body headings must not leak through to the TOC.
+    assert "Key Points" not in titles
+    assert "Chapter Questions" not in titles
+    assert not any(t.startswith("Chapter 1") for t in titles), titles
+    assert not any(t.startswith("Chapter 2") for t in titles), titles
+
+
 def test_vault_export_stable_identifier_across_runs(tmp_path: Path):
     first, out = _run(tmp_path)
     assert first.exit_code == 0, first.output
