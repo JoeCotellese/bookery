@@ -55,6 +55,42 @@ def test_vault_export_produces_valid_epub(tmp_path: Path):
     assert "Note B" in titles
 
 
+def _find_parent_bucket(toc, target_title: str) -> str | None:
+    """Walk pandoc's nested TOC and return the H2 bucket title that contains
+    a note whose H3 title equals ``target_title``. ``None`` if not found.
+    """
+    for entry in toc:
+        if not isinstance(entry, tuple):
+            continue
+        _folder, buckets = entry
+        for bucket_entry in buckets:
+            if not isinstance(bucket_entry, tuple):
+                continue
+            bucket_section, notes = bucket_entry
+            for note in notes:
+                if getattr(note, "title", None) == target_title:
+                    return getattr(bucket_section, "title", None)
+    return None
+
+
+def test_vault_export_strips_leading_article_for_filing(tmp_path: Path):
+    """`The Filed Note` must land in the F bucket, not the T bucket — leading
+    English articles are ignored for filing while the display title stays
+    unchanged. See issue #175.
+    """
+    result, out = _run(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    book = epub.read_epub(str(out))
+    titles = _flatten_toc_titles(book.toc)
+
+    # Display title is intact in the TOC.
+    assert "The Filed Note" in titles
+    # And it lives under the F bucket, not T.
+    bucket = _find_parent_bucket(book.toc, "The Filed Note")
+    assert bucket == "F", f"expected F bucket, got {bucket!r}"
+
+
 def test_vault_export_one_toc_entry_per_note(tmp_path: Path):
     """Body H3+ inside a note must never reach the EPUB TOC. A literature note
     full of `### Key Points` / `### Chapter Questions` per chapter must appear

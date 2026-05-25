@@ -79,6 +79,10 @@ def render_epub(
         # once any note body contains a `---` thematic break, which dropped
         # hundreds of chapters and broke every cross-note link in real-world
         # vault exports.
+        # --toc inserts the nav.xhtml into the linear reading spine so the
+        # reader sees a flip-through TOC page at the start of the book in
+        # addition to the sidebar nav. Without it, Kobo shows the sidebar
+        # TOC but offers no in-spine landing page that mirrors it.
         cmd = [
             pandoc,
             "-f",

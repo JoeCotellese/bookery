@@ -7,14 +7,20 @@ from bookery.core.vault.assemble import AssembledVault, assemble_vault
 from bookery.core.vault.note import Note
 
 
-def _note(title: str, folder: str, body: str, tags: list[str] | None = None) -> Note:
+def _note(
+    title: str,
+    folder: str,
+    body: str,
+    tags: list[str] | None = None,
+    frontmatter: dict | None = None,
+) -> Note:
     return Note(
         path=Path(f"{folder}/{title}.md"),
         relative_folder=folder,
         title=title,
         slug=title.lower().replace(" ", "-"),
         body=body,
-        frontmatter={},
+        frontmatter=frontmatter or {},
         tags=tags or [],
     )
 
@@ -302,3 +308,132 @@ def test_notes_without_tags_reported(tmp_path: Path):
     notes = [_note("Tagged", "P", "x", tags=["t"]), _note("Untagged", "P", "y")]
     result = assemble_vault(notes, vault_path=tmp_path, include_index=True)
     assert "Untagged" in result.notes_without_tags
+
+
+# --- Leading-article filing (issue #175) ----------------------------------
+
+
+def test_leading_the_files_under_second_word_bucket(tmp_path: Path):
+    notes = [_note("The Loop", "F", "x")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Bucket is L (from "Loop"), not T.
+    assert "## L {#bucket-f-l}" in md
+    assert "{#bucket-f-t}" not in md
+    # Display title is unchanged.
+    assert "### The Loop {#the-loop}" in md
+
+
+def test_leading_a_files_under_second_word_bucket(tmp_path: Path):
+    notes = [_note("A Tale of Two Cities", "F", "x")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## T {#bucket-f-t}" in md
+    # No A bucket should exist (would be `## A {#bucket-f-a}`).
+    assert "{#bucket-f-a}" not in md
+    assert "### A Tale of Two Cities" in md
+
+
+def test_leading_an_files_under_second_word_bucket(tmp_path: Path):
+    # "An Owl" must file under O, not A — otherwise the test passes
+    # trivially against the legacy first-letter rule.
+    notes = [_note("An Owl", "F", "x")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## O {#bucket-f-o}" in md
+    assert "{#bucket-f-a}" not in md
+    # Display is unchanged.
+    assert "### An Owl" in md
+
+
+def test_leading_article_case_insensitive(tmp_path: Path):
+    notes = [
+        _note("THE Big One", "F", "x"),
+        _note("the small one", "F", "y"),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Both file under B and S respectively, not T.
+    assert "## B {#bucket-f-b}" in md
+    assert "## S {#bucket-f-s}" in md
+    assert "{#bucket-f-t}" not in md
+
+
+def test_word_starting_with_article_letters_not_stripped(tmp_path: Path):
+    # "Theatre" must file under T — the article must be followed by a space.
+    notes = [_note("Theatre", "F", "x"), _note("A.I. Risks", "F", "y")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## T {#bucket-f-t}" in md
+    assert "## A {#bucket-f-a}" in md
+
+
+def test_article_only_title_falls_back_to_original(tmp_path: Path):
+    # Literal title "The" with no body word — must not produce an empty bucket
+    # key. Fall back to the original display title so it files under T.
+    notes = [_note("The", "F", "x")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## T {#bucket-f-t}" in md
+
+
+def test_frontmatter_filing_title_overrides_heuristic(tmp_path: Path):
+    # Author wants "The The" (a band) to actually file under T. Frontmatter
+    # filing_title wins over the strip-article heuristic.
+    notes = [
+        _note(
+            "The The",
+            "F",
+            "x",
+            frontmatter={"filing_title": "The The"},
+        ),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # filing_title "The The" still has the strip rule applied -> "The" ->
+    # which is article-only, so fallback uses the filing_title as-is.
+    # Net effect: files under T.
+    assert "## T {#bucket-f-t}" in md
+
+
+def test_frontmatter_filing_title_can_relocate_note(tmp_path: Path):
+    # Author can also force a note into a different bucket via filing_title.
+    notes = [
+        _note(
+            "The Loop",
+            "F",
+            "x",
+            frontmatter={"filing_title": "Zebra"},
+        ),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## Z {#bucket-f-z}" in md
+    # Display title still reads "The Loop".
+    assert "### The Loop" in md
+
+
+def test_non_letter_bucket_unaffected_by_article_stripping(tmp_path: Path):
+    notes = [_note("123 numbers", "F", "x")]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    assert "## # {#bucket-f-hash}" in md
+
+
+def test_within_bucket_sort_uses_filing_title(tmp_path: Path):
+    # In the L bucket, "The Loop" should sort by "Loop", landing before
+    # "Loops, Open" but after "Loop Theory".
+    notes = [
+        _note("Loops, Open", "F", "x"),
+        _note("The Loop", "F", "y"),
+        _note("Loop Theory", "F", "z"),
+    ]
+    result = assemble_vault(notes, vault_path=tmp_path)
+    md = result.markdown
+    # Order by filing title: "Loop Theory" < "Loops, Open" < "The Loop" (filed as "Loop")
+    # Actually filing keys: "loop theory", "loops, open", "loop".
+    # Sorted casefold: "loop" < "loop theory" < "loops, open".
+    pos_the_loop = md.index("### The Loop")
+    pos_loop_theory = md.index("### Loop Theory")
+    pos_loops_open = md.index("### Loops, Open")
+    assert pos_the_loop < pos_loop_theory < pos_loops_open

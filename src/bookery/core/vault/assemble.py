@@ -21,6 +21,28 @@ AssembleProgressFn = Callable[[int, int, str], None]
 _NON_LETTER_BUCKET = "#"
 _NON_LETTER_BUCKET_SLUG = "hash"
 
+# Leading English articles ignored for filing (bucket + within-bucket sort).
+# Multi-language support is an explicit non-goal — see issue #175.
+_LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+(.+)$", re.IGNORECASE)
+
+
+def _filing_title(display: str, frontmatter: dict | None = None) -> str:
+    """Return the title used for bucket assignment and within-bucket sort.
+
+    Order of precedence:
+    1. ``filing_title`` in the note's frontmatter, if present and non-empty.
+    2. ``display`` with a leading English article (``The`` / ``A`` / ``An``)
+       stripped.
+    3. ``display`` unchanged when stripping would leave an empty string.
+    """
+    source = display
+    if frontmatter:
+        override = frontmatter.get("filing_title")
+        if isinstance(override, str) and override.strip():
+            source = override.strip()
+    stripped = _LEADING_ARTICLE_RE.sub(r"\1", source, count=1).strip()
+    return stripped or source
+
 
 def _bucket_for(title: str) -> str:
     """Return the single-character A-Z bucket label for a display title.
@@ -140,6 +162,13 @@ def assemble_vault(
 ) -> AssembledVault:
     """Concatenate notes into a single markdown doc with resolved links and assets."""
     display_for: dict[int, str] = {id(n): display_title(n.title) for n in notes}
+    # Filing title is what we bucket and sort by; display title is what the
+    # reader sees as the H3 heading. Stripping leading English articles here
+    # lets "The Loop" file under L while still rendering "The Loop" in the
+    # TOC — see issue #175.
+    filing_for: dict[int, str] = {
+        id(n): _filing_title(display_for[id(n)], n.frontmatter) for n in notes
+    }
     disambiguated = _disambiguate(notes, display_for)
     # Wiki-link resolution: map both the original raw title and the stripped
     # display title to the (first) unique slug, so both `[[202302010942 - X]]`
@@ -170,14 +199,14 @@ def assemble_vault(
         # leader (digit/symbol) lands in the ``#`` bucket.
         bucket_to_notes: dict[str, list[Note]] = {}
         for note in folder_to_notes[folder]:
-            bucket = _bucket_for(display_for[id(note)])
+            bucket = _bucket_for(filing_for[id(note)])
             bucket_to_notes.setdefault(bucket, []).append(note)
         for bucket in sorted(bucket_to_notes, key=_bucket_sort_key):
             chunks.append(f"## {bucket} {{#bucket-{_folder_slug(folder)}-{_bucket_slug(bucket)}}}")
             chunks.append("")
             bucket_notes = sorted(
                 bucket_to_notes[bucket],
-                key=lambda n: display_for[id(n)].casefold(),
+                key=lambda n: filing_for[id(n)].casefold(),
             )
             for note in bucket_notes:
                 processed += 1

@@ -12,7 +12,13 @@ FIXTURE = Path(__file__).parent.parent / "fixtures" / "vault"
 def test_full_pipeline_produces_expected_markdown():
     notes = walk_vault(FIXTURE)
     titles = sorted(n.title for n in notes)
-    assert titles == ["Lit One", "Note A", "Note B"]
+    assert titles == [
+        "Book With Chapters",
+        "Lit One",
+        "Note A",
+        "Note B",
+        "The Filed Note",
+    ]
 
     result = assemble_vault(notes, vault_path=FIXTURE, include_index=True)
     md = result.markdown
@@ -46,7 +52,7 @@ def test_full_pipeline_produces_expected_markdown():
 def test_folder_filter_excludes_other_folders():
     notes = walk_vault(FIXTURE, folders=["3_Permanent Notes"])
     titles = sorted(n.title for n in notes)
-    assert titles == ["Note A", "Note B"]
+    assert titles == ["Note A", "Note B", "The Filed Note"]
 
 
 def test_index_exclude_prefix_filters_topic():
