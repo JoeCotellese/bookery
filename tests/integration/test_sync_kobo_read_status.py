@@ -96,16 +96,19 @@ def test_round_trip_sync_populates_read_state_and_book_status(tmp_path: Path) ->
     # --- Mount + seeded device DB ---
     mount = _build_fake_kobo_mount(tmp_path)
     kobo_db = mount / ".kobo" / "KoboReader.sqlite"
-    # First seed: the ContentIDs are what the device "expects" to find — we
-    # know what paths the sync will create because they follow the
-    # sanitize_component rules for "Asimov"/"Foundation" etc.
+    # The device records ContentID from its own filesystem view, rooted at
+    # /mnt/onboard. The host writes to the mount path. The resolver translates
+    # between the two — these test ContentIDs are written in the device form
+    # to prove the round-trip works against realistic device data.
     expected_a = mount / "Books" / "Asimov" / "Foundation" / "Foundation.kepub.epub"
     expected_b = mount / "Books" / "Le Guin" / "Earthsea" / "Earthsea.kepub.epub"
+    content_id_a = "file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub"
+    content_id_b = "file:///mnt/onboard/Books/Le Guin/Earthsea/Earthsea.kepub.epub"
     _seed_kobo_db(
         kobo_db,
         [
             (
-                f"file://{expected_a}",
+                content_id_a,
                 None,
                 2,
                 1.0,
@@ -114,7 +117,7 @@ def test_round_trip_sync_populates_read_state_and_book_status(tmp_path: Path) ->
                 "application/x-kobo-epub+zip",
             ),
             (
-                f"file://{expected_b}",
+                content_id_b,
                 None,
                 1,
                 0.42,
@@ -148,12 +151,16 @@ def test_round_trip_sync_populates_read_state_and_book_status(tmp_path: Path) ->
     assert report.read_states_pulled == 0
     assert report.read_states_skipped == 2
 
-    # device_files written for both books.
+    # device_files written for both books, in the device-side coordinate
+    # system that matches Kobo's ContentID format.
     rows = conn.execute(
         "SELECT book_id, remote_path FROM device_files ORDER BY book_id"
     ).fetchall()
     paths_by_book = {row["book_id"]: row["remote_path"] for row in rows}
-    assert paths_by_book == {book_a: str(expected_a), book_b: str(expected_b)}
+    assert paths_by_book == {
+        book_a: "/mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",
+        book_b: "/mnt/onboard/Books/Le Guin/Earthsea/Earthsea.kepub.epub",
+    }
 
     # Devices row was upserted with the seeded serial.
     dev = conn.execute("SELECT kind, serial FROM devices").fetchone()
@@ -233,9 +240,10 @@ def test_regression_sync_still_works_when_kobo_db_missing(tmp_path: Path) -> Non
     assert report.copied == [expected]
     assert report.read_states_pulled == 0
     assert report.read_states_skipped == 0
-    # device_files still written so a future pull can resolve this book.
+    # device_files records the device-side path, not the host mount path.
     row = conn.execute(
-        "SELECT book_id FROM device_files WHERE remote_path = ?", (str(expected),)
+        "SELECT book_id FROM device_files WHERE remote_path = ?",
+        ("/mnt/onboard/Books/A/T/T.kepub.epub",),
     ).fetchone()
     assert row["book_id"] == book_id
     conn.close()

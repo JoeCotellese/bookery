@@ -790,9 +790,7 @@ class LibraryCatalog:
 
     # --- Device / read-status (SCHEMA_V8) -------------------------------
 
-    def upsert_device(
-        self, *, kind: str, serial: str, label: str | None, now: str
-    ) -> int:
+    def upsert_device(self, *, kind: str, serial: str, label: str | None, now: str) -> int:
         """Insert or refresh a device row; return its id.
 
         Devices are uniquely identified by (kind, serial). On re-sync we
@@ -838,13 +836,10 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
-    def resolve_book_id_for_remote_path(
-        self, *, device_id: int, remote_path: str
-    ) -> int | None:
+    def resolve_book_id_for_remote_path(self, *, device_id: int, remote_path: str) -> int | None:
         """Look up the catalog book id we wrote to `remote_path` on this device."""
         row = self._conn.execute(
-            "SELECT book_id FROM device_files "
-            "WHERE device_id = ? AND remote_path = ?",
+            "SELECT book_id FROM device_files WHERE device_id = ? AND remote_path = ?",
             (device_id, remote_path),
         ).fetchone()
         return int(row["book_id"]) if row is not None else None
@@ -890,9 +885,7 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
-    def seed_book_status_if_absent(
-        self, *, book_id: int, status: int, updated_at: str
-    ) -> None:
+    def seed_book_status_if_absent(self, *, book_id: int, status: int, updated_at: str) -> None:
         """Insert book_status only if no row exists for this book.
 
         The pull seeds the catalog-side mirror from device state, but P1b lets

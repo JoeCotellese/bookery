@@ -23,7 +23,23 @@ logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
-    return _dt.datetime.now().replace(microsecond=0).isoformat()
+    # UTC to match SQLite's `strftime('%Y-%m-%dT%H:%M:%S', 'now')` used
+    # elsewhere in the catalog — keeps merge timestamps comparable.
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0, tzinfo=None).isoformat()
+
+
+# The Kobo mounts its internal storage at `/mnt/onboard` from its own
+# perspective; the host sees the same root as the user-chosen `target` mount.
+# ContentID in KoboReader.sqlite is always written from the device's view, so
+# device_files must record paths in that same coordinate system — otherwise
+# the resolver's PK lookup misses every real-world row.
+KOBO_DEVICE_ROOT = "/mnt/onboard"
+
+
+def _to_device_path(host_path: Path, target: Path) -> str:
+    """Translate a host-side absolute path into the Kobo's `/mnt/onboard/...` form."""
+    relative = host_path.relative_to(target)
+    return f"{KOBO_DEVICE_ROOT}/{relative.as_posix()}"
 
 
 def _default_mount_roots() -> list[Path]:
@@ -53,9 +69,7 @@ def _scan_roots(roots: Iterable[Path]) -> list[Path]:
     return candidates
 
 
-def detect_mounted_kobo(
-    *, candidates: Iterable[Path] | None = None
-) -> Path | None:
+def detect_mounted_kobo(*, candidates: Iterable[Path] | None = None) -> Path | None:
     """Return the first mount path that contains a `.kobo/` marker, else None.
 
     When `candidates` is None, scans platform-default mount roots (e.g.
@@ -83,9 +97,7 @@ class SyncReport:
 class _CatalogProto(Protocol):
     def list_all(self) -> list[BookRecord]: ...
 
-    def upsert_device(
-        self, *, kind: str, serial: str, label: str | None, now: str
-    ) -> int: ...
+    def upsert_device(self, *, kind: str, serial: str, label: str | None, now: str) -> int: ...
 
     def upsert_device_file(
         self, *, device_id: int, book_id: int, remote_path: str, now: str
@@ -130,9 +142,7 @@ StageCallback = Callable[[str], None]
 
 
 def _book_dest_dir(target: Path, books_subdir: str, record: BookRecord) -> Path:
-    author_raw = (
-        record.metadata.authors[0] if record.metadata.authors else "Unknown Author"
-    )
+    author_raw = record.metadata.authors[0] if record.metadata.authors else "Unknown Author"
     title_raw = record.metadata.title or "Untitled"
     author = sanitize_component(author_raw, fallback="Unknown Author")
     title = sanitize_component(title_raw, fallback="Untitled")
@@ -160,9 +170,7 @@ def _sync_record(
 
     source = record.output_path
     if source is None:
-        report.skipped.append(
-            (record.source_path, "no canonical EPUB in library")
-        )
+        report.skipped.append((record.source_path, "no canonical EPUB in library"))
         return
     if source.suffix.lower() != ".epub":
         report.skipped.append((source, "output is not an EPUB"))
@@ -214,7 +222,10 @@ def _sync_record(
     report.copied.append(dest)
     if device_id is not None:
         catalog.upsert_device_file(
-            device_id=device_id, book_id=record.id, remote_path=str(dest), now=now
+            device_id=device_id,
+            book_id=record.id,
+            remote_path=_to_device_path(dest, target),
+            now=now,
         )
 
 
@@ -253,9 +264,7 @@ def sync_library_to_kobo(
                 on_progress(idx, total, record)
             source = record.output_path
             if source is None:
-                report.skipped.append(
-                    (record.source_path, "no canonical EPUB in library")
-                )
+                report.skipped.append((record.source_path, "no canonical EPUB in library"))
                 continue
             if source.suffix.lower() != ".epub":
                 report.skipped.append((source, "output is not an EPUB"))
@@ -282,9 +291,7 @@ def sync_library_to_kobo(
             target,
         )
     else:
-        device_id = catalog.upsert_device(
-            kind="kobo", serial=serial, label=None, now=now
-        )
+        device_id = catalog.upsert_device(kind="kobo", serial=serial, label=None, now=now)
         try:
             pulled, skipped = pull_read_state(
                 catalog, device_id=device_id, mount_path=target, now=now

@@ -535,9 +535,12 @@ class TestDeviceWiring:
         assert len(catalog.upsert_device_file_calls) == 3
         book_ids = {c["book_id"] for c in catalog.upsert_device_file_calls}
         assert book_ids == {1, 2, 3}
-        # Every recorded path actually exists on the target.
+        # Recorded remote_paths are in the device coordinate system
+        # (/mnt/onboard/...), not the host mount path — so they line up with
+        # Kobo's ContentID format on real hardware.
         for call in catalog.upsert_device_file_calls:
-            assert Path(call["remote_path"]).exists()
+            assert call["remote_path"].startswith("/mnt/onboard/Books/")
+            assert call["remote_path"].endswith(".kepub.epub")
             assert call["device_id"] == catalog.device_id
 
     def test_no_device_file_upsert_when_copy_skipped(self, tmp_path: Path) -> None:
