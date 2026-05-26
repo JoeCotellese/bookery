@@ -17,6 +17,7 @@ from bookery.db.mapping import (
     metadata_to_row,
     row_to_record,
 )
+from bookery.db.status import BookStatus, DeviceReadState
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
@@ -902,3 +903,140 @@ class LibraryCatalog:
             (book_id, status, updated_at),
         )
         self._conn.commit()
+
+    def set_book_status(self, *, book_id: int, status: int, updated_at: str) -> None:
+        """Upsert book_status for the user-write path.
+
+        Differs from `seed_book_status_if_absent` in that this overwrites on
+        conflict — the user's `bookery read/unread/reading` command is the
+        authoritative signal for catalog-side state. Raises ValueError if
+        `book_id` is not in the books table so a bad CLI argument fails
+        loudly instead of silently writing an orphan row that an FK
+        constraint would later complain about anyway.
+        """
+        existing = self._conn.execute(
+            "SELECT 1 FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
+        if existing is None:
+            raise ValueError(f"Book {book_id} not found.")
+        self._conn.execute(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (book_id, status, updated_at),
+        )
+        self._conn.commit()
+
+    def get_book_status(self, book_id: int) -> BookStatus | None:
+        """Return the catalog-side read status for a book, or None if absent."""
+        row = self._conn.execute(
+            "SELECT book_id, status, updated_at FROM book_status WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return BookStatus(
+            book_id=int(row["book_id"]),
+            status=int(row["status"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def get_book_statuses(self, book_ids: list[int]) -> dict[int, BookStatus]:
+        """Bulk lookup for the web list view: id → BookStatus.
+
+        Books without a `book_status` row are silently omitted from the result;
+        the template treats absence as "no chip". An empty ``book_ids`` short-
+        circuits without hitting the DB so a paginated page with zero books
+        skips the query entirely.
+        """
+        if not book_ids:
+            return {}
+        placeholders = ",".join("?" * len(book_ids))
+        cursor = self._conn.execute(
+            "SELECT book_id, status, updated_at FROM book_status "
+            f"WHERE book_id IN ({placeholders})",
+            book_ids,
+        )
+        return {
+            int(row["book_id"]): BookStatus(
+                book_id=int(row["book_id"]),
+                status=int(row["status"]),
+                updated_at=str(row["updated_at"]),
+            )
+            for row in cursor.fetchall()
+        }
+
+    def list_books_by_status(self, status: int) -> list[BookRecord]:
+        """Return books with `book_status.status = ?`, ordered by title."""
+        cursor = self._conn.execute(
+            """
+            SELECT books.* FROM books
+            JOIN book_status ON books.id = book_status.book_id
+            WHERE book_status.status = ?
+            ORDER BY books.title
+            """,
+            (status,),
+        )
+        return [row_to_record(row) for row in cursor.fetchall()]
+
+    def list_books_unread(self) -> list[BookRecord]:
+        """Return books that are either unread or have no status row, by title.
+
+        "Unread" in the bookery model is the union of two cases: a book that
+        has never been touched (no `book_status` row), and a book the user has
+        explicitly marked unread (`status = 0`). The CLI's `ls --unread`
+        flattens both.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT books.* FROM books
+            LEFT JOIN book_status ON books.id = book_status.book_id
+            WHERE book_status.book_id IS NULL OR book_status.status = 0
+            ORDER BY books.title
+            """,
+        )
+        return [row_to_record(row) for row in cursor.fetchall()]
+
+    def get_device_read_state_for_book(self, book_id: int) -> DeviceReadState | None:
+        """Return the most-recent device read state for a book, joined with devices.
+
+        When two devices both have a row for the same book (e.g. user paired
+        and read on two Kobos), the row with the latest `status_updated_at`
+        wins — that's what the user is actively touching. Returns None when no
+        device has ever pulled a state for this book.
+        """
+        row = self._conn.execute(
+            """
+            SELECT
+                drs.device_id,
+                drs.book_id,
+                drs.read_status,
+                drs.percent_read,
+                drs.last_read_at,
+                drs.status_updated_at,
+                devices.kind AS device_kind,
+                devices.label AS device_label
+            FROM device_read_state AS drs
+            JOIN devices ON devices.id = drs.device_id
+            WHERE drs.book_id = ?
+            ORDER BY drs.status_updated_at DESC
+            LIMIT 1
+            """,
+            (book_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return DeviceReadState(
+            device_id=int(row["device_id"]),
+            device_kind=str(row["device_kind"]),
+            device_label=row["device_label"],
+            book_id=int(row["book_id"]),
+            read_status=int(row["read_status"]),
+            percent_read=float(row["percent_read"]) if row["percent_read"] is not None else None,
+            last_read_at=row["last_read_at"],
+            status_updated_at=str(row["status_updated_at"]),
+        )
