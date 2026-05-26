@@ -1115,6 +1115,36 @@ class LibraryCatalog:
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
+    def is_status_queued_for_push(self, book_id: int) -> bool:
+        """True when the catalog-side status is newer than the latest device.
+
+        Powers the "Queued for next sync" indicator on the web detail page.
+        Compares ``book_status.updated_at`` against the most recent
+        ``device_read_state.status_updated_at`` across all devices:
+
+        - No ``book_status`` row → nothing to push, returns False.
+        - No ``device_read_state`` row → catalog has news that no device has
+          seen, returns True.
+        - Otherwise → strict `>` comparison (string-sorts ISO-8601 timestamps,
+          which is the same ordering convention ``merge_book_status_from_device``
+          uses for its tiebreak).
+        """
+        catalog_row = self._conn.execute(
+            "SELECT updated_at FROM book_status WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if catalog_row is None:
+            return False
+        catalog_ts = str(catalog_row["updated_at"])
+        device_row = self._conn.execute(
+            "SELECT MAX(status_updated_at) AS latest "
+            "FROM device_read_state WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if device_row is None or device_row["latest"] is None:
+            return True
+        return catalog_ts > str(device_row["latest"])
+
     def get_device_read_state_for_book(self, book_id: int) -> DeviceReadState | None:
         """Return the most-recent device read state for a book, joined with devices.
 
