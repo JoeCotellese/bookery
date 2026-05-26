@@ -464,7 +464,12 @@ class TestBooksRouteFilters:
         response = client.get("/books")
         html = response.data.decode()
 
-        assert "filter-chip" not in html
+        # The dismissible active-filter pill strip is empty — the standalone
+        # ``filter-chip`` and ``filter-chip-dismiss`` markers from
+        # ``_filter_chips.html`` should not appear. (``status-filter-chip``
+        # from the P3 chip row is always present and intentionally distinct.)
+        assert "filter-chip-dismiss" not in html
+        assert 'class="filter-chip"' not in html
 
     def test_unknown_filter_value_silently_ignored(self, mock_catalog, client):
         _stub_browse(mock_catalog, books=[make_book(1)], total=1)

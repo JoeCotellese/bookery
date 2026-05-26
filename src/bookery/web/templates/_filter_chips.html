@@ -8,6 +8,8 @@
         Format: {{ value|upper }}
     {%- elif key == 'language' -%}
         Language: {{ value }}
+    {%- elif key == 'status' -%}
+        Status: {{ value|capitalize }}
     {%- else -%}
         {{ key }}: {{ value }}
     {%- endif -%}

@@ -1,6 +1,7 @@
 {# ABOUTME: Plan-01 paginated list partial — chip strip, count label, sortable table, pager. #}
 {# Rendered standalone for htmx swaps into #book-list. #}
 
+{% include "_status_filter.html" %}
 {% include "_filter_chips.html" %}
 
 {% if page.total > 0 %}
@@ -20,9 +21,27 @@
         </a>
     {%- endmacro %}
 
+    {# P3 (#183) — bulk-mark form lives outside the table so the checkbox
+       inputs inside each row can target it via the ``form="…"`` attribute,
+       keeping the table markup flat and the action bar reusable across the
+       desktop table and the mobile card list. #}
+    <form id="bulk-status-form"
+          class="bulk-status-form"
+          hx-post="{{ url_for('web.bulk_update_status', q=query.q or none, sort=query.sort, dir=query.dir, **query.filters) }}"
+          hx-target="#book-list"
+          hx-swap="innerHTML"
+          hx-include="[name='ids']:checked">
+        <div class="bulk-status-actions" role="group" aria-label="Bulk mark selected books">
+            <button type="submit" name="status" value="reading">Mark Reading</button>
+            <button type="submit" name="status" value="finished">Mark Finished</button>
+            <button type="submit" name="status" value="unread">Mark Unread</button>
+        </div>
+    </form>
+
     <table class="book-table">
         <thead>
             <tr>
+                <th class="book-row-select" aria-label="Select"></th>
                 <th class="book-row-cover" aria-label="Cover"></th>
                 <th>{{ sort_link('Title', 'title') }}</th>
                 <th>{{ sort_link('Author', 'author') }}</th>
@@ -36,6 +55,14 @@
         <tbody>
             {% for book in page.books %}
             <tr class="book-row">
+                <td class="book-row-select">
+                    <label class="visually-hidden" for="bulk-select-{{ book.id }}">Select {{ book.metadata.title }}</label>
+                    <input type="checkbox"
+                           id="bulk-select-{{ book.id }}"
+                           name="ids"
+                           value="{{ book.id }}"
+                           form="bulk-status-form">
+                </td>
                 <td class="book-row-cover">
                     <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=list_url or none) }}" tabindex="-1" aria-hidden="true">
                         <img class="book-cover-thumb"
@@ -71,7 +98,16 @@
        so the entire row is tappable on touch devices. #}
     <ul class="book-cards" aria-label="Books">
         {% for book in page.books %}
-        <li>{% include "_book_card.html" %}</li>
+        <li class="book-cards-item">
+            <input type="checkbox"
+                   class="book-card-select"
+                   id="bulk-select-card-{{ book.id }}"
+                   name="ids"
+                   value="{{ book.id }}"
+                   form="bulk-status-form"
+                   aria-label="Select {{ book.metadata.title }}">
+            {% include "_book_card.html" %}
+        </li>
         {% endfor %}
     </ul>
 
