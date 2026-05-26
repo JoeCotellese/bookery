@@ -159,14 +159,34 @@ def books():
         query=query,
     )
 
+    # One bulk status lookup for the visible page — every row's chip pulls
+    # from this dict so the template stays cheap. Empty pages skip the call
+    # entirely; the catalog method also short-circuits but the route is
+    # considerate so the DB never sees the question.
+    book_statuses = (
+        catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
+    )
+
     # ``list_url`` is what row anchors stamp into ``?return_to=`` so detail /
     # edit / diff back-links can return to this exact view (filters, page,
     # sort all preserved). Same value on both htmx and full-page paths.
     list_url = _current_list_url()
     if request.headers.get("HX-Request"):
-        return render_template("_book_list.html", page=page, query=query, list_url=list_url)
+        return render_template(
+            "_book_list.html",
+            page=page,
+            query=query,
+            list_url=list_url,
+            book_statuses=book_statuses,
+        )
 
-    return render_template("list.html", page=page, query=query, list_url=list_url)
+    return render_template(
+        "list.html",
+        page=page,
+        query=query,
+        list_url=list_url,
+        book_statuses=book_statuses,
+    )
 
 
 @bp.route("/books/<int:book_id>")

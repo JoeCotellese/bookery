@@ -10,7 +10,15 @@
          width="48"
          height="72">
     <div class="book-card-body">
-        <div class="book-card-title">{{ book.metadata.title }}</div>
+        <div class="book-card-title">
+            {%- set status = book_statuses.get(book.id) -%}
+            {%- if status and status.status == 1 -%}
+            <span class="book-status-chip status-reading" title="Reading" aria-label="Reading">&#128214;</span>
+            {%- elif status and status.status == 2 -%}
+            <span class="book-status-chip status-finished" title="Finished" aria-label="Finished">&#10003;</span>
+            {%- endif %}
+            {{ book.metadata.title }}
+        </div>
         <div class="book-card-author">{{ book.metadata.author }}</div>
         {%- set badges = [] -%}
         {%- if book.metadata.language -%}{%- set _ = badges.append(book.metadata.language) -%}{%- endif -%}
