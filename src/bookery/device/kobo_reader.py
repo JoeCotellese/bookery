@@ -122,8 +122,12 @@ class _ReaderCatalogProto(Protocol):
         pulled_at: str,
     ) -> None: ...
 
-    def seed_book_status_if_absent(
-        self, *, book_id: int, status: int, updated_at: str
+    def merge_book_status_from_device(
+        self,
+        *,
+        book_id: int,
+        device_status: int,
+        device_updated_at: str,
     ) -> None: ...
 
 
@@ -139,6 +143,13 @@ def pull_read_state(
     Returns ``(pulled, skipped)`` — the number of rows whose ContentID
     resolved to a known book in our catalog, and the number that didn't
     (and were therefore ignored).
+
+    ``device_read_state`` is mirrored unconditionally — it always reflects
+    the device's most recent reality. ``book_status`` goes through the
+    timestamp-aware merge in :meth:`LibraryCatalog.merge_book_status_from_device`:
+    device-newer-or-equal overwrites catalog, catalog-newer keeps the user's
+    bookery read/unread/reading intent intact. The push half of the sync
+    (in :mod:`bookery.device.kobo`) handles the reverse direction.
 
     Best-effort: a missing or unreadable KoboReader.sqlite logs a warning and
     returns ``(0, 0)`` rather than raising — a Kobo with no read history yet
@@ -188,8 +199,10 @@ def pull_read_state(
             status_updated_at=status_updated_at,
             pulled_at=now,
         )
-        catalog.seed_book_status_if_absent(
-            book_id=book_id, status=row.read_status, updated_at=status_updated_at
+        catalog.merge_book_status_from_device(
+            book_id=book_id,
+            device_status=row.read_status,
+            device_updated_at=status_updated_at,
         )
         pulled += 1
     return (pulled, skipped)
