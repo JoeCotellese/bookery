@@ -27,6 +27,40 @@ from bookery.device.kobo import detect_mounted_kobo, sync_library_to_kobo
 console = Console()
 
 
+def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
+    """Render the device-side read-status portion of the sync report.
+
+    Each line is only printed if the corresponding counter is non-zero, so a
+    typical sync without status changes stays quiet. Backup path is shown
+    whenever a snapshot was taken (i.e. a push actually ran) regardless of
+    the push outcome — the user wants to know where the safety net is.
+    """
+    if report.read_states_pulled or report.read_states_skipped:
+        console.print(
+            f"[dim]Read-state: pulled {report.read_states_pulled}, "
+            f"skipped {report.read_states_skipped}[/dim]"
+        )
+    if report.read_statuses_pushed or report.read_status_pull_only:
+        console.print(
+            f"[green]Pushed {report.read_statuses_pushed} read-status update(s)"
+            f"[/green]"
+            + (
+                f" [dim](pull-only: {report.read_status_pull_only})[/dim]"
+                if report.read_status_pull_only
+                else ""
+            )
+        )
+    if report.backup_path is not None:
+        console.print(f"[dim]Backup: {report.backup_path}[/dim]")
+    if report.read_status_push_failed:
+        console.print(
+            f"[yellow]Read-status push failed for "
+            f"{len(report.read_status_push_failed)} book(s):[/yellow]"
+        )
+        for content_id, reason in report.read_status_push_failed:
+            console.print(f"  [yellow]- {content_id}: {reason}[/yellow]")
+
+
 @click.group("sync")
 def sync() -> None:
     """Sync the library to a connected device."""
@@ -46,6 +80,13 @@ def sync() -> None:
     help="Show what would be copied without touching the device.",
 )
 @click.option(
+    "--no-status-push",
+    "no_status_push",
+    is_flag=True,
+    default=False,
+    help="Skip writing read-status back to the device — pulls and copies still run.",
+)
+@click.option(
     "--data-dir",
     "data_dir_override",
     type=click.Path(path_type=Path),
@@ -56,6 +97,7 @@ def sync() -> None:
 def sync_kobo(
     target: Path | None,
     dry_run: bool,
+    no_status_push: bool,
     data_dir_override: Path | None,
     db_path: Path | None,
 ) -> None:
@@ -85,6 +127,7 @@ def sync_kobo(
     data_dir = data_dir_override or get_data_dir()
     cache = KepubCache(data_dir / "kepub_cache.db")
     workspace_dir = data_dir / "sync-workspace"
+    backup_root = data_dir / "backups"
 
     _stage_label = {
         "hash": "hashing",
@@ -150,6 +193,8 @@ def sync_kobo(
                     dry_run=dry_run,
                     on_progress=_on_progress,
                     on_stage=_on_stage,
+                    backup_root=backup_root,
+                    status_push_enabled=not no_status_push,
                 )
                 overall.update(overall_task, completed=overall.tasks[0].total or 0)
             except DeviceError as exc:
@@ -161,6 +206,9 @@ def sync_kobo(
     label = "Would copy" if dry_run else "Copied"
     if not report.copied and not report.skipped and not report.failed:
         console.print("[dim]No books to sync.[/dim]")
+        # Even an empty copy report should surface a successful push if one
+        # happened — the user wants to see what changed on the device.
+        _print_status_summary(report)
         return
 
     if report.copied:
@@ -171,6 +219,7 @@ def sync_kobo(
         console.print(f"[dim]Skipped {len(report.skipped)}:[/dim]")
         for path, reason in report.skipped:
             console.print(f"  [dim]- {path.name}: {reason}[/dim]")
+    _print_status_summary(report)
     if report.failed:
         # Per-book failures are reported but don't fail the command — a stale
         # catalog entry or a single un-convertible EPUB shouldn't block a sync
