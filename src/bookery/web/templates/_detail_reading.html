@@ -1,0 +1,28 @@
+{# ABOUTME: Detail Reading partial — status, progress, last opened, device. #}
+{# ABOUTME: Renders only when book_status or device_read_state has a row. #}
+{% if book_status or device_read_state %}
+<section class="section" aria-labelledby="detail-reading">
+    <h2 id="detail-reading">Reading</h2>
+    <dl class="metadata-grid">
+        {% if book_status %}
+        <dt>Status</dt>
+        <dd>{{ status_name(book_status.status) }}</dd>
+        {% elif device_read_state %}
+        <dt>Status</dt>
+        <dd>{{ status_name(device_read_state.read_status) }}</dd>
+        {% endif %}
+        {% if device_read_state and device_read_state.percent_read is not none %}
+        <dt>Progress</dt>
+        <dd>{{ "%.0f"|format(device_read_state.percent_read * 100) }}%</dd>
+        {% endif %}
+        {% if device_read_state and device_read_state.last_read_at %}
+        <dt>Last opened</dt>
+        <dd>{{ device_read_state.last_read_at }}</dd>
+        {% endif %}
+        {% if device_read_state %}
+        <dt>Device</dt>
+        <dd>{{ device_read_state.device_kind|title }}{% if device_read_state.device_label %} ({{ device_read_state.device_label }}){% endif %}</dd>
+        {% endif %}
+    </dl>
+</section>
+{% endif %}

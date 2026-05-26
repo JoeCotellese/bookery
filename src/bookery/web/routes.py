@@ -201,6 +201,8 @@ def book_detail(book_id):
     genres = catalog.get_genres_for_book(book_id)
     file_info = _file_context(book)
     return_to = _safe_return_to(request.args.get("return_to"))
+    book_status = catalog.get_book_status(book_id)
+    device_read_state = catalog.get_device_read_state_for_book(book_id)
 
     if request.headers.get("HX-Request"):
         return render_template(
@@ -210,6 +212,8 @@ def book_detail(book_id):
             genres=genres,
             file_info=file_info,
             return_to=return_to,
+            book_status=book_status,
+            device_read_state=device_read_state,
         )
 
     return render_template(
@@ -219,6 +223,8 @@ def book_detail(book_id):
         genres=genres,
         file_info=file_info,
         return_to=return_to,
+        book_status=book_status,
+        device_read_state=device_read_state,
     )
 
 
