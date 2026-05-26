@@ -1,0 +1,38 @@
+{# ABOUTME: P3 (#183) status filter chip row — All / Unread / Reading / Finished. #}
+{# State lives in the URL ?status=... so the filter is shareable / refresh-safe. #}
+
+{%- set active = query.filters.get('status') -%}
+{%- set chips = [
+    ('All', none),
+    ('Unread', 'unread'),
+    ('Reading', 'reading'),
+    ('Finished', 'finished'),
+] -%}
+{%- set other_filters = {} -%}
+{%- for fk, fv in query.filters.items() if fk != 'status' -%}
+    {%- set _ = other_filters.update({fk: fv}) -%}
+{%- endfor -%}
+
+<div class="status-filter" role="group" aria-label="Filter by read status">
+    {% for label, value in chips %}
+        {%- set is_active = (active == value) if value is not none else (active is none) -%}
+        <a class="status-filter-chip{% if is_active %} status-filter-chip-active{% endif %}"
+           href="{{ url_for('web.books',
+                            q=query.q or none,
+                            sort=query.sort,
+                            dir=query.dir,
+                            status=value,
+                            **other_filters) }}"
+           {% if is_active %}aria-current="page"{% endif %}
+           hx-get="{{ url_for('web.books',
+                              q=query.q or none,
+                              sort=query.sort,
+                              dir=query.dir,
+                              status=value,
+                              **other_filters) }}"
+           hx-target="#book-list"
+           hx-push-url="true">
+            {{ label }}
+        </a>
+    {% endfor %}
+</div>

@@ -22,13 +22,20 @@ DEFAULT_DIR = "asc"
 # silently — bookmarks and stale links shouldn't be able to either crash the
 # query or smuggle unexpected SQL columns through. Bumping this set is a
 # behavior change and needs the chip template's label map updated in lock-step.
-ALLOWED_FILTERS: frozenset[str] = frozenset({"enriched", "format", "language"})
+ALLOWED_FILTERS: frozenset[str] = frozenset({"enriched", "format", "language", "status"})
 
 # Value whitelists. ``enriched`` is a strict 0/1 toggle so any other value is
 # nonsense. ``format`` and ``language`` are open-ended (any extension or BCP-47
 # tag), but we lowercase and trim so the URL form is normalized for chip
 # rendering and parameter binding.
 _ENRICHED_VALUES: frozenset[str] = frozenset({"0", "1"})
+
+# ``status`` filter maps to the read-status filter on /books. The UI carries
+# an "All" affordance that maps to "no filter" — we drop ``all`` here so the
+# chip strip and URL stay clean when nothing is filtered. Unknown values
+# (case-mismatched, integer, garbage) fall off silently same as everything
+# else in this layer.
+_STATUS_VALUES: frozenset[str] = frozenset({"unread", "reading", "finished"})
 
 
 @dataclass(frozen=True)
@@ -131,6 +138,15 @@ def _coerce_filters(args: Mapping[str, str]) -> dict[str, str]:
             if value not in _ENRICHED_VALUES:
                 continue
             out[key] = value
+        elif key == "status":
+            normalized = value.lower()
+            # ``all`` is the UI "no filter" affordance — drop it so the chip
+            # strip stays empty and URLs round-trip cleanly.
+            if normalized == "all":
+                continue
+            if normalized not in _STATUS_VALUES:
+                continue
+            out[key] = normalized
         else:
             out[key] = value.lower()
     return out

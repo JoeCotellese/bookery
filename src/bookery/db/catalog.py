@@ -245,6 +245,7 @@ class LibraryCatalog:
         enriched: str | None = None,
         format: str | None = None,
         language: str | None = None,
+        status: str | None = None,
     ) -> tuple[list[BookRecord], int]:
         """Paginated browse over the catalog.
 
@@ -271,7 +272,7 @@ class LibraryCatalog:
         filter values bind as parameters; nothing string-interpolates.
         """
         filter_sql, filter_params = self._filter_clauses(
-            enriched=enriched, format=format, language=language
+            enriched=enriched, format=format, language=language, status=status
         )
         match = _fts_match_expression(q) if q else ""
         if match:
@@ -312,6 +313,7 @@ class LibraryCatalog:
         enriched: str | None,
         format: str | None,
         language: str | None,
+        status: str | None = None,
     ) -> tuple[list[str], list[object]]:
         """Translate browse filter args into SQL fragments + bind values.
 
@@ -322,6 +324,13 @@ class LibraryCatalog:
         ``LOWER(source_path) LIKE '%.' || ?`` rather than SQLite's
         ``substr``/``instr`` so the extension comparison is case-insensitive
         without forcing the input to a particular case.
+
+        ``status`` is expressed as an EXISTS / NOT EXISTS subquery against
+        ``book_status`` rather than a join so the outer query's row
+        structure stays identical to the unfiltered case (the FTS variant
+        already joins on ``books_fts``; adding a second join would force
+        a column-qualified rewrite). ``"unread"`` is "no row OR row with
+        status=0" — captured as ``NOT EXISTS(... AND status > 0)``.
         """
         clauses: list[str] = []
         params: list[object] = []
@@ -335,6 +344,21 @@ class LibraryCatalog:
         if language:
             clauses.append("language = ?")
             params.append(language)
+        if status == "reading":
+            clauses.append(
+                "EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status = 1)"
+            )
+        elif status == "finished":
+            clauses.append(
+                "EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status = 2)"
+            )
+        elif status == "unread":
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status > 0)"
+            )
         return clauses, params
 
     def update_book(
@@ -965,6 +989,62 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
+    def set_book_statuses_bulk(
+        self,
+        *,
+        book_ids: list[int],
+        status: int,
+        updated_at: str,
+    ) -> list[int]:
+        """Upsert ``book_status`` for many books in a single transaction.
+
+        Powers the web bulk-mark action — "I just imported 200 books from
+        Calibre, mark them all read". Differs from ``set_book_status``:
+
+        - Unknown IDs are silently skipped (not raised). Bulk callers prefer
+          a count over an exception when one stale ID is in the list.
+        - Repeated IDs in the input are deduplicated so the caller doesn't
+          have to scrub form-post values that may carry the same id twice.
+
+        Returns the de-duplicated list of IDs that actually had a row
+        written, preserving input order. An empty ``book_ids`` short-
+        circuits without touching the DB.
+        """
+        if not book_ids:
+            return []
+        # Dedupe while preserving order — the first occurrence wins.
+        seen: set[int] = set()
+        unique_ids: list[int] = []
+        for bid in book_ids:
+            if bid not in seen:
+                seen.add(bid)
+                unique_ids.append(bid)
+        # Filter to known book IDs before the write so we never insert an
+        # orphan row that the FK constraint would later complain about. One
+        # IN-clause query keeps this O(1) round trips.
+        placeholders = ",".join("?" * len(unique_ids))
+        cursor = self._conn.execute(
+            f"SELECT id FROM books WHERE id IN ({placeholders})",
+            unique_ids,
+        )
+        known_ids = {int(row["id"]) for row in cursor.fetchall()}
+        writable = [bid for bid in unique_ids if bid in known_ids]
+        if not writable:
+            return []
+        rows = [(bid, status, updated_at) for bid in writable]
+        self._conn.executemany(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            rows,
+        )
+        self._conn.commit()
+        return writable
+
     def get_book_status(self, book_id: int) -> BookStatus | None:
         """Return the catalog-side read status for a book, or None if absent."""
         row = self._conn.execute(
@@ -1034,6 +1114,36 @@ class LibraryCatalog:
             """,
         )
         return [row_to_record(row) for row in cursor.fetchall()]
+
+    def is_status_queued_for_push(self, book_id: int) -> bool:
+        """True when the catalog-side status is newer than the latest device.
+
+        Powers the "Queued for next sync" indicator on the web detail page.
+        Compares ``book_status.updated_at`` against the most recent
+        ``device_read_state.status_updated_at`` across all devices:
+
+        - No ``book_status`` row → nothing to push, returns False.
+        - No ``device_read_state`` row → catalog has news that no device has
+          seen, returns True.
+        - Otherwise → strict `>` comparison (string-sorts ISO-8601 timestamps,
+          which is the same ordering convention ``merge_book_status_from_device``
+          uses for its tiebreak).
+        """
+        catalog_row = self._conn.execute(
+            "SELECT updated_at FROM book_status WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if catalog_row is None:
+            return False
+        catalog_ts = str(catalog_row["updated_at"])
+        device_row = self._conn.execute(
+            "SELECT MAX(status_updated_at) AS latest "
+            "FROM device_read_state WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if device_row is None or device_row["latest"] is None:
+            return True
+        return catalog_ts > str(device_row["latest"])
 
     def get_device_read_state_for_book(self, book_id: int) -> DeviceReadState | None:
         """Return the most-recent device read state for a book, joined with devices.

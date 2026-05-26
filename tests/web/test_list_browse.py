@@ -464,7 +464,12 @@ class TestBooksRouteFilters:
         response = client.get("/books")
         html = response.data.decode()
 
-        assert "filter-chip" not in html
+        # The dismissible active-filter pill strip is empty — the standalone
+        # ``filter-chip`` and ``filter-chip-dismiss`` markers from
+        # ``_filter_chips.html`` should not appear. (``status-filter-chip``
+        # from the P3 chip row is always present and intentionally distinct.)
+        assert "filter-chip-dismiss" not in html
+        assert 'class="filter-chip"' not in html
 
     def test_unknown_filter_value_silently_ignored(self, mock_catalog, client):
         _stub_browse(mock_catalog, books=[make_book(1)], total=1)
@@ -530,3 +535,41 @@ class TestBooksRouteFilters:
         assert sort_hrefs
         for href in sort_hrefs:
             assert "enriched=1" in href
+
+
+# --- BrowseQuery status filter parsing (P3 / #183) ---
+
+
+class TestBrowseQueryStatusFilter:
+    @pytest.mark.parametrize("value", ["unread", "reading", "finished"])
+    def test_status_kept_for_known_values(self, value):
+        q = from_request_args({"status": value})
+        assert q.filters.get("status") == value
+
+    def test_status_all_dropped(self):
+        # ``all`` is a UI affordance meaning "no filter" — it must round-trip
+        # to the same empty filter set as omitting the parameter entirely.
+        q = from_request_args({"status": "all"})
+        assert "status" not in q.filters
+
+    @pytest.mark.parametrize("bad", ["", "garbage", "3", "done"])
+    def test_status_bad_values_dropped(self, bad):
+        q = from_request_args({"status": bad})
+        assert "status" not in q.filters
+
+    def test_status_case_normalized(self):
+        # Mirrors the format/language convention — URL values are lowercased
+        # so chip rendering and SQL binding see a single canonical form.
+        q = from_request_args({"status": "READING"})
+        assert q.filters.get("status") == "reading"
+
+    def test_status_round_trips_through_with_page(self):
+        q = from_request_args({"status": "reading", "page": "2"})
+        bumped = q.with_page(5)
+        assert bumped.filters == {"status": "reading"}
+
+    def test_status_round_trips_through_without_filter(self):
+        q = from_request_args({"status": "reading", "enriched": "1"})
+        dropped = q.without_filter("status")
+        assert "status" not in dropped.filters
+        assert dropped.filters.get("enriched") == "1"

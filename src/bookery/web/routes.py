@@ -2,6 +2,7 @@
 # ABOUTME: Handles book listing, detail view, search, and inline editing with htmx support.
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -21,12 +22,37 @@ from bookery.core.config import get_library_root
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
 from bookery.core.pipeline import apply_metadata_safely
 from bookery.core.remove import remove_book
+from bookery.db.status import STATUS_FINISHED, STATUS_READING, STATUS_UNREAD
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
 from bookery.web.browse import BrowsePage, from_request_args
 from bookery.web.covers import get_or_extract_cover
 from bookery.web.diff import metadata_diff
+
+_STATUS_FROM_FORM: dict[str, int] = {
+    "unread": STATUS_UNREAD,
+    "reading": STATUS_READING,
+    "finished": STATUS_FINISHED,
+}
+
+
+def _parse_status(value: str | None) -> int | None:
+    """Translate a form ``status`` value into the integer constant.
+
+    Returns ``None`` for missing or unknown values — the route then 400s
+    so a bad form post fails loudly rather than silently rewriting the
+    book to ``UNREAD``. Case-folded so a future client that posts the
+    canonical title-case label still resolves.
+    """
+    if value is None:
+        return None
+    return _STATUS_FROM_FORM.get(value.strip().lower())
+
+
+def _now_iso() -> str:
+    """UTC ISO timestamp with seconds precision — matches the CLI status path."""
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _safe_return_to(value: str | None) -> str | None:
@@ -150,6 +176,10 @@ def books():
             **clamped.filters,
         )
         query = clamped
+    # ``query.filters`` already carries the ``status`` value when present, so
+    # the kwargs splat above forwards it straight into ``catalog.browse``.
+    # Nothing else to wire in this controller — the filter chip strip reads
+    # from the same ``query.filters`` mapping.
 
     page = BrowsePage(
         books=books_page,
@@ -201,6 +231,7 @@ def book_detail(book_id):
     return_to = _safe_return_to(request.args.get("return_to"))
     book_status = catalog.get_book_status(book_id)
     device_read_state = catalog.get_device_read_state_for_book(book_id)
+    queued_for_push = catalog.is_status_queued_for_push(book_id)
 
     if request.headers.get("HX-Request"):
         return render_template(
@@ -212,6 +243,7 @@ def book_detail(book_id):
             return_to=return_to,
             book_status=book_status,
             device_read_state=device_read_state,
+            queued_for_push=queued_for_push,
         )
 
     return render_template(
@@ -223,6 +255,105 @@ def book_detail(book_id):
         return_to=return_to,
         book_status=book_status,
         device_read_state=device_read_state,
+        queued_for_push=queued_for_push,
+    )
+
+
+@bp.route("/books/bulk-status", methods=["POST"])
+def bulk_update_status():
+    """Apply one status to many books in a single transactional write.
+
+    Form fields:
+      - ``ids`` — repeated; each value must be an integer book id.
+      - ``status`` — one of ``unread|reading|finished``.
+
+    Returns the refreshed ``_book_list.html`` partial so an htmx swap on
+    ``#book-list`` redraws the affected rows. Filter / sort context is
+    reconstructed from the request URL so a bulk-mark on a filtered view
+    doesn't fall back to "all books, default sort".
+    """
+    catalog = current_app.config["CATALOG"]
+
+    raw_ids = request.form.getlist("ids")
+    if not raw_ids:
+        abort(400)
+    try:
+        ids = [int(value) for value in raw_ids]
+    except (TypeError, ValueError):
+        abort(400)
+
+    status_int = _parse_status(request.form.get("status"))
+    if status_int is None:
+        abort(400)
+
+    catalog.set_book_statuses_bulk(
+        book_ids=ids,
+        status=status_int,
+        updated_at=_now_iso(),
+    )
+
+    # Re-render the list partial so the htmx response carries the updated
+    # rows. Use the same browse query the user was looking at — filter and
+    # pagination context come from the request URL.
+    query = from_request_args(request.args)
+    books_page, total = catalog.browse(
+        q=query.q,
+        offset=query.offset,
+        limit=query.page_size,
+        sort=query.sort,
+        dir=query.dir,
+        **query.filters,
+    )
+    page = BrowsePage(
+        books=books_page,
+        total=total,
+        page=query.page,
+        page_size=query.page_size,
+        query=query,
+    )
+    book_statuses = (
+        catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
+    )
+    list_url = _current_list_url()
+    return render_template(
+        "_book_list.html",
+        page=page,
+        query=query,
+        list_url=list_url,
+        book_statuses=book_statuses,
+    )
+
+
+@bp.route("/books/<int:book_id>/status", methods=["POST"])
+def update_book_status(book_id):
+    """Set the catalog read-status for a single book.
+
+    Form field ``status`` is one of ``unread|reading|finished``. Unknown
+    values 400 so a malformed form post never silently rewrites the row.
+    Returns the ``_detail_reading.html`` partial so an htmx outer-swap on
+    ``#detail-reading`` updates the section in place; the next
+    ``bookery sync kobo`` is responsible for the device push.
+    """
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    status_int = _parse_status(request.form.get("status"))
+    if status_int is None:
+        abort(400)
+
+    catalog.set_book_status(book_id=book_id, status=status_int, updated_at=_now_iso())
+
+    book_status = catalog.get_book_status(book_id)
+    device_read_state = catalog.get_device_read_state_for_book(book_id)
+    queued_for_push = catalog.is_status_queued_for_push(book_id)
+    return render_template(
+        "_detail_reading.html",
+        book=book,
+        book_status=book_status,
+        device_read_state=device_read_state,
+        queued_for_push=queued_for_push,
     )
 
 
