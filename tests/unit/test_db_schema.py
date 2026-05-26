@@ -85,7 +85,7 @@ class TestOpenLibrary:
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 7
+        assert row[0] == 8
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""
@@ -135,3 +135,67 @@ class TestOpenLibrary:
         conn = open_library(db_path)
         assert conn.row_factory == sqlite3.Row
         conn.close()
+
+
+class TestSchemaV8DeviceTables:
+    """SCHEMA_V8 lands the bidirectional Kobo read-status layout.
+
+    Pull-side wiring uses devices, device_read_state, device_files; the
+    book_status table is the catalog-side mirror that P1b/P2 will write to.
+    All four tables land at the same time so later phases are additive.
+    """
+
+    def test_creates_devices_table(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(devices)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert columns == {"id", "kind", "serial", "label", "last_seen_at"}
+
+    def test_devices_unique_kind_serial(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        insert = "INSERT INTO devices (kind, serial, last_seen_at) VALUES (?, ?, ?)"
+        conn.execute(insert, ("kobo", "N1", "2026-01-01"))
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(insert, ("kobo", "N1", "2026-01-02"))
+        conn.close()
+
+    def test_creates_device_read_state_table(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(device_read_state)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert columns == {
+            "device_id",
+            "book_id",
+            "read_status",
+            "percent_read",
+            "last_read_at",
+            "last_chapter_id",
+            "status_updated_at",
+            "pulled_at",
+        }
+
+    def test_creates_book_status_table(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(book_status)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert columns == {"book_id", "status", "updated_at"}
+
+    def test_creates_device_files_table(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(device_files)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert columns == {"device_id", "book_id", "remote_path", "written_at"}
+
+    def test_creates_device_files_path_index(self, db_path: Path) -> None:
+        conn = open_library(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='device_files'"
+        )
+        names = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        assert "idx_device_files_path" in names

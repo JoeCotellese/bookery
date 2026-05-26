@@ -1,7 +1,7 @@
 # ABOUTME: Unit tests for sync_library_to_kobo — orchestrates kepubify + cache + copy.
 # ABOUTME: Stubs the kepubify wrapper and uses a real KepubCache + tmp filesystem.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -35,9 +35,45 @@ class StubKepubify:
 @dataclass
 class StubCatalog:
     records: list[BookRecord]
+    device_id: int = 42
+    device_files: dict[tuple[int, str], int] = field(default_factory=dict)
+    upsert_device_calls: list[dict] = field(default_factory=list)
+    upsert_device_file_calls: list[dict] = field(default_factory=list)
+    read_state_upserts: list[dict] = field(default_factory=list)
+    book_status_seeds: list[dict] = field(default_factory=list)
 
     def list_all(self) -> list[BookRecord]:
         return list(self.records)
+
+    def upsert_device(self, *, kind: str, serial: str, label, now: str) -> int:
+        self.upsert_device_calls.append(
+            {"kind": kind, "serial": serial, "label": label, "now": now}
+        )
+        return self.device_id
+
+    def upsert_device_file(
+        self, *, device_id: int, book_id: int, remote_path: str, now: str
+    ) -> None:
+        self.upsert_device_file_calls.append(
+            {
+                "device_id": device_id,
+                "book_id": book_id,
+                "remote_path": remote_path,
+                "now": now,
+            }
+        )
+        self.device_files[(device_id, remote_path)] = book_id
+
+    def resolve_book_id_for_remote_path(
+        self, *, device_id: int, remote_path: str
+    ) -> int | None:
+        return self.device_files.get((device_id, remote_path))
+
+    def upsert_device_read_state(self, **kwargs) -> None:
+        self.read_state_upserts.append(kwargs)
+
+    def seed_book_status_if_absent(self, **kwargs) -> None:
+        self.book_status_seeds.append(kwargs)
 
 
 def _make_record(
@@ -65,9 +101,13 @@ def _write_epub(path: Path, body: bytes = b"EPUB-CONTENT") -> None:
     path.write_bytes(body)
 
 
-def _setup(tmp_path: Path) -> dict[str, Any]:
+def _setup(tmp_path: Path, *, write_version: bool = True) -> dict[str, Any]:
     library = tmp_path / "library"
     target = tmp_path / "kobo"
+    if write_version:
+        kobo_dir = target / ".kobo"
+        kobo_dir.mkdir(parents=True)
+        (kobo_dir / "version").write_text("N428440071799,4.45.23684\n")
     cache = KepubCache(tmp_path / "kepub.db")
     kepubify = StubKepubify()
     workspace = tmp_path / "workspace"
@@ -441,3 +481,154 @@ def test_kepubify_failure_is_recorded_not_raised(tmp_path: Path) -> None:
 
     assert len(report.failed) == 1
     assert "kepubify crashed" in report.failed[0][1]
+
+
+class TestDeviceWiring:
+    """The sync wiring added in P1a (issue #180).
+
+    Read state pull runs before the kepub copy loop, device_files rows are
+    written per successful copy, and a missing `.kobo/version` degrades
+    gracefully (kepub copy still runs).
+    """
+
+    def test_device_upserted_before_loop(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path)
+        epub = env["library"] / "A" / "T" / "T.epub"
+        _write_epub(epub)
+        record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+        catalog = StubCatalog(records=[record])
+
+        sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        assert len(catalog.upsert_device_calls) == 1
+        call = catalog.upsert_device_calls[0]
+        assert call["kind"] == "kobo"
+        assert call["serial"] == "N428440071799"
+
+    def test_device_files_upserted_per_copy(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path)
+        records = []
+        for i in range(3):
+            epub = env["library"] / f"A{i}" / f"T{i}" / f"T{i}.epub"
+            _write_epub(epub)
+            records.append(
+                _make_record(rec_id=i + 1, title=f"T{i}", author=f"A{i}", epub_path=epub)
+            )
+        catalog = StubCatalog(records=records)
+
+        sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        assert len(catalog.upsert_device_file_calls) == 3
+        book_ids = {c["book_id"] for c in catalog.upsert_device_file_calls}
+        assert book_ids == {1, 2, 3}
+        # Recorded remote_paths are in the device coordinate system
+        # (/mnt/onboard/...), not the host mount path — so they line up with
+        # Kobo's ContentID format on real hardware.
+        for call in catalog.upsert_device_file_calls:
+            assert call["remote_path"].startswith("/mnt/onboard/Books/")
+            assert call["remote_path"].endswith(".kepub.epub")
+            assert call["device_id"] == catalog.device_id
+
+    def test_no_device_file_upsert_when_copy_skipped(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path)
+        epub = env["library"] / "A" / "T" / "T.epub"
+        _write_epub(epub)
+        record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+        catalog = StubCatalog(records=[record])
+
+        # First sync — copies and records the device_file.
+        sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        baseline = len(catalog.upsert_device_file_calls)
+
+        # Second sync — kepub cache hits, file skipped; no new device_file row.
+        sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        assert len(catalog.upsert_device_file_calls) == baseline
+
+    def test_dry_run_does_not_touch_device_tables(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path)
+        epub = env["library"] / "A" / "T" / "T.epub"
+        _write_epub(epub)
+        record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+        catalog = StubCatalog(records=[record])
+
+        sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+            dry_run=True,
+        )
+        assert catalog.upsert_device_calls == []
+        assert catalog.upsert_device_file_calls == []
+
+    def test_sync_continues_when_kobo_version_missing(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path, write_version=False)
+        epub = env["library"] / "A" / "T" / "T.epub"
+        _write_epub(epub)
+        record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+        catalog = StubCatalog(records=[record])
+
+        report = sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        # The kepub copy still happens — sync is best-effort.
+        assert len(report.copied) == 1
+        # But no device-side bookkeeping was done (no serial → no device id).
+        assert catalog.upsert_device_calls == []
+        assert catalog.upsert_device_file_calls == []
+        assert report.read_states_pulled == 0
+        assert report.read_states_skipped == 0
+
+    def test_report_has_read_state_counter_defaults(self, tmp_path: Path) -> None:
+        env = _setup(tmp_path)
+        catalog = StubCatalog(records=[])
+        report = sync_library_to_kobo(
+            catalog=catalog,
+            target=env["target"],
+            cache=env["cache"],
+            run_kepubify=env["kepubify"].run,
+            kepubify_version=env["kepubify"].get_version,
+            workspace_dir=env["workspace"],
+            books_subdir="Books",
+        )
+        assert report.read_states_pulled == 0
+        assert report.read_states_skipped == 0

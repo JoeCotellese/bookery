@@ -184,6 +184,52 @@ WHERE id IN (
 INSERT INTO schema_version (version) VALUES (7);
 """
 
+# Bidirectional Kobo read-status layout. All four tables land together so
+# P1b (catalog-side status writes) and P2 (device push, merge) are additive.
+# `device_read_state` mirrors what we last pulled from the device; `book_status`
+# is the catalog-side truth that user commands set; `device_files` records the
+# on-device path of each kepub we copy, so the ContentID resolver becomes a
+# direct primary-key lookup instead of recomputing sanitization rules.
+SCHEMA_V8 = """
+CREATE TABLE devices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind         TEXT NOT NULL,
+    serial       TEXT NOT NULL,
+    label        TEXT,
+    last_seen_at TEXT,
+    UNIQUE (kind, serial)
+);
+
+CREATE TABLE device_read_state (
+    device_id          INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    book_id            INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    read_status        INTEGER NOT NULL,
+    percent_read       REAL,
+    last_read_at       TEXT,
+    last_chapter_id    TEXT,
+    status_updated_at  TEXT NOT NULL,
+    pulled_at          TEXT NOT NULL,
+    PRIMARY KEY (device_id, book_id)
+);
+
+CREATE TABLE book_status (
+    book_id     INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+    status      INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE device_files (
+    device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    remote_path TEXT NOT NULL,
+    written_at  TEXT NOT NULL,
+    PRIMARY KEY (device_id, book_id)
+);
+CREATE INDEX idx_device_files_path ON device_files(device_id, remote_path);
+
+INSERT INTO schema_version (version) VALUES (8);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -191,4 +237,5 @@ MIGRATIONS = [
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
     (7, SCHEMA_V7),
+    (8, SCHEMA_V8),
 ]

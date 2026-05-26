@@ -787,3 +787,118 @@ class LibraryCatalog:
             subjects = json.loads(row[2]) if row[2] else []
             results.append((row[0], row[1], subjects))
         return results
+
+    # --- Device / read-status (SCHEMA_V8) -------------------------------
+
+    def upsert_device(self, *, kind: str, serial: str, label: str | None, now: str) -> int:
+        """Insert or refresh a device row; return its id.
+
+        Devices are uniquely identified by (kind, serial). On re-sync we
+        update `label` and `last_seen_at` but preserve the id so foreign keys
+        in device_read_state and device_files stay stable.
+        """
+        self._conn.execute(
+            """
+            INSERT INTO devices (kind, serial, label, last_seen_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(kind, serial) DO UPDATE SET
+                label = excluded.label,
+                last_seen_at = excluded.last_seen_at
+            """,
+            (kind, serial, label, now),
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT id FROM devices WHERE kind = ? AND serial = ?",
+            (kind, serial),
+        ).fetchone()
+        assert row is not None
+        return int(row["id"])
+
+    def upsert_device_file(
+        self, *, device_id: int, book_id: int, remote_path: str, now: str
+    ) -> None:
+        """Record the on-device path for a book copied during sync.
+
+        Replaces `remote_path` on conflict so the resolver always points at
+        the current file — if a book's destination changes (e.g. title edit
+        propagates a new directory), the next sync overwrites cleanly.
+        """
+        self._conn.execute(
+            """
+            INSERT INTO device_files (device_id, book_id, remote_path, written_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(device_id, book_id) DO UPDATE SET
+                remote_path = excluded.remote_path,
+                written_at = excluded.written_at
+            """,
+            (device_id, book_id, remote_path, now),
+        )
+        self._conn.commit()
+
+    def resolve_book_id_for_remote_path(self, *, device_id: int, remote_path: str) -> int | None:
+        """Look up the catalog book id we wrote to `remote_path` on this device."""
+        row = self._conn.execute(
+            "SELECT book_id FROM device_files WHERE device_id = ? AND remote_path = ?",
+            (device_id, remote_path),
+        ).fetchone()
+        return int(row["book_id"]) if row is not None else None
+
+    def upsert_device_read_state(
+        self,
+        *,
+        device_id: int,
+        book_id: int,
+        read_status: int,
+        percent_read: float | None,
+        last_read_at: str | None,
+        last_chapter_id: str | None,
+        status_updated_at: str,
+        pulled_at: str,
+    ) -> None:
+        """Persist the device-side read state pulled from KoboReader.sqlite."""
+        self._conn.execute(
+            """
+            INSERT INTO device_read_state (
+                device_id, book_id, read_status, percent_read,
+                last_read_at, last_chapter_id, status_updated_at, pulled_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id, book_id) DO UPDATE SET
+                read_status = excluded.read_status,
+                percent_read = excluded.percent_read,
+                last_read_at = excluded.last_read_at,
+                last_chapter_id = excluded.last_chapter_id,
+                status_updated_at = excluded.status_updated_at,
+                pulled_at = excluded.pulled_at
+            """,
+            (
+                device_id,
+                book_id,
+                read_status,
+                percent_read,
+                last_read_at,
+                last_chapter_id,
+                status_updated_at,
+                pulled_at,
+            ),
+        )
+        self._conn.commit()
+
+    def seed_book_status_if_absent(self, *, book_id: int, status: int, updated_at: str) -> None:
+        """Insert book_status only if no row exists for this book.
+
+        The pull seeds the catalog-side mirror from device state, but P1b lets
+        users set status directly via `bookery read/unread/reading`. Once the
+        user has set a value, the pull must never clobber it — hence ON CONFLICT
+        DO NOTHING. Later phases overwrite via a different method.
+        """
+        self._conn.execute(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO NOTHING
+            """,
+            (book_id, status, updated_at),
+        )
+        self._conn.commit()
