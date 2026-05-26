@@ -548,7 +548,12 @@ class TestDeviceWiring:
             assert call["remote_path"].endswith(".kepub.epub")
             assert call["device_id"] == catalog.device_id
 
-    def test_no_device_file_upsert_when_copy_skipped(self, tmp_path: Path) -> None:
+    def test_device_file_re_upserted_on_cached_path(self, tmp_path: Path) -> None:
+        # Regression for #188: when the kepub cache hits on a subsequent sync,
+        # the device_file row must still be re-stamped. Otherwise books that
+        # were synced before P1a shipped — or any book that's been on the
+        # device long enough to hit the cached path — stay invisible to
+        # ``list_push_candidates`` and the read-status push silently no-ops.
         env = _setup(tmp_path)
         epub = env["library"] / "A" / "T" / "T.epub"
         _write_epub(epub)
@@ -566,8 +571,11 @@ class TestDeviceWiring:
             books_subdir="Books",
         )
         baseline = len(catalog.upsert_device_file_calls)
+        assert baseline == 1
+        first_remote = catalog.upsert_device_file_calls[0]["remote_path"]
 
-        # Second sync — kepub cache hits, file skipped; no new device_file row.
+        # Second sync — kepub cache hits, copy is skipped. The device_file
+        # upsert still runs (idempotent) so push_candidates can see the book.
         sync_library_to_kobo(
             catalog=catalog,
             target=env["target"],
@@ -577,7 +585,11 @@ class TestDeviceWiring:
             workspace_dir=env["workspace"],
             books_subdir="Books",
         )
-        assert len(catalog.upsert_device_file_calls) == baseline
+        assert len(catalog.upsert_device_file_calls) == baseline + 1
+        cached_call = catalog.upsert_device_file_calls[-1]
+        assert cached_call["book_id"] == 1
+        assert cached_call["device_id"] == catalog.device_id
+        assert cached_call["remote_path"] == first_remote
 
     def test_dry_run_does_not_touch_device_tables(self, tmp_path: Path) -> None:
         env = _setup(tmp_path)

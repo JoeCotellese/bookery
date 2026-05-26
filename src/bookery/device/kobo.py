@@ -210,6 +210,18 @@ def _sync_record(
             if compute_file_hash(dest) == cached_kepub_sha:
                 stage("cached")
                 report.skipped.append((dest, "already up to date"))
+                # Re-stamp device_files even on the cached path; otherwise
+                # books that pre-date P1a (#180) — or any book that's been on
+                # the device long enough to hit this branch — stay invisible
+                # to ``list_push_candidates`` and the read-status push
+                # silently no-ops (#188). The upsert is idempotent.
+                if device_id is not None:
+                    catalog.upsert_device_file(
+                        device_id=device_id,
+                        book_id=record.id,
+                        remote_path=_to_device_path(dest, target),
+                        now=now,
+                    )
                 return
         except OSError:
             pass  # fall through to re-convert
