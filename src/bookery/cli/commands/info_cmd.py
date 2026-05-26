@@ -10,6 +10,7 @@ from rich.table import Table
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+from bookery.db.status import status_name
 
 console = Console()  # TODO: move Console() inside command for testability
 
@@ -199,4 +200,32 @@ def info(
     table.add_row("Modified", record.date_modified)
 
     console.print(table)
+
+    book_status = catalog.get_book_status(book_id)
+    device_state = catalog.get_device_read_state_for_book(book_id)
+    if book_status is not None or device_state is not None:
+        reading = Table(show_header=False, box=None, pad_edge=False)
+        reading.add_column("Field", style="bold", width=14)
+        reading.add_column("Value")
+        if book_status is not None:
+            reading.add_row("Status", status_name(book_status.status))
+        elif device_state is not None:
+            # No user mark yet — surface the device's view rather than render
+            # an empty section just because device_read_state exists.
+            reading.add_row("Status", status_name(device_state.read_status))
+        if device_state is not None and device_state.percent_read is not None:
+            reading.add_row("Progress", f"{device_state.percent_read:.0%}")
+        if device_state is not None and device_state.last_read_at:
+            reading.add_row("Last opened", device_state.last_read_at)
+        if device_state is not None:
+            label = (
+                f"{device_state.device_kind.title()} ({device_state.device_label})"
+                if device_state.device_label
+                else device_state.device_kind.title()
+            )
+            reading.add_row("Device", label)
+        console.print()
+        console.print("[bold]Reading[/bold]")
+        console.print(reading)
+
     conn.close()
