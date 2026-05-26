@@ -203,8 +203,7 @@ class LibraryCatalog:
         this name and changing the public surface would be churn for no gain.
         """
         cursor = self._conn.execute(
-            "SELECT * FROM books "
-            "ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
+            "SELECT * FROM books ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
@@ -215,8 +214,7 @@ class LibraryCatalog:
         order matches the web's default ``/books`` listing.
         """
         cursor = self._conn.execute(
-            "SELECT * FROM books "
-            "ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
+            "SELECT * FROM books ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
