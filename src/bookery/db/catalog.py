@@ -989,6 +989,62 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
+    def set_book_statuses_bulk(
+        self,
+        *,
+        book_ids: list[int],
+        status: int,
+        updated_at: str,
+    ) -> list[int]:
+        """Upsert ``book_status`` for many books in a single transaction.
+
+        Powers the web bulk-mark action — "I just imported 200 books from
+        Calibre, mark them all read". Differs from ``set_book_status``:
+
+        - Unknown IDs are silently skipped (not raised). Bulk callers prefer
+          a count over an exception when one stale ID is in the list.
+        - Repeated IDs in the input are deduplicated so the caller doesn't
+          have to scrub form-post values that may carry the same id twice.
+
+        Returns the de-duplicated list of IDs that actually had a row
+        written, preserving input order. An empty ``book_ids`` short-
+        circuits without touching the DB.
+        """
+        if not book_ids:
+            return []
+        # Dedupe while preserving order — the first occurrence wins.
+        seen: set[int] = set()
+        unique_ids: list[int] = []
+        for bid in book_ids:
+            if bid not in seen:
+                seen.add(bid)
+                unique_ids.append(bid)
+        # Filter to known book IDs before the write so we never insert an
+        # orphan row that the FK constraint would later complain about. One
+        # IN-clause query keeps this O(1) round trips.
+        placeholders = ",".join("?" * len(unique_ids))
+        cursor = self._conn.execute(
+            f"SELECT id FROM books WHERE id IN ({placeholders})",
+            unique_ids,
+        )
+        known_ids = {int(row["id"]) for row in cursor.fetchall()}
+        writable = [bid for bid in unique_ids if bid in known_ids]
+        if not writable:
+            return []
+        rows = [(bid, status, updated_at) for bid in writable]
+        self._conn.executemany(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            rows,
+        )
+        self._conn.commit()
+        return writable
+
     def get_book_status(self, book_id: int) -> BookStatus | None:
         """Return the catalog-side read status for a book, or None if absent."""
         row = self._conn.execute(

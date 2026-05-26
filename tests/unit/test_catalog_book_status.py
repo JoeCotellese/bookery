@@ -418,3 +418,70 @@ class TestListPushCandidates:
         candidates = catalog.list_push_candidates(device_id=device_id)
         assert len(candidates) == 1
         assert candidates[0].device_status_updated_at == "2026-05-20T00:00:00+00:00"
+
+
+class TestSetBookStatusesBulk:
+    """set_book_statuses_bulk — one-transaction multi-row upsert for the web
+    bulk-mark action (P3 / #183).
+    """
+
+    def test_writes_all_given_ids(self, catalog: LibraryCatalog) -> None:
+        a = _add_book(catalog, "A", "ha")
+        b = _add_book(catalog, "B", "hb")
+        c = _add_book(catalog, "C", "hc")
+        written = catalog.set_book_statuses_bulk(
+            book_ids=[a, b, c],
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        assert sorted(written) == sorted([a, b, c])
+        for bid in (a, b, c):
+            status = catalog.get_book_status(bid)
+            assert status is not None
+            assert status.status == STATUS_FINISHED
+            assert status.updated_at == "2026-05-26T10:00:00+00:00"
+
+    def test_overwrites_existing_rows(self, catalog: LibraryCatalog) -> None:
+        a = _add_book(catalog, "A", "ha")
+        catalog.set_book_status(
+            book_id=a, status=STATUS_READING, updated_at="2026-05-26T09:00:00+00:00"
+        )
+        catalog.set_book_statuses_bulk(
+            book_ids=[a],
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        status = catalog.get_book_status(a)
+        assert status is not None
+        assert status.status == STATUS_FINISHED
+        assert status.updated_at == "2026-05-26T10:00:00+00:00"
+
+    def test_unknown_ids_silently_skipped(self, catalog: LibraryCatalog) -> None:
+        a = _add_book(catalog, "A", "ha")
+        written = catalog.set_book_statuses_bulk(
+            book_ids=[a, 999, 1000],
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        assert written == [a]
+        # Verify unknown IDs did NOT result in orphan rows.
+        assert catalog.get_book_status(999) is None
+
+    def test_empty_list_writes_nothing(self, catalog: LibraryCatalog) -> None:
+        written = catalog.set_book_statuses_bulk(
+            book_ids=[],
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        assert written == []
+
+    def test_deduplicates_repeated_ids(self, catalog: LibraryCatalog) -> None:
+        a = _add_book(catalog, "A", "ha")
+        written = catalog.set_book_statuses_bulk(
+            book_ids=[a, a, a],
+            status=STATUS_READING,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        # Duplicate IDs in the form post shouldn't make the caller think
+        # they wrote three separate rows.
+        assert written == [a]
