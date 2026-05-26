@@ -259,6 +259,71 @@ def book_detail(book_id):
     )
 
 
+@bp.route("/books/bulk-status", methods=["POST"])
+def bulk_update_status():
+    """Apply one status to many books in a single transactional write.
+
+    Form fields:
+      - ``ids`` — repeated; each value must be an integer book id.
+      - ``status`` — one of ``unread|reading|finished``.
+
+    Returns the refreshed ``_book_list.html`` partial so an htmx swap on
+    ``#book-list`` redraws the affected rows. Filter / sort context is
+    reconstructed from the request URL so a bulk-mark on a filtered view
+    doesn't fall back to "all books, default sort".
+    """
+    catalog = current_app.config["CATALOG"]
+
+    raw_ids = request.form.getlist("ids")
+    if not raw_ids:
+        abort(400)
+    try:
+        ids = [int(value) for value in raw_ids]
+    except (TypeError, ValueError):
+        abort(400)
+
+    status_int = _parse_status(request.form.get("status"))
+    if status_int is None:
+        abort(400)
+
+    catalog.set_book_statuses_bulk(
+        book_ids=ids,
+        status=status_int,
+        updated_at=_now_iso(),
+    )
+
+    # Re-render the list partial so the htmx response carries the updated
+    # rows. Use the same browse query the user was looking at — filter and
+    # pagination context come from the request URL.
+    query = from_request_args(request.args)
+    books_page, total = catalog.browse(
+        q=query.q,
+        offset=query.offset,
+        limit=query.page_size,
+        sort=query.sort,
+        dir=query.dir,
+        **query.filters,
+    )
+    page = BrowsePage(
+        books=books_page,
+        total=total,
+        page=query.page,
+        page_size=query.page_size,
+        query=query,
+    )
+    book_statuses = (
+        catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
+    )
+    list_url = _current_list_url()
+    return render_template(
+        "_book_list.html",
+        page=page,
+        query=query,
+        list_url=list_url,
+        book_statuses=book_statuses,
+    )
+
+
 @bp.route("/books/<int:book_id>/status", methods=["POST"])
 def update_book_status(book_id):
     """Set the catalog read-status for a single book.
