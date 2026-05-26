@@ -72,8 +72,13 @@ class StubCatalog:
     def upsert_device_read_state(self, **kwargs) -> None:
         self.read_state_upserts.append(kwargs)
 
-    def seed_book_status_if_absent(self, **kwargs) -> None:
+    def merge_book_status_from_device(self, **kwargs) -> None:
         self.book_status_seeds.append(kwargs)
+
+    def list_push_candidates(self, *, device_id: int) -> list:
+        # Stub catalog never produces push candidates; the push phase
+        # short-circuits without touching the device DB.
+        return []
 
 
 def _make_record(
