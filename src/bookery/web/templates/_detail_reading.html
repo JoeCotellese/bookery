@@ -6,12 +6,14 @@
     <h2 id="detail-reading-heading">Reading</h2>
     {% set current_status = book_status.status if book_status else 0 %}
     <div class="status-toggle" role="group" aria-label="Set read status">
-        {% for value, label in [(0, "Unread"), (1, "Reading"), (2, "Finished")] %}
+        {% for value, slug, label in [(0, "unread", "Unread"), (1, "reading", "Reading"), (2, "finished", "Finished")] %}
         <button type="button"
                 class="status-segment{% if current_status == value %} status-segment-active{% endif %}"
                 aria-pressed="{{ 'true' if current_status == value else 'false' }}"
+                name="status"
+                value="{{ slug }}"
                 hx-post="{{ url_for('web.update_book_status', book_id=book.id) }}"
-                hx-vals='{"status": "{{ label|lower }}"}'
+                hx-vals='{"status": "{{ slug }}"}'
                 hx-target="#detail-reading"
                 hx-swap="outerHTML">
             {{ label }}
