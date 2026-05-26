@@ -166,3 +166,74 @@ class TestWebE2E:
         assert "Cyberpunk noir, updated edition." in html
 
         conn.close()
+
+    def test_bulk_mark_finished_round_trip(self, tmp_path) -> None:
+        """P3 (#183): select 5 books on the list, bulk-mark Finished, verify
+        each row renders the Finished chip on re-fetch.
+        """
+        db_path = tmp_path / "library.db"
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+
+        ids: list[int] = []
+        for i in range(5):
+            bid = catalog.add_book(
+                BookMetadata(
+                    title=f"Book {i}",
+                    authors=[f"Author {i}"],
+                    author_sort=f"Author {i}",
+                    source_path=Path(f"/books/b{i}.epub"),
+                ),
+                file_hash=f"hash{i}".ljust(64, "0"),
+            )
+            ids.append(bid)
+
+        app = create_app(catalog)
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        # Step 1: List page renders the bulk form + checkboxes.
+        response = client.get("/books")
+        html = response.data.decode()
+        assert 'id="bulk-status-form"' in html
+        for bid in ids:
+            assert f'value="{bid}"' in html
+
+        # Step 2: Submit the bulk-mark. Werkzeug's test client encodes a list
+        # value into repeated form fields, which is what request.form.getlist
+        # picks up server-side.
+        response = client.post(
+            "/books/bulk-status",
+            data={"ids": [str(bid) for bid in ids], "status": "finished"},
+        )
+        assert response.status_code == 200
+
+        # Step 3: Re-fetch the list — all five rows should now carry the
+        # Finished chip class.
+        response = client.get("/books")
+        html = response.data.decode()
+        assert html.count("status-finished") >= 5
+
+        # Step 4: Filter by ?status=finished and confirm all five appear.
+        response = client.get("/books?status=finished")
+        html = response.data.decode()
+        for i in range(5):
+            assert f"Book {i}" in html
+
+        # Step 5: Toggle one back to Reading via the single-book route and
+        # confirm the detail-reading partial reflects the new state.
+        response = client.post(f"/books/{ids[0]}/status", data={"status": "reading"})
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert 'aria-pressed="true"' in html
+        assert "Reading" in html
+
+        # Filter by ?status=reading — only that one shows up.
+        response = client.get("/books?status=reading")
+        html = response.data.decode()
+        assert "Book 0" in html
+        # The four still-finished books are filtered out.
+        for i in range(1, 5):
+            assert f"Book {i}" not in html
+
+        conn.close()
