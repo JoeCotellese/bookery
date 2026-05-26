@@ -17,7 +17,7 @@ from bookery.db.mapping import (
     metadata_to_row,
     row_to_record,
 )
-from bookery.db.status import BookStatus, DeviceReadState
+from bookery.db.status import BookStatus, DeviceReadState, PushCandidate
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
@@ -1074,3 +1074,45 @@ class LibraryCatalog:
             last_read_at=row["last_read_at"],
             status_updated_at=str(row["status_updated_at"]),
         )
+
+    def list_push_candidates(self, *, device_id: int) -> list[PushCandidate]:
+        """Return rows the sync orchestrator can consider for a device push.
+
+        A candidate has both a catalog ``book_status`` row (so we know what
+        the user wants) and a ``device_files`` row for this device (so we
+        know which ContentID to write to). ``device_read_state`` is a LEFT
+        JOIN — books the device has never reported a read for still show
+        up with ``device_status_updated_at = None`` so the orchestrator can
+        push the catalog's intent unconditionally.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT
+                df.book_id,
+                df.remote_path,
+                bs.status AS catalog_status,
+                bs.updated_at AS catalog_updated_at,
+                drs.status_updated_at AS device_status_updated_at
+            FROM device_files AS df
+            JOIN book_status AS bs ON bs.book_id = df.book_id
+            LEFT JOIN device_read_state AS drs
+                ON drs.book_id = df.book_id AND drs.device_id = df.device_id
+            WHERE df.device_id = ?
+            ORDER BY df.book_id
+            """,
+            (device_id,),
+        )
+        return [
+            PushCandidate(
+                book_id=int(row["book_id"]),
+                remote_path=str(row["remote_path"]),
+                catalog_status=int(row["catalog_status"]),
+                catalog_updated_at=str(row["catalog_updated_at"]),
+                device_status_updated_at=(
+                    str(row["device_status_updated_at"])
+                    if row["device_status_updated_at"] is not None
+                    else None
+                ),
+            )
+            for row in cursor.fetchall()
+        ]
