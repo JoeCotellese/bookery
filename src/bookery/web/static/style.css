@@ -746,3 +746,135 @@ header .logo {
         display: block;
     }
 }
+
+/* P3 (#183) — detail-page segmented status control. Three buttons in a
+   horizontal group; the active segment is bolded via a brand-tinted border
+   and aria-pressed="true" reflects state to screen readers. */
+.status-toggle {
+    display: inline-flex;
+    gap: 0;
+    margin: 0.5rem 0 0.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+.status-segment {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid var(--color-border);
+    padding: 0.45rem 0.9rem;
+    font: inherit;
+    color: var(--color-text);
+    cursor: pointer;
+}
+.status-segment:last-child {
+    border-right: 0;
+}
+.status-segment:hover {
+    background: var(--color-hover);
+}
+.status-segment:focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: -2px;
+}
+.status-segment-active {
+    background: var(--color-link);
+    color: #fff;
+    font-weight: 600;
+}
+.status-queued {
+    margin: 0.35rem 0 0;
+    font-size: 0.85em;
+    color: var(--color-muted);
+    font-style: italic;
+}
+
+/* P3 (#183) — list-page status filter chip row. Anchors styled as chips;
+   active chip carries aria-current="page" and a stronger fill. */
+.status-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0 0 0.75rem;
+}
+.status-filter-chip {
+    display: inline-block;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    color: var(--color-text);
+    background: #fff;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+.status-filter-chip:hover {
+    background: var(--color-hover);
+}
+.status-filter-chip-active {
+    background: var(--color-link);
+    color: #fff;
+    border-color: var(--color-link);
+    font-weight: 600;
+}
+
+/* P3 (#183) — bulk-mark action bar. Hidden by default; revealed when at
+   least one row checkbox is checked via :has() (graceful no-op on older
+   browsers — the buttons just sit there, still operable). */
+.bulk-status-form {
+    margin: 0 0 0.75rem;
+}
+.bulk-status-actions {
+    display: none;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--color-hover);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    align-items: center;
+}
+.bulk-status-actions button {
+    appearance: none;
+    background: var(--color-link);
+    border: 0;
+    color: #fff;
+    padding: 0.35rem 0.9rem;
+    border-radius: 4px;
+    font: inherit;
+    cursor: pointer;
+}
+.bulk-status-actions button:hover {
+    filter: brightness(1.05);
+}
+.bulk-status-actions button:focus-visible {
+    outline: 2px solid var(--color-text);
+    outline-offset: 2px;
+}
+/* :has() reveal — when the document carries at least one checked checkbox
+   bound to the bulk form, surface the action row. Browsers without :has()
+   never hit this rule; the action row stays hidden, and the keyboard user
+   can still post the form via Enter on a focused button. */
+body:has(input[form="bulk-status-form"]:checked) .bulk-status-actions {
+    display: flex;
+}
+
+/* Compact checkbox column on the desktop table. */
+.book-row-select {
+    width: 1.5rem;
+    text-align: center;
+    padding-right: 0;
+}
+
+/* Mobile card list item — keep the checkbox out of the clickable card area
+   so taps on the card still navigate to detail and the checkbox is its own
+   target. */
+.book-cards-item {
+    position: relative;
+}
+.book-card-select {
+    position: absolute;
+    top: 0.6rem;
+    left: 0.6rem;
+    z-index: 1;
+}
