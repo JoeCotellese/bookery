@@ -95,6 +95,11 @@ class SyncReport:
     failed: list[tuple[Path, str]] = field(default_factory=list)
     read_states_pulled: int = 0
     read_states_skipped: int = 0
+    # Number of device_files rows the pre-pull discovery phase wrote (or
+    # re-stamped) by matching catalog records against files already on the
+    # mount. Surfaces the self-healing pass so users can see why a previously
+    # quiet pull suddenly resolves a large cohort.
+    device_files_discovered: int = 0
     # P2: device-side write counts. ``read_statuses_pushed`` is rows we
     # actually mutated on the Kobo; ``read_status_pull_only`` is push
     # candidates whose ContentID didn't match a current device row (book
@@ -163,6 +168,65 @@ def _book_dest_dir(target: Path, books_subdir: str, record: BookRecord) -> Path:
     return target / books_subdir / author / title
 
 
+def _compute_device_dest(target: Path, books_subdir: str, record: BookRecord) -> Path:
+    """Host-side path where the kepub for ``record`` would live on the mount.
+
+    Pure function — does no I/O. Shared by the copy phase (which writes to this
+    path) and the discovery phase (which checks whether it exists). Keeping the
+    naming convention in one place prevents the two phases from drifting.
+    """
+    dest_dir = _book_dest_dir(target, books_subdir, record)
+    title = sanitize_component(record.metadata.title, fallback="Untitled")
+    return dest_dir / f"{title}.kepub.epub"
+
+
+class _DiscoveryCatalogProto(Protocol):
+    def upsert_device_file(
+        self, *, device_id: int, book_id: int, remote_path: str, now: str
+    ) -> None: ...
+
+
+def discover_existing_device_files(
+    catalog: _DiscoveryCatalogProto,
+    *,
+    records: list[BookRecord],
+    target: Path,
+    books_subdir: str,
+    device_id: int,
+    now: str,
+) -> int:
+    """Reconcile ``device_files`` against books already present on the mount.
+
+    For each catalog record with an ``output_path``, compute the host-side
+    path where the kepub would live (:func:`_compute_device_dest`) and, if a
+    file is present there, upsert the corresponding ``device_files`` row.
+
+    Runs before :func:`pull_read_state` so that books bookery copied in a
+    prior session — or in this same session's cached path — are visible to
+    ``resolve_book_id_for_remote_path``. Without this pass, a brand-new
+    ``device_files`` schema (introduced in #180) sees only the books bookery
+    has just full-converted, missing the long tail.
+
+    Cost is one ``Path.exists()`` per record; sub-second for thousands of
+    books. Returns the number of upserts performed.
+    """
+    discovered = 0
+    for record in records:
+        if record.output_path is None:
+            continue
+        dest = _compute_device_dest(target, books_subdir, record)
+        if not dest.exists():
+            continue
+        catalog.upsert_device_file(
+            device_id=device_id,
+            book_id=record.id,
+            remote_path=_to_device_path(dest, target),
+            now=now,
+        )
+        discovered += 1
+    return discovered
+
+
 def _sync_record(
     record: BookRecord,
     *,
@@ -193,9 +257,8 @@ def _sync_record(
         report.failed.append((source, f"source missing: {source}"))
         return
 
-    dest_dir = _book_dest_dir(target, books_subdir, record)
-    title = sanitize_component(record.metadata.title, fallback="Untitled")
-    dest = dest_dir / f"{title}.kepub.epub"
+    dest = _compute_device_dest(target, books_subdir, record)
+    dest_dir = dest.parent
 
     stage("hash")
     try:
@@ -380,9 +443,7 @@ def sync_library_to_kobo(
             if source.suffix.lower() != ".epub":
                 report.skipped.append((source, "output is not an EPUB"))
                 continue
-            dest_dir = _book_dest_dir(target, books_subdir, record)
-            title = sanitize_component(record.metadata.title, fallback="Untitled")
-            report.copied.append(dest_dir / f"{title}.kepub.epub")
+            report.copied.append(_compute_device_dest(target, books_subdir, record))
         return report
 
     version = kepubify_version()
@@ -405,6 +466,24 @@ def sync_library_to_kobo(
         )
     if serial is not None:
         device_id = catalog.upsert_device(kind="kobo", serial=serial, label=None, now=now)
+        # Discovery runs *before* the pull so that books bookery copied in a
+        # prior session — or that pre-date the `device_files` schema (#180) —
+        # are resolvable by ContentID. Without this, the pull can only see
+        # books bookery has just full-converted in this session, missing the
+        # long tail (#190).
+        try:
+            report.device_files_discovered = discover_existing_device_files(
+                catalog,
+                records=records,
+                target=target,
+                books_subdir=books_subdir,
+                device_id=device_id,
+                now=now,
+            )
+        except Exception as exc:
+            logger.warning(
+                "device_files discovery failed; continuing with pull: %s", exc
+            )
         try:
             pulled, skipped = pull_read_state(
                 catalog, device_id=device_id, mount_path=target, now=now

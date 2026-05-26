@@ -574,8 +574,10 @@ class TestDeviceWiring:
         assert baseline == 1
         first_remote = catalog.upsert_device_file_calls[0]["remote_path"]
 
-        # Second sync — kepub cache hits, copy is skipped. The device_file
-        # upsert still runs (idempotent) so push_candidates can see the book.
+        # Second sync — two upserts now: the pre-pull discovery phase (#190)
+        # sees the file already on the device and stamps device_files, and
+        # the cached path in the copy loop re-stamps it again (#188). Both
+        # are idempotent and must point at the same canonical remote_path.
         sync_library_to_kobo(
             catalog=catalog,
             target=env["target"],
@@ -585,11 +587,11 @@ class TestDeviceWiring:
             workspace_dir=env["workspace"],
             books_subdir="Books",
         )
-        assert len(catalog.upsert_device_file_calls) == baseline + 1
-        cached_call = catalog.upsert_device_file_calls[-1]
-        assert cached_call["book_id"] == 1
-        assert cached_call["device_id"] == catalog.device_id
-        assert cached_call["remote_path"] == first_remote
+        assert len(catalog.upsert_device_file_calls) == baseline + 2
+        for call in catalog.upsert_device_file_calls[baseline:]:
+            assert call["book_id"] == 1
+            assert call["device_id"] == catalog.device_id
+            assert call["remote_path"] == first_remote
 
     def test_dry_run_does_not_touch_device_tables(self, tmp_path: Path) -> None:
         env = _setup(tmp_path)
