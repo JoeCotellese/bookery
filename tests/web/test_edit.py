@@ -1,6 +1,7 @@
 # ABOUTME: Tests for the restructured edit form + provenance panel (issue #112).
 # ABOUTME: Verifies provenance content, Esc keybind hook, and POST behavior preserved.
 
+import re
 from pathlib import Path
 
 from tests.web.conftest import make_book
@@ -68,6 +69,41 @@ class TestUpdateStillRendersDetail:
         assert 'aria-labelledby="detail-header"' in html
 
 
+class TestProvenanceOverflowCss:
+    """CSS rules that keep long provenance values inside the panel (issue #166)."""
+
+    def _rule_block(self, client, selector: str) -> str:
+        """Return the CSS declaration block for the given selector."""
+        response = client.get("/static/style.css")
+        assert response.status_code == 200
+        css = response.data.decode()
+        # Match `<selector> { ... }` (non-greedy, single block).
+        match = re.search(
+            rf"{re.escape(selector)}\s*\{{([^}}]*)\}}",
+            css,
+        )
+        assert match, f"Selector {selector!r} not found in style.css"
+        return match.group(1)
+
+    def test_metadata_grid_value_track_can_shrink(self, client):
+        # The value column must allow shrinking below content min-content so
+        # long paths/hashes don't blow out the grid track.
+        block = self._rule_block(client, ".metadata-grid")
+        assert "minmax(0, 1fr)" in block
+
+    def test_metadata_grid_dd_breaks_at_any_character(self, client):
+        # dd values need overflow-wrap: anywhere so space-less strings
+        # (hashes, deep paths) wrap inside the panel.
+        block = self._rule_block(client, ".metadata-grid dd")
+        assert "overflow-wrap: anywhere" in block
+        assert "min-width: 0" in block
+
+    def test_metadata_grid_code_breaks_at_any_character(self, client):
+        # <code> inside the grid needs overflow-wrap so hash strings break.
+        block = self._rule_block(client, ".metadata-grid code")
+        assert "overflow-wrap: anywhere" in block
+
+
 class TestDescriptionHtmlStripping:
     """Edit POSTs must store plain text — never HTML markup (issue #123)."""
 
@@ -89,21 +125,15 @@ class TestDescriptionHtmlStripping:
         return mock_catalog.update_book.call_args
 
     def test_html_tags_stripped_on_save(self, mock_catalog, client):
-        call = self._post_description(
-            mock_catalog, client, '<p class="description">A story.</p>'
-        )
+        call = self._post_description(mock_catalog, client, '<p class="description">A story.</p>')
         assert call.kwargs["description"] == "A story."
 
     def test_entities_decoded_on_save(self, mock_catalog, client):
-        call = self._post_description(
-            mock_catalog, client, "foo &amp; bar"
-        )
+        call = self._post_description(mock_catalog, client, "foo &amp; bar")
         assert call.kwargs["description"] == "foo & bar"
 
     def test_paragraphs_preserved_as_blank_lines(self, mock_catalog, client):
-        call = self._post_description(
-            mock_catalog, client, "<p>first</p><p>second</p>"
-        )
+        call = self._post_description(mock_catalog, client, "<p>first</p><p>second</p>")
         assert call.kwargs["description"] == "first\n\nsecond"
 
     def test_empty_html_becomes_none(self, mock_catalog, client):

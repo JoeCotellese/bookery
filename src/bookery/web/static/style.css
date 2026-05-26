@@ -394,7 +394,7 @@ header .logo {
 
 .metadata-grid {
     display: grid;
-    grid-template-columns: 8rem 1fr;
+    grid-template-columns: 8rem minmax(0, 1fr);
     gap: 0.25rem 1rem;
 }
 
@@ -403,9 +403,15 @@ header .logo {
     color: var(--color-muted);
 }
 
+.metadata-grid dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .metadata-grid code {
     font-size: 0.85rem;
     word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 /* Edit layout — two columns >=720px, stacked below. */
