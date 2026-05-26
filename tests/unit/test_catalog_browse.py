@@ -200,6 +200,80 @@ class TestBrowseSort:
         assert len(rows) == 3
 
 
+class TestBrowseArticleStrippedSort:
+    """`browse()` sorts on the persisted article-stripped title (#192).
+
+    Seeds the canonical fixture from the issue — "The Hobbit",
+    "A Wizard of Earthsea", "An American Tragedy", "Dune" — and confirms
+    title and default (author-primary) orderings ignore leading English
+    articles.
+    """
+
+    def _seed_articles(self, catalog: LibraryCatalog) -> None:
+        # Authors chosen so the author_sort order matches the
+        # article-stripped title order (Dreiser < Herbert < Le Guin < Tolkien),
+        # which lets the default ordering test reuse the same fixture.
+        spec = [
+            ("The Hobbit", "Tolkien, J.R.R."),
+            ("A Wizard of Earthsea", "Le Guin, Ursula K."),
+            ("An American Tragedy", "Dreiser, Theodore"),
+            ("Dune", "Herbert, Frank"),
+        ]
+        for title, author in spec:
+            meta = BookMetadata(
+                title=title,
+                authors=[author],
+                author_sort=author,
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+
+    def test_title_asc_ignores_leading_articles(self, catalog):
+        self._seed_articles(catalog)
+        rows, _ = catalog.browse(sort="title", dir="asc")
+        # Sort key: "American Tragedy" < "Dune" < "Hobbit" < "Wizard…".
+        assert [r.metadata.title for r in rows] == [
+            "An American Tragedy",
+            "Dune",
+            "The Hobbit",
+            "A Wizard of Earthsea",
+        ]
+
+    def test_title_desc_ignores_leading_articles(self, catalog):
+        self._seed_articles(catalog)
+        rows, _ = catalog.browse(sort="title", dir="desc")
+        assert [r.metadata.title for r in rows] == [
+            "A Wizard of Earthsea",
+            "The Hobbit",
+            "Dune",
+            "An American Tragedy",
+        ]
+
+    def test_default_sort_uses_article_stripped_title_as_secondary(self, catalog):
+        # Two books by the same author: secondary sort must be article-stripped.
+        # Discriminator: raw "Banana" < "The Apple" lexically (B < T) but the
+        # article-stripped order is "Apple" < "Banana", so the test fails iff
+        # the SQL still sorts on raw title.
+        for title in ["Banana", "The Apple"]:
+            meta = BookMetadata(
+                title=title,
+                authors=["Shared, Author"],
+                author_sort="Shared, Author",
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+        rows, _ = catalog.browse()
+        titles = [r.metadata.title for r in rows]
+        assert titles == ["The Apple", "Banana"]
+
+    def test_sort_by_added_unaffected_by_articles(self, catalog):
+        self._seed_articles(catalog)
+        rows, _ = catalog.browse(sort="added", dir="asc")
+        ids = [r.id for r in rows]
+        # Insertion order — articles have no bearing on added sort.
+        assert ids == sorted(ids)
+
+
 class TestBrowseFilters:
     def _seed_mix(self, catalog: LibraryCatalog) -> dict[str, int]:
         """Seed a fixed catalog and return a name->id map for assertions.

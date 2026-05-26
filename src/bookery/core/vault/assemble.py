@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bookery.core.text_sort import compute_title_sort
 from bookery.core.vault.image import build_asset_index, resolve_images
 from bookery.core.vault.index import build_tag_index
 from bookery.core.vault.note import Note, display_title
@@ -21,11 +22,6 @@ AssembleProgressFn = Callable[[int, int, str], None]
 _NON_LETTER_BUCKET = "#"
 _NON_LETTER_BUCKET_SLUG = "hash"
 
-# Leading English articles ignored for filing (bucket + within-bucket sort).
-# Multi-language support is an explicit non-goal — see issue #175.
-_LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+(.+)$", re.IGNORECASE)
-
-
 def _filing_title(display: str, frontmatter: dict | None = None) -> str:
     """Return the title used for bucket assignment and within-bucket sort.
 
@@ -34,14 +30,16 @@ def _filing_title(display: str, frontmatter: dict | None = None) -> str:
     2. ``display`` with a leading English article (``The`` / ``A`` / ``An``)
        stripped.
     3. ``display`` unchanged when stripping would leave an empty string.
+
+    Article stripping uses the shared ``compute_title_sort`` helper so the
+    vault filing rule and the catalog ``title_sort`` column stay in lock-step.
     """
     source = display
     if frontmatter:
         override = frontmatter.get("filing_title")
         if isinstance(override, str) and override.strip():
             source = override.strip()
-    stripped = _LEADING_ARTICLE_RE.sub(r"\1", source, count=1).strip()
-    return stripped or source
+    return compute_title_sort(source)
 
 
 def _bucket_for(title: str) -> str:

@@ -24,7 +24,7 @@ class TestMigrations:
         conn = open_library(db_path)
         version = _get_schema_version(conn)
         conn.close()
-        assert version == 8
+        assert version == 9
 
     def test_migrations_list_is_ordered(self) -> None:
         """MIGRATIONS list has strictly increasing version numbers."""
@@ -126,7 +126,7 @@ class TestMigrations:
         # Now open with bookery — should auto-migrate
         conn = open_library(db_path)
         version = _get_schema_version(conn)
-        assert version == 8
+        assert version == 9
 
         # Tags table should exist
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")

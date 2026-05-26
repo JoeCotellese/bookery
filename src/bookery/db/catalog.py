@@ -10,6 +10,7 @@ from bookery.core.dedup import (
     normalize_for_dedup,
     normalize_isbn,
 )
+from bookery.core.text_sort import compute_title_sort
 from bookery.db.mapping import (
     BookRecord,
     DuplicateMatch,
@@ -49,14 +50,14 @@ def _fts_match_expression(q: str) -> str:
 # Map URL-layer sort keys to the column expressions used in ORDER BY clauses.
 # ``added`` resolves to ``date_added`` (the schema column), with a stable
 # tiebreaker on ``id`` so equal timestamps still produce a deterministic order.
-# ``title`` and ``author`` carry ``title`` as a secondary key so two books by
-# the same author come back in alphabetical order.
+# ``title`` and ``author`` use ``title_sort`` (article-stripped, populated on
+# insert/update) so "The Hobbit" files under H rather than T — see #192.
 _SORT_COLUMNS: dict[str, str] = {
-    "title": "title COLLATE NOCASE",
-    "author": "author_sort COLLATE NOCASE, title COLLATE NOCASE",
+    "title": "title_sort COLLATE NOCASE",
+    "author": "author_sort COLLATE NOCASE, title_sort COLLATE NOCASE",
     "added": "date_added, id",
 }
-_DEFAULT_ORDER = "author_sort COLLATE NOCASE, title COLLATE NOCASE"
+_DEFAULT_ORDER = "author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
 
 
 def _order_clause_for(sort: str, dir: str) -> str:
@@ -194,13 +195,27 @@ class LibraryCatalog:
         return None
 
     def list_all(self) -> list[BookRecord]:
-        """Return all books in the catalog, ordered by title."""
-        cursor = self._conn.execute("SELECT * FROM books ORDER BY title")
+        """Return all books in the catalog, author-then-article-stripped-title.
+
+        Mirrors the web default at ``/books`` so ``bookery ls`` and the web
+        list ship the same order (#192). Same SQL as ``list_all_by_author``;
+        kept as a separate method because most CLI callers historically used
+        this name and changing the public surface would be churn for no gain.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM books ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
+        )
         return [row_to_record(row) for row in cursor.fetchall()]
 
     def list_all_by_author(self) -> list[BookRecord]:
-        """Return all books in the catalog, ordered by author then title."""
-        cursor = self._conn.execute("SELECT * FROM books ORDER BY author_sort, title")
+        """Return all books in the catalog, ordered by author then title.
+
+        Secondary sort is on the article-stripped ``title_sort`` column so the
+        order matches the web's default ``/books`` listing.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM books ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
+        )
         return [row_to_record(row) for row in cursor.fetchall()]
 
     def list_by_series(self, series: str) -> list[BookRecord]:
@@ -399,6 +414,15 @@ class LibraryCatalog:
             fields = {k: v for k, v in fields.items() if k not in locked}
             if not fields:
                 return []
+
+        # Keep the persisted `title_sort` in lock-step with `title` so the
+        # article-stripped sort key never drifts after a title edit. Compute
+        # before JSON-serialization so the helper sees a plain string.
+        if "title" in fields:
+            title_val = fields["title"]
+            fields["title_sort"] = (
+                compute_title_sort(title_val) if isinstance(title_val, str) and title_val else None
+            )
 
         # JSON-serialize list/dict fields
         if "authors" in fields:
@@ -657,7 +681,7 @@ class LibraryCatalog:
             "JOIN book_tags bt ON b.id = bt.book_id "
             "JOIN tags t ON bt.tag_id = t.id "
             "WHERE t.name = ? "
-            "ORDER BY b.title",
+            "ORDER BY b.title_sort COLLATE NOCASE",
             (tag_name,),
         )
         return [row_to_record(row) for row in cursor.fetchall()]
@@ -771,7 +795,7 @@ class LibraryCatalog:
             "JOIN book_genres bg ON b.id = bg.book_id "
             "JOIN genres g ON bg.genre_id = g.id "
             "WHERE g.name = ? "
-            "ORDER BY b.title",
+            "ORDER BY b.title_sort COLLATE NOCASE",
             (genre_name,),
         )
         return [row_to_record(row) for row in cursor.fetchall()]
@@ -1085,13 +1109,13 @@ class LibraryCatalog:
         }
 
     def list_books_by_status(self, status: int) -> list[BookRecord]:
-        """Return books with `book_status.status = ?`, ordered by title."""
+        """Return books with `book_status.status = ?`, ordered by article-stripped title."""
         cursor = self._conn.execute(
             """
             SELECT books.* FROM books
             JOIN book_status ON books.id = book_status.book_id
             WHERE book_status.status = ?
-            ORDER BY books.title
+            ORDER BY books.title_sort COLLATE NOCASE
             """,
             (status,),
         )
@@ -1110,7 +1134,7 @@ class LibraryCatalog:
             SELECT books.* FROM books
             LEFT JOIN book_status ON books.id = book_status.book_id
             WHERE book_status.book_id IS NULL OR book_status.status = 0
-            ORDER BY books.title
+            ORDER BY books.title_sort COLLATE NOCASE
             """,
         )
         return [row_to_record(row) for row in cursor.fetchall()]
