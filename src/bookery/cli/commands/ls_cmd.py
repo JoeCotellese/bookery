@@ -71,9 +71,7 @@ def ls(
     # rather than silently picking one.
     status_filters_set = sum([reading_filter, finished_filter, unread_filter])
     if status_filters_set > 1:
-        console.print(
-            "[red]--reading, --finished, and --unread are mutually exclusive.[/red]"
-        )
+        console.print("[red]--reading, --finished, and --unread are mutually exclusive.[/red]")
         raise SystemExit(2)
 
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception

@@ -65,9 +65,7 @@ class TestDetailReadingSection:
         assert "Untouched" in html
         assert 'id="detail-reading"' not in html
 
-    def test_renders_device_only_when_no_book_status(
-        self, mock_catalog, client
-    ) -> None:
+    def test_renders_device_only_when_no_book_status(self, mock_catalog, client) -> None:
         book = make_book(1, title="Just pulled")
         mock_catalog.get_by_id.return_value = book
         mock_catalog.get_book_status.return_value = None

@@ -16,9 +16,21 @@ console = Console()  # TODO: move Console() inside command for testability
 
 
 _SETTABLE_FIELDS = {
-    "title", "subtitle", "authors", "author_sort", "language", "publisher", "isbn",
-    "description", "series", "series_index", "subjects", "published_date",
-    "original_publication_date", "page_count", "cover_url",
+    "title",
+    "subtitle",
+    "authors",
+    "author_sort",
+    "language",
+    "publisher",
+    "isbn",
+    "description",
+    "series",
+    "series_index",
+    "subjects",
+    "published_date",
+    "original_publication_date",
+    "page_count",
+    "cover_url",
 }
 
 
@@ -27,15 +39,12 @@ def _parse_set_pairs(pairs: tuple[str, ...]) -> dict[str, object]:
     out: dict[str, object] = {}
     for pair in pairs:
         if "=" not in pair:
-            raise click.BadParameter(
-                f"--set expects field=value, got {pair!r}"
-            )
+            raise click.BadParameter(f"--set expects field=value, got {pair!r}")
         key, _, value = pair.partition("=")
         key = key.strip()
         if key not in _SETTABLE_FIELDS:
             raise click.BadParameter(
-                f"Unknown field {key!r}. Settable fields: "
-                f"{', '.join(sorted(_SETTABLE_FIELDS))}"
+                f"Unknown field {key!r}. Settable fields: {', '.join(sorted(_SETTABLE_FIELDS))}"
             )
         if key in ("authors", "subjects"):
             out[key] = [a.strip() for a in value.split(",") if a.strip()]
@@ -117,9 +126,7 @@ def info(
     if lock_fields:
         console.print(f"[green]Locked:[/green] {', '.join(sorted(set(lock_fields)))}")
     if unlock_fields:
-        console.print(
-            f"[green]Unlocked:[/green] {', '.join(sorted(set(unlock_fields)))}"
-        )
+        console.print(f"[green]Unlocked:[/green] {', '.join(sorted(set(unlock_fields)))}")
 
     if show_provenance:
         prov = catalog.get_provenance(book_id)

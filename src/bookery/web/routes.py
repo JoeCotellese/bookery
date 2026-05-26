@@ -163,9 +163,7 @@ def books():
     # from this dict so the template stays cheap. Empty pages skip the call
     # entirely; the catalog method also short-circuits but the route is
     # considerate so the DB never sees the question.
-    book_statuses = (
-        catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
-    )
+    book_statuses = catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
 
     # ``list_url`` is what row anchors stamp into ``?return_to=`` so detail /
     # edit / diff back-links can return to this exact view (filters, page,

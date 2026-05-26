@@ -914,9 +914,7 @@ class LibraryCatalog:
         loudly instead of silently writing an orphan row that an FK
         constraint would later complain about anyway.
         """
-        existing = self._conn.execute(
-            "SELECT 1 FROM books WHERE id = ?", (book_id,)
-        ).fetchone()
+        existing = self._conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone()
         if existing is None:
             raise ValueError(f"Book {book_id} not found.")
         self._conn.execute(

@@ -10,17 +10,13 @@ from bookery.cli import cli
 
 def _import_one(runner: CliRunner, db_path: Path, sample_epub: Path) -> None:
     """Import the standard sample EPUB into ``db_path`` and assert success."""
-    result = runner.invoke(
-        cli, ["import", str(sample_epub.parent), "--db", str(db_path)]
-    )
+    result = runner.invoke(cli, ["import", str(sample_epub.parent), "--db", str(db_path)])
     assert result.exit_code == 0, result.output
     assert "1 added" in result.output
 
 
 class TestStatusAuthoring:
-    def test_mark_read_then_unread_then_reading(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_mark_read_then_unread_then_reading(self, sample_epub: Path, tmp_path: Path) -> None:
         """Round-trip the three status verbs on a single book."""
         db_path = tmp_path / "status.db"
         runner = CliRunner()
@@ -69,9 +65,7 @@ class TestStatusAuthoring:
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\n")
 
-        result = runner.invoke(
-            cli, ["read", "1", "--bulk-from", str(bulk), "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["read", "1", "--bulk-from", str(bulk), "--db", str(db_path)])
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
 
@@ -85,9 +79,7 @@ class TestBulkFrom:
         bulk = tmp_path / "ids.txt"
         bulk.write_text("# bulk wave 1\n1\n\n# trailing comment\n")
 
-        result = runner.invoke(
-            cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
         assert result.exit_code == 0
         assert "1 book(s) as finished" in result.output
 
@@ -100,25 +92,19 @@ class TestBulkFrom:
 
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\n999\n")
-        result = runner.invoke(
-            cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
         assert result.exit_code == 0
         assert "Skipped 999" in result.output
         assert "1 book(s) as finished" in result.output
 
-    def test_bulk_from_bad_id_format_errors(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_bulk_from_bad_id_format_errors(self, sample_epub: Path, tmp_path: Path) -> None:
         db_path = tmp_path / "bulk-format.db"
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
 
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\nnot-a-number\n")
-        result = runner.invoke(
-            cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
         assert result.exit_code != 0
         assert "not-a-number" in result.output
 
@@ -137,9 +123,7 @@ class TestInfoReadingSection:
         assert "Reading" in result.output  # the section header
         assert "Finished" in result.output  # the status name
 
-    def test_info_no_reading_section_when_no_data(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_info_no_reading_section_when_no_data(self, sample_epub: Path, tmp_path: Path) -> None:
         db_path = tmp_path / "info-clean.db"
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
@@ -203,8 +187,6 @@ class TestLsStatusFilters:
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
 
-        result = runner.invoke(
-            cli, ["ls", "--finished", "--reading", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["ls", "--finished", "--reading", "--db", str(db_path)])
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower() or "only one" in result.output.lower()

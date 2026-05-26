@@ -64,9 +64,7 @@ class TestListStatusChip:
         assert "Marked Unread" in html
         assert "book-status-chip" not in html
 
-    def test_route_calls_get_book_statuses_with_visible_ids(
-        self, mock_catalog, client
-    ) -> None:
+    def test_route_calls_get_book_statuses_with_visible_ids(self, mock_catalog, client) -> None:
         books = [make_book(i, title=f"B{i}") for i in (1, 2, 3)]
         _stub_browse(mock_catalog, books=books, total=3)
         mock_catalog.get_book_statuses.return_value = {}

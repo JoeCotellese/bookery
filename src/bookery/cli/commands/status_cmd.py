@@ -37,13 +37,9 @@ def parse_bulk_ids(text: str) -> list[int]:
         try:
             value = int(stripped)
         except ValueError as exc:
-            raise ValueError(
-                f"Line {lineno}: not an integer: {stripped!r}"
-            ) from exc
+            raise ValueError(f"Line {lineno}: not an integer: {stripped!r}") from exc
         if value <= 0:
-            raise ValueError(
-                f"Line {lineno}: book ID must be positive, got {value}"
-            )
+            raise ValueError(f"Line {lineno}: book ID must be positive, got {value}")
         ids.append(value)
     return ids
 
@@ -53,9 +49,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _resolve_book_ids(
-    *, book_id: int | None, bulk_from: Path | None
-) -> list[int]:
+def _resolve_book_ids(*, book_id: int | None, bulk_from: Path | None) -> list[int]:
     """Return the list of book IDs to operate on, validating mutual exclusion.
 
     Exactly one of (positional ``book_id``, ``--bulk-from FILE``) must be
@@ -64,13 +58,9 @@ def _resolve_book_ids(
     bare traceback.
     """
     if book_id is None and bulk_from is None:
-        raise click.UsageError(
-            "Provide a BOOK_ID argument or --bulk-from FILE."
-        )
+        raise click.UsageError("Provide a BOOK_ID argument or --bulk-from FILE.")
     if book_id is not None and bulk_from is not None:
-        raise click.UsageError(
-            "BOOK_ID and --bulk-from are mutually exclusive."
-        )
+        raise click.UsageError("BOOK_ID and --bulk-from are mutually exclusive.")
     if bulk_from is not None:
         text = Path(bulk_from).read_text()
         try:
@@ -141,36 +131,24 @@ _bulk_from_option = click.option(
 @click.argument("book_id", type=int, required=False)
 @_bulk_from_option
 @db_option
-def read_cmd(
-    book_id: int | None, bulk_from: Path | None, db_path: Path | None
-) -> None:
+def read_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
     """Mark a book as finished (status = 2)."""
-    _apply_status(
-        db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_FINISHED
-    )
+    _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_FINISHED)
 
 
 @click.command("unread")
 @click.argument("book_id", type=int, required=False)
 @_bulk_from_option
 @db_option
-def unread_cmd(
-    book_id: int | None, bulk_from: Path | None, db_path: Path | None
-) -> None:
+def unread_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
     """Mark a book as unread (status = 0)."""
-    _apply_status(
-        db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_UNREAD
-    )
+    _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_UNREAD)
 
 
 @click.command("reading")
 @click.argument("book_id", type=int, required=False)
 @_bulk_from_option
 @db_option
-def reading_cmd(
-    book_id: int | None, bulk_from: Path | None, db_path: Path | None
-) -> None:
+def reading_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
     """Mark a book as in-progress (status = 1)."""
-    _apply_status(
-        db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_READING
-    )
+    _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_READING)
