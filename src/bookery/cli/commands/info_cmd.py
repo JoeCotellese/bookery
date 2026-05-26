@@ -10,14 +10,27 @@ from rich.table import Table
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+from bookery.db.status import status_name
 
 console = Console()  # TODO: move Console() inside command for testability
 
 
 _SETTABLE_FIELDS = {
-    "title", "subtitle", "authors", "author_sort", "language", "publisher", "isbn",
-    "description", "series", "series_index", "subjects", "published_date",
-    "original_publication_date", "page_count", "cover_url",
+    "title",
+    "subtitle",
+    "authors",
+    "author_sort",
+    "language",
+    "publisher",
+    "isbn",
+    "description",
+    "series",
+    "series_index",
+    "subjects",
+    "published_date",
+    "original_publication_date",
+    "page_count",
+    "cover_url",
 }
 
 
@@ -26,15 +39,12 @@ def _parse_set_pairs(pairs: tuple[str, ...]) -> dict[str, object]:
     out: dict[str, object] = {}
     for pair in pairs:
         if "=" not in pair:
-            raise click.BadParameter(
-                f"--set expects field=value, got {pair!r}"
-            )
+            raise click.BadParameter(f"--set expects field=value, got {pair!r}")
         key, _, value = pair.partition("=")
         key = key.strip()
         if key not in _SETTABLE_FIELDS:
             raise click.BadParameter(
-                f"Unknown field {key!r}. Settable fields: "
-                f"{', '.join(sorted(_SETTABLE_FIELDS))}"
+                f"Unknown field {key!r}. Settable fields: {', '.join(sorted(_SETTABLE_FIELDS))}"
             )
         if key in ("authors", "subjects"):
             out[key] = [a.strip() for a in value.split(",") if a.strip()]
@@ -116,9 +126,7 @@ def info(
     if lock_fields:
         console.print(f"[green]Locked:[/green] {', '.join(sorted(set(lock_fields)))}")
     if unlock_fields:
-        console.print(
-            f"[green]Unlocked:[/green] {', '.join(sorted(set(unlock_fields)))}"
-        )
+        console.print(f"[green]Unlocked:[/green] {', '.join(sorted(set(unlock_fields)))}")
 
     if show_provenance:
         prov = catalog.get_provenance(book_id)
@@ -199,4 +207,32 @@ def info(
     table.add_row("Modified", record.date_modified)
 
     console.print(table)
+
+    book_status = catalog.get_book_status(book_id)
+    device_state = catalog.get_device_read_state_for_book(book_id)
+    if book_status is not None or device_state is not None:
+        reading = Table(show_header=False, box=None, pad_edge=False)
+        reading.add_column("Field", style="bold", width=14)
+        reading.add_column("Value")
+        if book_status is not None:
+            reading.add_row("Status", status_name(book_status.status))
+        elif device_state is not None:
+            # No user mark yet — surface the device's view rather than render
+            # an empty section just because device_read_state exists.
+            reading.add_row("Status", status_name(device_state.read_status))
+        if device_state is not None and device_state.percent_read is not None:
+            reading.add_row("Progress", f"{device_state.percent_read:.0%}")
+        if device_state is not None and device_state.last_read_at:
+            reading.add_row("Last opened", device_state.last_read_at)
+        if device_state is not None:
+            label = (
+                f"{device_state.device_kind.title()} ({device_state.device_label})"
+                if device_state.device_label
+                else device_state.device_kind.title()
+            )
+            reading.add_row("Device", label)
+        console.print()
+        console.print("[bold]Reading[/bold]")
+        console.print(reading)
+
     conn.close()

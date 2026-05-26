@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from flask import Flask
 
 from bookery.db.catalog import LibraryCatalog
+from bookery.db.status import status_name
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import description_paragraphs
 from bookery.web.routes import bp
@@ -37,5 +38,9 @@ def create_app(
     # already plain text (HTML is stripped on write), so this filter never
     # needs to sanitize — it just wraps blank-line paragraphs.
     app.jinja_env.filters["description_paragraphs"] = description_paragraphs
+    # Expose status_name so the detail Reading partial can render the
+    # human-readable label for a `book_status.status` integer without the
+    # template having to know the mapping.
+    app.jinja_env.globals["status_name"] = status_name
     app.register_blueprint(bp)
     return app

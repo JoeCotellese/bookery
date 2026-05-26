@@ -722,6 +722,22 @@ header .logo {
     color: white;
 }
 
+/* Read-status chip — small leading glyph next to the title on list and card
+   views. The chip itself is a span so it stays inline with the title link
+   without pulling tap behavior off the anchor; the tooltip lives in the
+   title attribute so it works without JS. */
+.book-status-chip {
+    display: inline-block;
+    margin-right: 0.35rem;
+    font-size: 0.9em;
+    vertical-align: baseline;
+    color: var(--color-muted);
+}
+
+.book-status-chip.status-finished {
+    color: var(--color-badge);
+}
+
 @media (max-width: 768px) {
     .book-table {
         display: none;
