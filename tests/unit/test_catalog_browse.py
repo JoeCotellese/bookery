@@ -306,3 +306,87 @@ class TestBrowseFilters:
         # Sanity: catalog still has its rows.
         all_rows, _ = catalog.browse()
         assert len(all_rows) == 5
+
+
+class TestBrowseStatusFilter:
+    """browse(status=...) filters by book_status row (P3 / #183)."""
+
+    def _seed_status_mix(self, catalog: LibraryCatalog) -> dict[str, int]:
+        """Seed three books with distinct read-status states.
+
+        - ``reading`` book has status=1 in ``book_status``.
+        - ``finished`` book has status=2.
+        - ``unread-explicit`` has status=0.
+        - ``unread-implicit`` has no row in ``book_status`` at all — the
+          common pre-touch case the CLI ``--unread`` and the web "Unread"
+          chip must surface.
+        """
+        names = ["reading", "finished", "unread-explicit", "unread-implicit"]
+        ids: dict[str, int] = {}
+        for name in names:
+            meta = BookMetadata(
+                title=name,
+                authors=["A"],
+                source_path=Path(f"/tmp/{name}.epub"),
+            )
+            ids[name] = catalog.add_book(meta, file_hash=name.ljust(64, "0"))
+        ts = "2026-05-26T00:00:00"
+        catalog.set_book_status(book_id=ids["reading"], status=1, updated_at=ts)
+        catalog.set_book_status(book_id=ids["finished"], status=2, updated_at=ts)
+        catalog.set_book_status(book_id=ids["unread-explicit"], status=0, updated_at=ts)
+        return ids
+
+    def test_status_reading_returns_only_reading_books(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(status="reading")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"reading"}
+        assert total == 1
+
+    def test_status_finished_returns_only_finished_books(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(status="finished")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"finished"}
+        assert total == 1
+
+    def test_status_unread_includes_implicit_and_explicit(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(status="unread")
+        titles = {r.metadata.title for r in rows}
+        # Never-touched (no row) AND status=0 both count as unread.
+        assert titles == {"unread-explicit", "unread-implicit"}
+        assert total == 2
+
+    def test_status_combines_with_other_filters(self, catalog):
+        ids = self._seed_status_mix(catalog)
+        catalog.set_matched_at(ids["reading"])
+        rows, total = catalog.browse(status="reading", enriched="1")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"reading"}
+        assert total == 1
+
+        # enriched=0 + reading → reading book is enriched, so result is empty.
+        rows, total = catalog.browse(status="reading", enriched="0")
+        assert rows == []
+        assert total == 0
+
+    def test_status_combines_with_search_query(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(q="finished", status="finished")
+        titles = {r.metadata.title for r in rows}
+        assert titles == {"finished"}
+        assert total == 1
+
+    def test_unknown_status_value_silently_ignored(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(status="garbage")
+        # Garbage → behaves like no filter, returns everything.
+        assert total == 4
+        assert len(rows) == 4
+
+    def test_none_status_returns_all_books(self, catalog):
+        self._seed_status_mix(catalog)
+        rows, total = catalog.browse(status=None)
+        assert total == 4
+        assert len(rows) == 4

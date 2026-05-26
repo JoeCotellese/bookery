@@ -150,6 +150,10 @@ def books():
             **clamped.filters,
         )
         query = clamped
+    # ``query.filters`` already carries the ``status`` value when present, so
+    # the kwargs splat above forwards it straight into ``catalog.browse``.
+    # Nothing else to wire in this controller — the filter chip strip reads
+    # from the same ``query.filters`` mapping.
 
     page = BrowsePage(
         books=books_page,

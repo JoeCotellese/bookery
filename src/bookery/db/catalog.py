@@ -245,6 +245,7 @@ class LibraryCatalog:
         enriched: str | None = None,
         format: str | None = None,
         language: str | None = None,
+        status: str | None = None,
     ) -> tuple[list[BookRecord], int]:
         """Paginated browse over the catalog.
 
@@ -271,7 +272,7 @@ class LibraryCatalog:
         filter values bind as parameters; nothing string-interpolates.
         """
         filter_sql, filter_params = self._filter_clauses(
-            enriched=enriched, format=format, language=language
+            enriched=enriched, format=format, language=language, status=status
         )
         match = _fts_match_expression(q) if q else ""
         if match:
@@ -312,6 +313,7 @@ class LibraryCatalog:
         enriched: str | None,
         format: str | None,
         language: str | None,
+        status: str | None = None,
     ) -> tuple[list[str], list[object]]:
         """Translate browse filter args into SQL fragments + bind values.
 
@@ -322,6 +324,13 @@ class LibraryCatalog:
         ``LOWER(source_path) LIKE '%.' || ?`` rather than SQLite's
         ``substr``/``instr`` so the extension comparison is case-insensitive
         without forcing the input to a particular case.
+
+        ``status`` is expressed as an EXISTS / NOT EXISTS subquery against
+        ``book_status`` rather than a join so the outer query's row
+        structure stays identical to the unfiltered case (the FTS variant
+        already joins on ``books_fts``; adding a second join would force
+        a column-qualified rewrite). ``"unread"`` is "no row OR row with
+        status=0" — captured as ``NOT EXISTS(... AND status > 0)``.
         """
         clauses: list[str] = []
         params: list[object] = []
@@ -335,6 +344,21 @@ class LibraryCatalog:
         if language:
             clauses.append("language = ?")
             params.append(language)
+        if status == "reading":
+            clauses.append(
+                "EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status = 1)"
+            )
+        elif status == "finished":
+            clauses.append(
+                "EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status = 2)"
+            )
+        elif status == "unread":
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM book_status "
+                "WHERE book_status.book_id = books.id AND book_status.status > 0)"
+            )
         return clauses, params
 
     def update_book(
