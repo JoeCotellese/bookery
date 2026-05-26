@@ -300,17 +300,22 @@ class TestListMethodsArticleStrippedOrder:
     depending on which filter they passed.
     """
 
+    # Authors chosen so the author_sort alphabetical order matches the
+    # article-stripped title order — keeps the test discriminating for both
+    # primary (author) and secondary (title) keys.
     _CANONICAL_FIXTURE: ClassVar[list[tuple[str, str]]] = [
-        ("The Hobbit", "Tolkien, J.R.R."),
-        ("A Wizard of Earthsea", "Le Guin, Ursula K."),
-        ("An American Tragedy", "Dreiser, Theodore"),
-        ("Dune", "Herbert, Frank"),
+        ("The Hobbit", "Cooper, Carol"),
+        ("A Wizard of Earthsea", "Davis, Don"),
+        ("An American Tragedy", "Adams, Alice"),
+        ("Dune", "Brown, Bob"),
     ]
+    # author_sort ASC: Adams, Brown, Cooper, Davis →
+    #   American (Adams), Dune (Brown), Hobbit (Cooper), Wizard (Davis).
     _STRIPPED_ORDER: ClassVar[list[str]] = [
-        "An American Tragedy",  # American
-        "Dune",                 # Dune
-        "The Hobbit",           # Hobbit
-        "A Wizard of Earthsea",  # Wizard
+        "An American Tragedy",
+        "Dune",
+        "The Hobbit",
+        "A Wizard of Earthsea",
     ]
 
     def _seed(self, catalog: LibraryCatalog) -> list[int]:

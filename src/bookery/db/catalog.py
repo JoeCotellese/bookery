@@ -195,12 +195,17 @@ class LibraryCatalog:
         return None
 
     def list_all(self) -> list[BookRecord]:
-        """Return all books in the catalog, ordered by article-stripped title.
+        """Return all books in the catalog, author-then-article-stripped-title.
 
-        Uses the persisted ``title_sort`` column (#192) so "The Hobbit" files
-        under H, matching the web list at ``/books``.
+        Mirrors the web default at ``/books`` so ``bookery ls`` and the web
+        list ship the same order (#192). Same SQL as ``list_all_by_author``;
+        kept as a separate method because most CLI callers historically used
+        this name and changing the public surface would be churn for no gain.
         """
-        cursor = self._conn.execute("SELECT * FROM books ORDER BY title_sort COLLATE NOCASE")
+        cursor = self._conn.execute(
+            "SELECT * FROM books "
+            "ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
+        )
         return [row_to_record(row) for row in cursor.fetchall()]
 
     def list_all_by_author(self) -> list[BookRecord]:
