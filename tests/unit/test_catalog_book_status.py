@@ -230,3 +230,76 @@ class TestGetDeviceReadStateForBook:
         assert state is not None
         assert state.device_label == "New"
         assert state.read_status == STATUS_FINISHED
+
+
+class TestMergeBookStatusFromDevice:
+    """The P2 merge: device-newer-or-equal-to catalog overwrites; catalog-newer wins."""
+
+    def test_inserts_row_when_catalog_empty(self, catalog: LibraryCatalog) -> None:
+        book_id = _add_book(catalog, "Rose", "h1")
+        catalog.merge_book_status_from_device(
+            book_id=book_id,
+            device_status=STATUS_FINISHED,
+            device_updated_at="2026-05-26T10:00:00+00:00",
+        )
+        status = catalog.get_book_status(book_id)
+        assert status == BookStatus(
+            book_id=book_id,
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+
+    def test_overwrites_when_device_is_newer(self, catalog: LibraryCatalog) -> None:
+        book_id = _add_book(catalog, "Rose", "h1")
+        catalog.set_book_status(
+            book_id=book_id,
+            status=STATUS_READING,
+            updated_at="2026-05-20T00:00:00+00:00",
+        )
+        catalog.merge_book_status_from_device(
+            book_id=book_id,
+            device_status=STATUS_FINISHED,
+            device_updated_at="2026-05-26T10:00:00+00:00",
+        )
+        status = catalog.get_book_status(book_id)
+        assert status is not None
+        assert status.status == STATUS_FINISHED
+        assert status.updated_at == "2026-05-26T10:00:00+00:00"
+
+    def test_leaves_catalog_alone_when_catalog_is_newer(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = _add_book(catalog, "Rose", "h1")
+        catalog.set_book_status(
+            book_id=book_id,
+            status=STATUS_FINISHED,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        catalog.merge_book_status_from_device(
+            book_id=book_id,
+            device_status=STATUS_UNREAD,
+            device_updated_at="2026-05-20T00:00:00+00:00",
+        )
+        status = catalog.get_book_status(book_id)
+        assert status is not None
+        assert status.status == STATUS_FINISHED
+        assert status.updated_at == "2026-05-26T10:00:00+00:00"
+
+    def test_equal_timestamp_device_wins(self, catalog: LibraryCatalog) -> None:
+        """Tiebreak from the #178 spec: equal timestamps go to the device — it
+        avoids a no-op write but more importantly keeps catalog and device
+        consistent without needing a separate "are these really equal" check."""
+        book_id = _add_book(catalog, "Rose", "h1")
+        catalog.set_book_status(
+            book_id=book_id,
+            status=STATUS_READING,
+            updated_at="2026-05-26T10:00:00+00:00",
+        )
+        catalog.merge_book_status_from_device(
+            book_id=book_id,
+            device_status=STATUS_FINISHED,
+            device_updated_at="2026-05-26T10:00:00+00:00",
+        )
+        status = catalog.get_book_status(book_id)
+        assert status is not None
+        assert status.status == STATUS_FINISHED

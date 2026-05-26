@@ -904,6 +904,42 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
+    def merge_book_status_from_device(
+        self,
+        *,
+        book_id: int,
+        device_status: int,
+        device_updated_at: str,
+    ) -> None:
+        """Merge a device-side status into ``book_status`` using last-writer-wins.
+
+        Overwrites the catalog row iff the device timestamp is greater than
+        or equal to the catalog's existing ``updated_at`` (or the catalog has
+        no row yet). The ``>=`` tiebreak comes from the #178 sync model: when
+        two timestamps match exactly we let the device win, which keeps the
+        two sides consistent without an extra "are these really the same"
+        check. This replaces ``seed_book_status_if_absent`` for P2 — the pull
+        now respects user intent only when the catalog timestamp is strictly
+        newer, not whenever the user happened to touch the book first.
+        """
+        existing = self._conn.execute(
+            "SELECT updated_at FROM book_status WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if existing is not None and str(existing["updated_at"]) > device_updated_at:
+            return
+        self._conn.execute(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (book_id, device_status, device_updated_at),
+        )
+        self._conn.commit()
+
     def set_book_status(self, *, book_id: int, status: int, updated_at: str) -> None:
         """Upsert book_status for the user-write path.
 
