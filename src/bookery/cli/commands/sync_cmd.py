@@ -35,6 +35,11 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
     whenever a snapshot was taken (i.e. a push actually ran) regardless of
     the push outcome — the user wants to know where the safety net is.
     """
+    if report.device_files_discovered:
+        console.print(
+            f"[dim]Discovered {report.device_files_discovered} existing "
+            f"book(s) on device[/dim]"
+        )
     if report.read_states_pulled or report.read_states_skipped:
         console.print(
             f"[dim]Read-state: pulled {report.read_states_pulled}, "

@@ -205,6 +205,125 @@ def test_round_trip_sync_populates_read_state_and_book_status(tmp_path: Path) ->
     conn.close()
 
 
+def test_discovery_resolves_legacy_cohort_on_first_sync(tmp_path: Path) -> None:
+    """Regression for #190: device has books, catalog has them, device_files empty.
+
+    Reproduces the real-world case where a user has been syncing books to a
+    Kobo for ages (so the device has them and KoboReader.sqlite has read-status
+    for them) but the catalog's ``device_files`` table is empty because that
+    schema only landed in #180. Without the pre-pull discovery phase, the
+    first sync resolves zero books. With it, the first sync resolves the
+    cohort that is actually on disk.
+    """
+    db_path = tmp_path / "library.db"
+    conn = open_library(db_path)
+    catalog = LibraryCatalog(conn)
+
+    library = tmp_path / "library"
+    epub_a = library / "Asimov" / "Foundation" / "Foundation.epub"
+    epub_b = library / "Le Guin" / "Earthsea" / "Earthsea.epub"
+    epub_c = library / "Tolkien" / "Hobbit" / "Hobbit.epub"
+    for path in (epub_a, epub_b, epub_c):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"EPUB")
+    book_a = catalog.add_book(
+        BookMetadata(title="Foundation", authors=["Asimov"], source_path=epub_a),
+        file_hash="hash-a",
+        output_path=epub_a,
+    )
+    book_b = catalog.add_book(
+        BookMetadata(title="Earthsea", authors=["Le Guin"], source_path=epub_b),
+        file_hash="hash-b",
+        output_path=epub_b,
+    )
+    book_c = catalog.add_book(
+        BookMetadata(title="Hobbit", authors=["Tolkien"], source_path=epub_c),
+        file_hash="hash-c",
+        output_path=epub_c,
+    )
+
+    # Pre-populate the mount with two of the three books (the third is in the
+    # library but hasn't been copied yet). Critically, do NOT pre-populate
+    # device_files — that's the bug we're proving discovery fixes.
+    mount = _build_fake_kobo_mount(tmp_path)
+    for rel in (
+        "Books/Asimov/Foundation/Foundation.kepub.epub",
+        "Books/Le Guin/Earthsea/Earthsea.kepub.epub",
+    ):
+        dest = mount / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"FAKE-KEPUB-FROM-LEGACY-SYNC")
+
+    # KoboReader.sqlite has read-status for all three books.
+    kobo_db = mount / ".kobo" / "KoboReader.sqlite"
+    _seed_kobo_db(
+        kobo_db,
+        [
+            (
+                "file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",
+                None,
+                2,
+                1.0,
+                "2026-05-20T10:00:00",
+                None,
+                "application/x-kobo-epub+zip",
+            ),
+            (
+                "file:///mnt/onboard/Books/Le Guin/Earthsea/Earthsea.kepub.epub",
+                None,
+                1,
+                0.42,
+                "2026-05-21T11:00:00",
+                None,
+                "application/x-kobo-epub+zip",
+            ),
+            (
+                "file:///mnt/onboard/Books/Tolkien/Hobbit/Hobbit.kepub.epub",
+                None,
+                2,
+                1.0,
+                "2026-05-22T12:00:00",
+                None,
+                "application/x-kobo-epub+zip",
+            ),
+        ],
+    )
+
+    cache = KepubCache(tmp_path / "kepub.db")
+    kepubify = _StubKepubify()
+    report = sync_library_to_kobo(
+        catalog=catalog,
+        target=mount,
+        cache=cache,
+        run_kepubify=kepubify.run,
+        kepubify_version=kepubify.get_version,
+        workspace_dir=tmp_path / "workspace",
+        books_subdir="Books",
+    )
+
+    # The two books already on the device should have been discovered and
+    # pulled in this single sync. The third book has no file on the mount
+    # at pull time, so discovery cannot stamp it — its row in KoboReader is
+    # skipped this round (it does get copied later in the same sync's copy
+    # phase, so a subsequent sync will pick it up).
+    assert report.device_files_discovered == 2
+    assert report.read_states_pulled == 2
+    assert report.read_states_skipped == 1
+
+    # book_status mirror should reflect the device's read-state for the two
+    # discovered books — proving the pull actually merged the values, not
+    # just that the count is right.
+    statuses = {
+        row["book_id"]: row["status"]
+        for row in conn.execute("SELECT book_id, status FROM book_status").fetchall()
+    }
+    assert statuses[book_a] == 2
+    assert statuses[book_b] == 1
+    assert book_c not in statuses  # not pulled this sync
+
+    conn.close()
+
+
 def test_regression_sync_still_works_when_kobo_db_missing(tmp_path: Path) -> None:
     """Existing kepub-copy path must keep working when KoboReader.sqlite is absent."""
     db_path = tmp_path / "library.db"
