@@ -2,7 +2,9 @@
 # ABOUTME: The library stays canonical EPUB; kepubify runs only inside this module.
 
 import contextlib
+import datetime as _dt
 import getpass
+import logging
 import platform
 import shutil
 from collections.abc import Callable, Iterable
@@ -13,8 +15,15 @@ from typing import Protocol
 from bookery.core.pathformat import sanitize_component
 from bookery.db.hashing import compute_file_hash
 from bookery.db.mapping import BookRecord
+from bookery.device.kobo_reader import pull_read_state, read_kobo_serial
 
 KOBO_MARKER = ".kobo"
+
+logger = logging.getLogger(__name__)
+
+
+def _now_iso() -> str:
+    return _dt.datetime.now().replace(microsecond=0).isoformat()
 
 
 def _default_mount_roots() -> list[Path]:
@@ -67,10 +76,41 @@ class SyncReport:
     copied: list[Path] = field(default_factory=list)
     skipped: list[tuple[Path, str]] = field(default_factory=list)
     failed: list[tuple[Path, str]] = field(default_factory=list)
+    read_states_pulled: int = 0
+    read_states_skipped: int = 0
 
 
 class _CatalogProto(Protocol):
     def list_all(self) -> list[BookRecord]: ...
+
+    def upsert_device(
+        self, *, kind: str, serial: str, label: str | None, now: str
+    ) -> int: ...
+
+    def upsert_device_file(
+        self, *, device_id: int, book_id: int, remote_path: str, now: str
+    ) -> None: ...
+
+    def resolve_book_id_for_remote_path(
+        self, *, device_id: int, remote_path: str
+    ) -> int | None: ...
+
+    def upsert_device_read_state(
+        self,
+        *,
+        device_id: int,
+        book_id: int,
+        read_status: int,
+        percent_read: float | None,
+        last_read_at: str | None,
+        last_chapter_id: str | None,
+        status_updated_at: str,
+        pulled_at: str,
+    ) -> None: ...
+
+    def seed_book_status_if_absent(
+        self, *, book_id: int, status: int, updated_at: str
+    ) -> None: ...
 
 
 class _CacheProto(Protocol):
@@ -109,6 +149,9 @@ def _sync_record(
     run_kepubify: Callable[..., Path],
     workspace: Path,
     report: SyncReport,
+    catalog: _CatalogProto,
+    device_id: int | None,
+    now: str,
     on_stage: StageCallback | None = None,
 ) -> None:
     def stage(name: str) -> None:
@@ -169,6 +212,10 @@ def _sync_record(
     cache.put(source_hash, version, kepub_sha, dest)
     stage("done")
     report.copied.append(dest)
+    if device_id is not None:
+        catalog.upsert_device_file(
+            device_id=device_id, book_id=record.id, remote_path=str(dest), now=now
+        )
 
 
 def sync_library_to_kobo(
@@ -220,6 +267,32 @@ def sync_library_to_kobo(
 
     version = kepubify_version()
     workspace_dir.mkdir(parents=True, exist_ok=True)
+    now = _now_iso()
+
+    # Device identity + read-state pull happen before the kepub loop so the
+    # device DB is read in a clean (pre-write) window. Both steps are
+    # best-effort — a missing `.kobo/version` or unreadable KoboReader.sqlite
+    # logs a warning but never aborts the kepub copy half of the sync.
+    device_id: int | None = None
+    try:
+        serial = read_kobo_serial(target)
+    except FileNotFoundError:
+        logger.warning(
+            "%s/.kobo/version not found; skipping device-state pull",
+            target,
+        )
+    else:
+        device_id = catalog.upsert_device(
+            kind="kobo", serial=serial, label=None, now=now
+        )
+        try:
+            pulled, skipped = pull_read_state(
+                catalog, device_id=device_id, mount_path=target, now=now
+            )
+            report.read_states_pulled = pulled
+            report.read_states_skipped = skipped
+        except Exception as exc:
+            logger.warning("Read-state pull failed; continuing with copy: %s", exc)
 
     try:
         for idx, record in enumerate(records, 1):
@@ -234,6 +307,9 @@ def sync_library_to_kobo(
                 run_kepubify=run_kepubify,
                 workspace=workspace_dir,
                 report=report,
+                catalog=catalog,
+                device_id=device_id,
+                now=now,
                 on_stage=on_stage,
             )
     finally:

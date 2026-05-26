@@ -170,7 +170,7 @@ class TestMatchedSignal:
         db_path = tmp_path / "fresh.db"
         conn = open_library(db_path)
         try:
-            assert _get_schema_version(conn) == 7
+            assert _get_schema_version(conn) == 8
             cursor = conn.execute("PRAGMA table_info(books)")
             cols = {row["name"] for row in cursor.fetchall()}
             assert "metadata_matched_at" in cols
@@ -284,7 +284,7 @@ class TestMatchedSignal:
         # Reopen to trigger V7 migration
         conn = open_library(db_path)
         try:
-            assert _get_schema_version(conn) == 7
+            assert _get_schema_version(conn) == 8
             rows = conn.execute(
                 "SELECT title, metadata_matched_at FROM books ORDER BY title"
             ).fetchall()
