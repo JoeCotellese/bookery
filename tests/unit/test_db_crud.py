@@ -228,3 +228,62 @@ class TestDeleteBook:
         """Deleting a nonexistent ID raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
             catalog.delete_book(999)
+
+
+class TestTitleSortPersistence:
+    """`title_sort` is populated on insert and refreshed on title updates (#192)."""
+
+    def _title_sort_for(self, catalog: LibraryCatalog, book_id: int) -> str | None:
+        # Catalog row-to-record doesn't surface title_sort (it's a DB-derived
+        # column, not part of BookMetadata). Read it back directly so the
+        # test asserts the column itself, not a derived view.
+        row = catalog._conn.execute(
+            "SELECT title_sort FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
+        return row["title_sort"] if row is not None else None
+
+    def test_insert_strips_leading_the(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="The Hobbit", source_path=Path("/h.epub")),
+            file_hash="hashhobbit",
+        )
+        assert self._title_sort_for(catalog, book_id) == "Hobbit"
+
+    def test_insert_strips_leading_a(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="A Wizard of Earthsea", source_path=Path("/w.epub")),
+            file_hash="hashwizard",
+        )
+        assert self._title_sort_for(catalog, book_id) == "Wizard of Earthsea"
+
+    def test_insert_strips_leading_an(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="An American Tragedy", source_path=Path("/a.epub")),
+            file_hash="hashan",
+        )
+        assert self._title_sort_for(catalog, book_id) == "American Tragedy"
+
+    def test_insert_without_article_uses_raw_title(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="Dune", source_path=Path("/d.epub")),
+            file_hash="hashdune",
+        )
+        assert self._title_sort_for(catalog, book_id) == "Dune"
+
+    def test_update_title_refreshes_title_sort(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="Dune", source_path=Path("/d.epub")),
+            file_hash="hashdune2",
+        )
+        catalog.update_book(book_id, title="The Hobbit")
+        assert self._title_sort_for(catalog, book_id) == "Hobbit"
+
+    def test_update_unrelated_field_preserves_title_sort(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="The Hobbit", source_path=Path("/h.epub")),
+            file_hash="hashpres",
+        )
+        catalog.update_book(book_id, description="A children's tale")
+        assert self._title_sort_for(catalog, book_id) == "Hobbit"

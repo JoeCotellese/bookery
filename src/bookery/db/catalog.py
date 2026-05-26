@@ -10,6 +10,7 @@ from bookery.core.dedup import (
     normalize_for_dedup,
     normalize_isbn,
 )
+from bookery.core.text_sort import compute_title_sort
 from bookery.db.mapping import (
     BookRecord,
     DuplicateMatch,
@@ -399,6 +400,15 @@ class LibraryCatalog:
             fields = {k: v for k, v in fields.items() if k not in locked}
             if not fields:
                 return []
+
+        # Keep the persisted `title_sort` in lock-step with `title` so the
+        # article-stripped sort key never drifts after a title edit. Compute
+        # before JSON-serialization so the helper sees a plain string.
+        if "title" in fields:
+            title_val = fields["title"]
+            fields["title_sort"] = (
+                compute_title_sort(title_val) if isinstance(title_val, str) and title_val else None
+            )
 
         # JSON-serialize list/dict fields
         if "authors" in fields:
