@@ -230,6 +230,33 @@ CREATE INDEX idx_device_files_path ON device_files(device_id, remote_path);
 INSERT INTO schema_version (version) VALUES (8);
 """
 
+# Persisted article-stripped title sort key (issue #192). Mirrors `author_sort`:
+# computed on insert/update from the title and indexed by `ORDER BY` clauses.
+# Backfill expresses the same article-stripping logic the Python helper uses
+# (`bookery.core.text_sort.compute_title_sort`): match the leading "The "/"An "
+# /"A " case-insensitively, fall back to the raw title when stripping would
+# leave an empty value. SQLite has no regex by default, so the rule is unfolded
+# into three CASE branches against LTRIM(title) so leading whitespace doesn't
+# defeat the prefix check.
+SCHEMA_V9 = """
+ALTER TABLE books ADD COLUMN title_sort TEXT;
+
+UPDATE books
+SET title_sort = CASE
+    WHEN title IS NULL OR title = '' THEN title
+    WHEN LOWER(SUBSTR(LTRIM(title), 1, 4)) = 'the ' THEN TRIM(SUBSTR(LTRIM(title), 5))
+    WHEN LOWER(SUBSTR(LTRIM(title), 1, 3)) = 'an '  THEN TRIM(SUBSTR(LTRIM(title), 4))
+    WHEN LOWER(SUBSTR(LTRIM(title), 1, 2)) = 'a '   THEN TRIM(SUBSTR(LTRIM(title), 3))
+    ELSE title
+END;
+
+-- Fallback: if article-only / whitespace-only titles produced an empty sort
+-- key, restore the raw title so the row still sorts deterministically.
+UPDATE books SET title_sort = title WHERE title_sort IS NULL OR title_sort = '';
+
+INSERT INTO schema_version (version) VALUES (9);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -238,4 +265,5 @@ MIGRATIONS = [
     (6, SCHEMA_V6),
     (7, SCHEMA_V7),
     (8, SCHEMA_V8),
+    (9, SCHEMA_V9),
 ]

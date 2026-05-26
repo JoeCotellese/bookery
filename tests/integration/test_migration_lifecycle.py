@@ -6,7 +6,7 @@ from pathlib import Path
 
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import _get_schema_version, open_library
-from bookery.db.schema import SCHEMA_V1
+from bookery.db.schema import MIGRATIONS, SCHEMA_V1
 from bookery.metadata.types import BookMetadata
 
 
@@ -30,7 +30,7 @@ class TestMigrationLifecycle:
 
         # Step 2: Open with bookery to trigger migration
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 8
+        assert _get_schema_version(conn) == 9
 
         # Step 3: Verify the book survived and tags work
         catalog = LibraryCatalog(conn)
@@ -51,7 +51,7 @@ class TestMigrationLifecycle:
         # Open 3 times
         for _ in range(3):
             conn = open_library(db_path)
-            assert _get_schema_version(conn) == 8
+            assert _get_schema_version(conn) == 9
             conn.close()
 
         # Final open — add a book and tag it
@@ -63,6 +63,61 @@ class TestMigrationLifecycle:
         )
         catalog.add_tag(book_id, "stable")
         assert catalog.get_tags_for_book(book_id) == ["stable"]
+        conn.close()
+
+    def test_v8_db_with_article_titles_backfills_title_sort(self, tmp_path: Path) -> None:
+        """V9 backfill strips leading English articles for existing rows.
+
+        Stage a database at V8 (the pre-#192 production schema), insert books
+        whose titles begin with "The" / "A" / "An", then trigger the V9
+        migration via ``open_library`` and assert the new ``title_sort`` column
+        is backfilled per the article-stripping rule. Falls back to the raw
+        title when stripping would leave an empty string.
+        """
+        db_path = tmp_path / "v9_backfill.db"
+
+        # Step 1: hand-roll a V8 database — V1 plus every migration up to and
+        # including V8. Stops short of V9 so we can verify its backfill.
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(SCHEMA_V1)
+        for version, sql in MIGRATIONS:
+            if version <= 8:
+                conn.executescript(sql)
+        # Step 2: insert rows directly so we bypass any Python-side population
+        # of `title_sort` (the column doesn't exist yet at V8).
+        rows = [
+            ("The Hobbit", "Tolkien, J.R.R."),
+            ("A Wizard of Earthsea", "Le Guin, Ursula K."),
+            ("An American Tragedy", "Dreiser, Theodore"),
+            ("Dune", "Herbert, Frank"),
+            ("the lower case", "Author"),
+            ("The", "Edge Case Author"),  # fallback: stripping → empty
+        ]
+        for i, (title, author) in enumerate(rows):
+            conn.execute(
+                "INSERT INTO books (title, authors, author_sort, source_path, file_hash) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (title, f'["{author}"]', author, f"/{i}.epub", f"hash{i}"),
+            )
+        conn.commit()
+        conn.close()
+
+        # Step 3: open via the library code, which applies V9.
+        conn = open_library(db_path)
+        assert _get_schema_version(conn) == 9
+
+        # Step 4: verify backfill on every row.
+        cursor = conn.execute("SELECT title, title_sort FROM books ORDER BY id")
+        backfilled = {row[0]: row[1] for row in cursor.fetchall()}
+        assert backfilled == {
+            "The Hobbit": "Hobbit",
+            "A Wizard of Earthsea": "Wizard of Earthsea",
+            "An American Tragedy": "American Tragedy",
+            "Dune": "Dune",
+            "the lower case": "lower case",
+            "The": "The",  # fallback when stripping leaves empty
+        }
         conn.close()
 
     def test_fts_still_works_after_migration(self, tmp_path: Path) -> None:
