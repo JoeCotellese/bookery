@@ -2,6 +2,7 @@
 # ABOUTME: Validates add, get, update, delete, list, and duplicate detection.
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -287,3 +288,100 @@ class TestTitleSortPersistence:
         )
         catalog.update_book(book_id, description="A children's tale")
         assert self._title_sort_for(catalog, book_id) == "Hobbit"
+
+
+class TestListMethodsArticleStrippedOrder:
+    """Catalog list methods sort by the persisted article-stripped key (#192).
+
+    Acceptance for issue #192 calls out ``list_all`` and ``list_all_by_author``
+    explicitly; the variants that power the CLI's filtered ``ls`` commands
+    (``--reading``, ``--finished``, ``--unread``, ``--tag``, ``--genre``) are
+    updated for consistency so users don't see a different ordering rule
+    depending on which filter they passed.
+    """
+
+    _CANONICAL_FIXTURE: ClassVar[list[tuple[str, str]]] = [
+        ("The Hobbit", "Tolkien, J.R.R."),
+        ("A Wizard of Earthsea", "Le Guin, Ursula K."),
+        ("An American Tragedy", "Dreiser, Theodore"),
+        ("Dune", "Herbert, Frank"),
+    ]
+    _STRIPPED_ORDER: ClassVar[list[str]] = [
+        "An American Tragedy",  # American
+        "Dune",                 # Dune
+        "The Hobbit",           # Hobbit
+        "A Wizard of Earthsea",  # Wizard
+    ]
+
+    def _seed(self, catalog: LibraryCatalog) -> list[int]:
+        ids: list[int] = []
+        for title, author in self._CANONICAL_FIXTURE:
+            meta = BookMetadata(
+                title=title,
+                authors=[author],
+                author_sort=author,
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            ids.append(catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0")))
+        return ids
+
+    def test_list_all_sorts_by_article_stripped_title(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        self._seed(catalog)
+        titles = [r.metadata.title for r in catalog.list_all()]
+        assert titles == self._STRIPPED_ORDER
+
+    def test_list_all_by_author_secondary_is_article_stripped(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        # Two books by the same author: secondary must be article-stripped.
+        # Discriminator: raw "Banana" < "The Apple" (B < T) but article-stripped
+        # "Apple" < "Banana" — fails iff the SQL still sorts on raw title.
+        for title in ["Banana", "The Apple"]:
+            meta = BookMetadata(
+                title=title,
+                authors=["Shared, Author"],
+                author_sort="Shared, Author",
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+        rows = catalog.list_all_by_author()
+        titles = [r.metadata.title for r in rows]
+        assert titles == ["The Apple", "Banana"]
+
+    def test_list_books_by_status_uses_article_stripped_order(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        ids = self._seed(catalog)
+        ts = "2026-05-26T00:00:00"
+        for book_id in ids:
+            catalog.set_book_status(book_id=book_id, status=2, updated_at=ts)
+        rows = catalog.list_books_by_status(2)
+        assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
+
+    def test_list_books_unread_uses_article_stripped_order(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        # No book_status rows seeded → all four are implicitly unread.
+        self._seed(catalog)
+        rows = catalog.list_books_unread()
+        assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
+
+    def test_get_books_by_tag_uses_article_stripped_order(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        ids = self._seed(catalog)
+        for book_id in ids:
+            catalog.add_tag(book_id, "classics")
+        rows = catalog.get_books_by_tag("classics")
+        assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
+
+    def test_get_books_by_genre_uses_article_stripped_order(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        ids = self._seed(catalog)
+        for book_id in ids:
+            catalog.add_genre(book_id, "Literary Fiction")
+        rows = catalog.get_books_by_genre("Literary Fiction")
+        assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
