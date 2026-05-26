@@ -23,9 +23,13 @@ class TestDetailReadingSection:
         response = client.get("/books/1")
         html = response.data.decode()
 
+        # P3 (#183): the section always renders so the segmented status
+        # control is reachable. The selected segment is signaled by
+        # aria-pressed="true" + the active class.
         assert 'id="detail-reading"' in html
-        assert "Status" in html
         assert "Finished" in html
+        # Active state is on the Finished button.
+        assert 'aria-pressed="true"' in html
 
     def test_renders_device_progress_and_last_opened(self, mock_catalog, client) -> None:
         book = make_book(1, title="Sample")
@@ -52,8 +56,12 @@ class TestDetailReadingSection:
         assert "Kobo" in html
         assert "Mr. C&#39;s Libra" in html or "Mr. C's Libra" in html
 
-    def test_section_absent_when_no_data(self, mock_catalog, client) -> None:
-        # Cleanly hidden — the regression criterion from the issue.
+    def test_section_renders_for_never_touched_book(self, mock_catalog, client) -> None:
+        # P3 (#183) intentional contract shift: the section is always
+        # present so the segmented control can record the user's first
+        # toggle on an otherwise-untouched book. With no book_status row
+        # all three segments are inactive (Unread defaults visually but
+        # has aria-pressed="true" only because status defaults to 0).
         book = make_book(1, title="Untouched")
         mock_catalog.get_by_id.return_value = book
         mock_catalog.get_book_status.return_value = None
@@ -63,7 +71,9 @@ class TestDetailReadingSection:
         html = response.data.decode()
 
         assert "Untouched" in html
-        assert 'id="detail-reading"' not in html
+        assert 'id="detail-reading"' in html
+        # All three segment buttons render.
+        assert html.count("status-segment") >= 3
 
     def test_renders_device_only_when_no_book_status(self, mock_catalog, client) -> None:
         book = make_book(1, title="Just pulled")

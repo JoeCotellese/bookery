@@ -1,28 +1,38 @@
-{# ABOUTME: Detail Reading partial — status, progress, last opened, device. #}
-{# ABOUTME: Renders only when book_status or device_read_state has a row. #}
-{% if book_status or device_read_state %}
-<section class="section" aria-labelledby="detail-reading">
-    <h2 id="detail-reading">Reading</h2>
+{# ABOUTME: Detail Reading partial — segmented status control + device read state. #}
+{# ABOUTME: Outer id="detail-reading" matches the htmx swap target from the toggle buttons. #}
+{# Always rendered when a book context is present so the segmented control is reachable
+   even on a never-touched book — the user's first toggle has nowhere else to live. #}
+<section id="detail-reading" class="section" aria-labelledby="detail-reading-heading">
+    <h2 id="detail-reading-heading">Reading</h2>
+    {% set current_status = book_status.status if book_status else 0 %}
+    <div class="status-toggle" role="group" aria-label="Set read status">
+        {% for value, label in [(0, "Unread"), (1, "Reading"), (2, "Finished")] %}
+        <button type="button"
+                class="status-segment{% if current_status == value %} status-segment-active{% endif %}"
+                aria-pressed="{{ 'true' if current_status == value else 'false' }}"
+                hx-post="{{ url_for('web.update_book_status', book_id=book.id) }}"
+                hx-vals='{"status": "{{ label|lower }}"}'
+                hx-target="#detail-reading"
+                hx-swap="outerHTML">
+            {{ label }}
+        </button>
+        {% endfor %}
+    </div>
+    {% if queued_for_push %}
+    <p class="status-queued" aria-live="polite">Queued for next sync</p>
+    {% endif %}
+    {% if device_read_state %}
     <dl class="metadata-grid">
-        {% if book_status %}
-        <dt>Status</dt>
-        <dd>{{ status_name(book_status.status) }}</dd>
-        {% elif device_read_state %}
-        <dt>Status</dt>
-        <dd>{{ status_name(device_read_state.read_status) }}</dd>
-        {% endif %}
-        {% if device_read_state and device_read_state.percent_read is not none %}
+        {% if device_read_state.percent_read is not none %}
         <dt>Progress</dt>
         <dd>{{ "%.0f"|format(device_read_state.percent_read * 100) }}%</dd>
         {% endif %}
-        {% if device_read_state and device_read_state.last_read_at %}
+        {% if device_read_state.last_read_at %}
         <dt>Last opened</dt>
         <dd>{{ device_read_state.last_read_at }}</dd>
         {% endif %}
-        {% if device_read_state %}
         <dt>Device</dt>
         <dd>{{ device_read_state.device_kind|title }}{% if device_read_state.device_label %} ({{ device_read_state.device_label }}){% endif %}</dd>
-        {% endif %}
     </dl>
+    {% endif %}
 </section>
-{% endif %}
