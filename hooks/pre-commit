@@ -18,6 +18,12 @@ if ! uv run ruff check $STAGED_FILES; then
     FAILED=1
 fi
 
+echo "pre-commit: ruff format --check..."
+if ! uv run ruff format --check $STAGED_FILES; then
+    echo "pre-commit: run 'uv run ruff format <file>' to fix formatting."
+    FAILED=1
+fi
+
 echo "pre-commit: pyright..."
 if ! uv run pyright $STAGED_FILES; then
     FAILED=1
