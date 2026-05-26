@@ -10,6 +10,7 @@ from rich.table import Table
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
+from bookery.db.status import STATUS_FINISHED, STATUS_READING
 
 console = Console()  # TODO: move Console() inside command for testability
 
@@ -34,13 +35,47 @@ console = Console()  # TODO: move Console() inside command for testability
     default=None,
     help="Filter by genre name.",
 )
+@click.option(
+    "--reading",
+    "reading_filter",
+    is_flag=True,
+    default=False,
+    help="Show only books currently being read.",
+)
+@click.option(
+    "--finished",
+    "finished_filter",
+    is_flag=True,
+    default=False,
+    help="Show only books marked finished.",
+)
+@click.option(
+    "--unread",
+    "unread_filter",
+    is_flag=True,
+    default=False,
+    help="Show only books that are unread (no status row, or status = 0).",
+)
 def ls(
     db_path: Path | None,
     series_filter: str | None,
     tag_filter: str | None,
     genre_filter: str | None,
+    reading_filter: bool,
+    finished_filter: bool,
+    unread_filter: bool,
 ) -> None:
     """List all books in the library catalog."""
+    # Status filters are mutually exclusive with each other; combining two
+    # (e.g. --reading --finished) is incoherent so we fail at the front door
+    # rather than silently picking one.
+    status_filters_set = sum([reading_filter, finished_filter, unread_filter])
+    if status_filters_set > 1:
+        console.print(
+            "[red]--reading, --finished, and --unread are mutually exclusive.[/red]"
+        )
+        raise SystemExit(2)
+
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
@@ -61,6 +96,12 @@ def ls(
             raise SystemExit(1) from exc
     elif series_filter:
         records = catalog.list_by_series(series_filter)
+    elif reading_filter:
+        records = catalog.list_books_by_status(STATUS_READING)
+    elif finished_filter:
+        records = catalog.list_books_by_status(STATUS_FINISHED)
+    elif unread_filter:
+        records = catalog.list_books_unread()
     else:
         records = catalog.list_all()
 
