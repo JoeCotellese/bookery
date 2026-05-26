@@ -17,7 +17,7 @@ from bookery.db.mapping import (
     metadata_to_row,
     row_to_record,
 )
-from bookery.db.status import BookStatus, DeviceReadState
+from bookery.db.status import BookStatus, DeviceReadState, PushCandidate
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
@@ -904,6 +904,42 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
+    def merge_book_status_from_device(
+        self,
+        *,
+        book_id: int,
+        device_status: int,
+        device_updated_at: str,
+    ) -> None:
+        """Merge a device-side status into ``book_status`` using last-writer-wins.
+
+        Overwrites the catalog row iff the device timestamp is greater than
+        or equal to the catalog's existing ``updated_at`` (or the catalog has
+        no row yet). The ``>=`` tiebreak comes from the #178 sync model: when
+        two timestamps match exactly we let the device win, which keeps the
+        two sides consistent without an extra "are these really the same"
+        check. This replaces ``seed_book_status_if_absent`` for P2 — the pull
+        now respects user intent only when the catalog timestamp is strictly
+        newer, not whenever the user happened to touch the book first.
+        """
+        existing = self._conn.execute(
+            "SELECT updated_at FROM book_status WHERE book_id = ?",
+            (book_id,),
+        ).fetchone()
+        if existing is not None and str(existing["updated_at"]) > device_updated_at:
+            return
+        self._conn.execute(
+            """
+            INSERT INTO book_status (book_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (book_id, device_status, device_updated_at),
+        )
+        self._conn.commit()
+
     def set_book_status(self, *, book_id: int, status: int, updated_at: str) -> None:
         """Upsert book_status for the user-write path.
 
@@ -1038,3 +1074,45 @@ class LibraryCatalog:
             last_read_at=row["last_read_at"],
             status_updated_at=str(row["status_updated_at"]),
         )
+
+    def list_push_candidates(self, *, device_id: int) -> list[PushCandidate]:
+        """Return rows the sync orchestrator can consider for a device push.
+
+        A candidate has both a catalog ``book_status`` row (so we know what
+        the user wants) and a ``device_files`` row for this device (so we
+        know which ContentID to write to). ``device_read_state`` is a LEFT
+        JOIN — books the device has never reported a read for still show
+        up with ``device_status_updated_at = None`` so the orchestrator can
+        push the catalog's intent unconditionally.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT
+                df.book_id,
+                df.remote_path,
+                bs.status AS catalog_status,
+                bs.updated_at AS catalog_updated_at,
+                drs.status_updated_at AS device_status_updated_at
+            FROM device_files AS df
+            JOIN book_status AS bs ON bs.book_id = df.book_id
+            LEFT JOIN device_read_state AS drs
+                ON drs.book_id = df.book_id AND drs.device_id = df.device_id
+            WHERE df.device_id = ?
+            ORDER BY df.book_id
+            """,
+            (device_id,),
+        )
+        return [
+            PushCandidate(
+                book_id=int(row["book_id"]),
+                remote_path=str(row["remote_path"]),
+                catalog_status=int(row["catalog_status"]),
+                catalog_updated_at=str(row["catalog_updated_at"]),
+                device_status_updated_at=(
+                    str(row["device_status_updated_at"])
+                    if row["device_status_updated_at"] is not None
+                    else None
+                ),
+            )
+            for row in cursor.fetchall()
+        ]

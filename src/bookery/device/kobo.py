@@ -15,7 +15,10 @@ from typing import Protocol
 from bookery.core.pathformat import sanitize_component
 from bookery.db.hashing import compute_file_hash
 from bookery.db.mapping import BookRecord
+from bookery.db.status import PushCandidate
+from bookery.device.kobo_backup import backup_kobo_db
 from bookery.device.kobo_reader import pull_read_state, read_kobo_serial
+from bookery.device.kobo_writer import ReadStatusUpdate, push_read_status
 
 KOBO_MARKER = ".kobo"
 
@@ -92,6 +95,15 @@ class SyncReport:
     failed: list[tuple[Path, str]] = field(default_factory=list)
     read_states_pulled: int = 0
     read_states_skipped: int = 0
+    # P2: device-side write counts. ``read_statuses_pushed`` is rows we
+    # actually mutated on the Kobo; ``read_status_pull_only`` is push
+    # candidates whose ContentID didn't match a current device row (book
+    # copied this sync but not yet indexed by firmware); ``read_status_push_failed``
+    # is (content_id, error_message) pairs from a rollback scenario.
+    read_statuses_pushed: int = 0
+    read_status_pull_only: int = 0
+    read_status_push_failed: list[tuple[str, str]] = field(default_factory=list)
+    backup_path: Path | None = None
 
 
 class _CatalogProto(Protocol):
@@ -120,9 +132,11 @@ class _CatalogProto(Protocol):
         pulled_at: str,
     ) -> None: ...
 
-    def seed_book_status_if_absent(
-        self, *, book_id: int, status: int, updated_at: str
+    def merge_book_status_from_device(
+        self, *, book_id: int, device_status: int, device_updated_at: str
     ) -> None: ...
+
+    def list_push_candidates(self, *, device_id: int) -> list[PushCandidate]: ...
 
 
 class _CacheProto(Protocol):
@@ -229,6 +243,89 @@ def _sync_record(
         )
 
 
+def _build_push_updates(candidates: list[PushCandidate]) -> list[ReadStatusUpdate]:
+    """Filter push candidates down to the ones the catalog wins for.
+
+    A candidate becomes a push when the catalog's ``updated_at`` is strictly
+    greater than the device's ``status_updated_at`` (or the device has no row
+    for the book at all). Equal-or-older candidates are dropped — the pull
+    half already converged those rows via :func:`merge_book_status_from_device`.
+    Returns ``ReadStatusUpdate`` instances keyed on the device ContentID,
+    which is ``file://`` + ``remote_path``.
+    """
+    updates: list[ReadStatusUpdate] = []
+    for cand in candidates:
+        if (
+            cand.device_status_updated_at is not None
+            and cand.catalog_updated_at <= cand.device_status_updated_at
+        ):
+            continue
+        content_id = f"file://{cand.remote_path}"
+        updates.append(
+            ReadStatusUpdate(content_id=content_id, status=cand.catalog_status)
+        )
+    return updates
+
+
+def _push_read_state(
+    *,
+    catalog: _CatalogProto,
+    device_id: int,
+    target: Path,
+    serial: str,
+    backup_root: Path | None,
+    report: SyncReport,
+) -> None:
+    """Apply catalog-side status to the device DB.
+
+    Runs after the kepub copy phase so ``device_files`` reflects the books
+    actually on the device. Builds a push list via
+    :func:`_build_push_updates`, takes a backup snapshot if there's anything
+    to write, then hands off to :func:`push_read_status`. All failures are
+    swallowed into the report rather than raised — the pull half of the
+    sync has already done useful work and we don't want to throw it away.
+    """
+    try:
+        candidates = catalog.list_push_candidates(device_id=device_id)
+    except Exception as exc:
+        logger.warning("Could not list push candidates: %s", exc)
+        return
+    updates = _build_push_updates(candidates)
+    if not updates:
+        return
+
+    db_path = target / ".kobo" / "KoboReader.sqlite"
+    if not db_path.exists():
+        logger.warning(
+            "KoboReader.sqlite not found at %s; skipping read-status push", db_path
+        )
+        return
+
+    if backup_root is not None:
+        report.backup_path = backup_kobo_db(
+            source_db=db_path,
+            backup_root=backup_root,
+            device_serial=serial,
+            now=_dt.datetime.now(_dt.UTC),
+        )
+
+    try:
+        push = push_read_status(
+            db_path=db_path,
+            updates=updates,
+            now=_now_iso,
+        )
+    except Exception as exc:
+        logger.warning("Read-status push failed: %s", exc)
+        report.read_status_push_failed = [
+            (upd.content_id, str(exc)) for upd in updates
+        ]
+        return
+    report.read_statuses_pushed = push.pushed_count
+    report.read_status_pull_only = push.pull_only_count
+    report.read_status_push_failed = list(push.failed)
+
+
 def sync_library_to_kobo(
     *,
     catalog: _CatalogProto,
@@ -241,6 +338,8 @@ def sync_library_to_kobo(
     dry_run: bool = False,
     on_progress: ProgressCallback | None = None,
     on_stage: StageCallback | None = None,
+    backup_root: Path | None = None,
+    status_push_enabled: bool = True,
 ) -> SyncReport:
     """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
 
@@ -279,10 +378,12 @@ def sync_library_to_kobo(
     now = _now_iso()
 
     # Device identity + read-state pull happen before the kepub loop so the
-    # device DB is read in a clean (pre-write) window. Both steps are
-    # best-effort — a missing `.kobo/version` or unreadable KoboReader.sqlite
-    # logs a warning but never aborts the kepub copy half of the sync.
+    # device DB is read in a clean (pre-write) window. All three phases
+    # (pull / copy / push) are best-effort — a missing `.kobo/version` or
+    # unreadable KoboReader.sqlite logs a warning but never aborts the
+    # kepub copy half of the sync.
     device_id: int | None = None
+    serial: str | None = None
     try:
         serial = read_kobo_serial(target)
     except FileNotFoundError:
@@ -290,7 +391,7 @@ def sync_library_to_kobo(
             "%s/.kobo/version not found; skipping device-state pull",
             target,
         )
-    else:
+    if serial is not None:
         device_id = catalog.upsert_device(kind="kobo", serial=serial, label=None, now=now)
         try:
             pulled, skipped = pull_read_state(
@@ -323,5 +424,15 @@ def sync_library_to_kobo(
         if workspace_dir.exists():
             with contextlib.suppress(OSError):
                 workspace_dir.rmdir()
+
+    if status_push_enabled and device_id is not None and serial is not None:
+        _push_read_state(
+            catalog=catalog,
+            device_id=device_id,
+            target=target,
+            serial=serial,
+            backup_root=backup_root,
+            report=report,
+        )
 
     return report

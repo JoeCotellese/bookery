@@ -54,3 +54,21 @@ class DeviceReadState:
     percent_read: float | None
     last_read_at: str | None
     status_updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class PushCandidate:
+    """A book that *might* need its status pushed to the device.
+
+    Produced by ``LibraryCatalog.list_push_candidates`` — one row per
+    (device, book) with both a catalog status and a known on-device file.
+    The orchestrator compares ``catalog_updated_at`` against
+    ``device_status_updated_at`` to decide whether this candidate actually
+    becomes a push, a no-op, or a pull-direction merge.
+    """
+
+    book_id: int
+    remote_path: str
+    catalog_status: int
+    catalog_updated_at: str
+    device_status_updated_at: str | None
