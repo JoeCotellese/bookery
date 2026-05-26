@@ -119,3 +119,68 @@ class TestDetailReadingSection:
         html = response.data.decode()
 
         assert "Kobo" in html
+
+
+class TestDetailReadingSegmentedControl:
+    """P3 (#183) segmented status control assertions."""
+
+    def test_renders_three_buttons(self, mock_catalog, client) -> None:
+        mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
+        mock_catalog.get_book_status.return_value = None
+        response = client.get("/books/1")
+        html = response.data.decode()
+        # Three segment buttons, each labeled.
+        for label in ("Unread", "Reading", "Finished"):
+            assert label in html
+        # Buttons are explicit <button> elements so keyboard activation works.
+        # Three buttons inside the segmented control.
+        assert html.count('class="status-segment') >= 3
+
+    def test_active_segment_is_current_status(self, mock_catalog, client) -> None:
+        mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
+        mock_catalog.get_book_status.return_value = BookStatus(
+            book_id=1, status=STATUS_READING, updated_at="t"
+        )
+        response = client.get("/books/1")
+        html = response.data.decode()
+        # Exactly one segment is pressed; the active class lands on the
+        # matching one.
+        assert html.count('aria-pressed="true"') == 1
+        assert "status-segment-active" in html
+
+    def test_buttons_post_to_toggle_route(self, mock_catalog, client) -> None:
+        mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
+        mock_catalog.get_book_status.return_value = None
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert 'hx-post="/books/1/status"' in html
+        # Outer-swap on the section so the bulb-targeted update slots in.
+        assert 'hx-target="#detail-reading"' in html
+        assert 'hx-swap="outerHTML"' in html
+        # All three labels are wired through hx-vals.
+        for label in ("unread", "reading", "finished"):
+            assert f'"status": "{label}"' in html
+
+    def test_queued_indicator_renders_when_catalog_reports_it(
+        self, mock_catalog, client
+    ) -> None:
+        mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
+        mock_catalog.get_book_status.return_value = BookStatus(
+            book_id=1, status=STATUS_READING, updated_at="t"
+        )
+        mock_catalog.is_status_queued_for_push.return_value = True
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Queued for next sync" in html
+
+    def test_queued_indicator_absent_when_catalog_reports_synced(
+        self, mock_catalog, client
+    ) -> None:
+        mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
+        mock_catalog.get_book_status.return_value = BookStatus(
+            book_id=1, status=STATUS_READING, updated_at="t"
+        )
+        mock_catalog.is_status_queued_for_push.return_value = False
+        response = client.get("/books/1")
+        html = response.data.decode()
+        assert "Queued for next sync" not in html
