@@ -155,7 +155,7 @@ bookery info 42
 | `info <id>` | Show detailed metadata for a book by ID (`--provenance`, `--set field=value`, `--lock field`, `--unlock field`) |
 | `search <query>` | Search the catalog by title, author, or description |
 | `inventory <path>` | Scan a directory tree and report ebook format coverage |
-| `folder <query>` | Open the on-disk folder for a book (`--print` to print the path instead) |
+| `reveal <query>` | Open the on-disk folder for a book (`--print` to print the path instead). `folder` is a deprecated alias. |
 
 ### Organization
 
@@ -210,9 +210,12 @@ Run with flags:
 
 ```bash
 bookery vault-export --vault ~/obsidian-vault -o vault.epub \
-  --folder "3_Permanent Notes" --folder "2_Literature Notes" \
+  --include-folder "3_Permanent Notes" --include-folder "2_Literature Notes" \
   --index --exclude-tag type/meeting
 ```
+
+`--folder` is accepted as a deprecated alias for `--include-folder` and will
+be removed in a future release.
 
 Or set defaults once in `~/.bookery/config.toml` and just run
 `bookery vault-export -o vault.epub`:

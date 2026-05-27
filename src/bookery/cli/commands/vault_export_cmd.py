@@ -43,7 +43,8 @@ console = Console()
 @click.command("vault-export")
 @click.option("--vault", "vault_opt", type=click.Path(path_type=Path), default=None,
               help="Path to the Obsidian vault.")
-@click.option("--folder", "folders_opt", multiple=True,
+@deprecated_option(["--folder"], canonical="--include-folder", multiple=True)
+@click.option("--include-folder", "include_folder", multiple=True,
               help="Top-level folder to include (repeatable). Defaults to the whole vault.")
 @click.option("-o", "--output", "output_path", type=click.Path(path_type=Path),
               default=None,
@@ -78,7 +79,7 @@ console = Console()
 @db_option
 def vault_export(
     vault_opt: Path | None,
-    folders_opt: tuple[str, ...],
+    include_folder: tuple[str, ...],
     output_path: Path | None,
     index_opt: bool | None,
     index_exclude_opt: tuple[str, ...],
@@ -106,7 +107,7 @@ def vault_export(
     if not vault_path.is_dir():
         raise click.UsageError(f"vault path does not exist: {vault_path}")
 
-    folders = list(folders_opt) if folders_opt else cfg.folders
+    folders = list(include_folder) if include_folder else cfg.folders
     include_index = cfg.include_index if index_opt is None else index_opt
     exclude_prefixes = list(index_exclude_opt) if index_exclude_opt else cfg.index_exclude_prefixes
     min_count = index_min_count_opt if index_min_count_opt is not None else cfg.index_min_count
