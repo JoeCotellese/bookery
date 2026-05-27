@@ -342,6 +342,45 @@ def test_vault_export_default_output_lands_in_library_root_with_catalog(
     assert (_isolate_library_root / "Test Vault.epub").exists()
 
 
+def test_vault_export_random_ids_flag_produces_random_identifier(tmp_path: Path) -> None:
+    """`--random-ids` should produce a fresh, non-stable identifier — two runs
+    with the same vault path must yield different dc:identifier values.
+    """
+    reset_deprecation_state()
+
+    first, out = _run(tmp_path, "--random-ids")
+    assert first.exit_code == 0, first.output
+    ids_first = [v for v, _ in epub.read_epub(str(out)).get_metadata("DC", "identifier")]
+
+    out.unlink()
+    reset_deprecation_state()
+    second, _ = _run(tmp_path, "--random-ids")
+    assert second.exit_code == 0, second.output
+    ids_second = [v for v, _ in epub.read_epub(str(out)).get_metadata("DC", "identifier")]
+
+    assert ids_first != ids_second
+    assert all(v.startswith("urn:uuid:") for v in ids_first + ids_second)
+
+
+def test_vault_export_deprecated_uuid_random_alias_warns_and_works(tmp_path: Path) -> None:
+    """`--uuid random` is a deprecated alias that still works and prints a
+    one-line warning to stderr.
+    """
+    reset_deprecation_state()
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    result = runner.invoke(
+        cli,
+        ["vault-export", "--vault", str(FIXTURE), "-o", str(out), "--uuid", "random"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "warning: '--uuid' is deprecated; use '--random-ids' instead." in result.stderr
+    ids = [v for v, _ in epub.read_epub(str(out)).get_metadata("DC", "identifier")]
+    assert any(v.startswith("urn:uuid:") for v in ids)
+
+
 def test_vault_export_include_folder_filters_to_subset(tmp_path: Path) -> None:
     """`--include-folder` is the canonical name for selecting subfolders; it is
     repeatable and additive. Restricting to `3_Permanent Notes` should still
