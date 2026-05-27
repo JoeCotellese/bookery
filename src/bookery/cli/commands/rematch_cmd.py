@@ -218,14 +218,24 @@ def rematch(
                     f"{record.metadata.title} (id={record.id})"
                 )
 
-            if not record.source_path.exists():
+            # The library copy is the canonical file post-import; source_path
+            # may no longer exist (e.g. user emptied Calibre's trash). Prefer
+            # output_path and only fall back to source_path.
+            epub_path: Path | None = None
+            if record.output_path is not None and record.output_path.exists():
+                epub_path = record.output_path
+            elif record.source_path is not None and record.source_path.exists():
+                epub_path = record.source_path
+
+            if epub_path is None:
                 console.print(
-                    f"  [red]Source file missing:[/red] {record.source_path}"
+                    f"  [red]No readable EPUB:[/red] "
+                    f"source={record.source_path}, library={record.output_path}"
                 )
                 errors += 1
                 continue
 
-            result = match_one(record.source_path, provider, review, output_dir)
+            result = match_one(epub_path, provider, review, output_dir)
 
             if not auto_accept and result.normalization and result.normalization.was_modified:
                 console.print(
