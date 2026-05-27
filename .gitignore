@@ -34,6 +34,9 @@ uv.lock
 # Claude Code
 .claude/
 
+# Serena (per-user tooling)
+.serena/
+
 # Bookery runtime
 *.db
 bookery-output/
