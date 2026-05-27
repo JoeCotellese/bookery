@@ -14,7 +14,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
-- **PDF-to-EPUB conversion** — `bookery add` and `bookery import` detect text-based PDFs, extract their structure with pdfplumber + a local LLM (LM Studio), and produce a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
+- **PDF-to-EPUB conversion** — `bookery add` detects text-based PDFs, extracts their structure with pdfplumber + a local LLM (LM Studio), and produces a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
 - **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
 - **Multi-provider metadata matching** — Open Library and Google Books in a consensus merger that prefers values agreed on by ≥2 providers and falls back to a priority order otherwise. ISBN-10/13 lookups are normalized and provider responses are cached.
 - **Per-field provenance & locking** — every cataloged field records which provider supplied it and when. User edits are stamped as `user` and locked against `rematch`; individual fields can be locked/unlocked explicitly with `bookery info --lock` / `--unlock`.
@@ -24,7 +24,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 - **Web UI** — `bookery serve` launches a local browser UI for paginated/sortable browsing of the catalog, filter chips, cover thumbnails, a responsive mobile card layout, per-book detail/edit pages, search-active-providers, and "apply candidate metadata with diff" rematch flow.
 - **Genre management** — `bookery genre` auto-maps raw provider subjects to a canonical genre vocabulary, with `assign` / `apply` / `auto` / `stats` / `unmatched` for curation.
 - **Obsidian vault-export** — `bookery vault-export` turns an Obsidian vault into a single EPUB with a hierarchical folder/note TOC, A-Z buckets within each folder, leading-article-aware filing ("The Loop" files under L), resolved `[[wiki-links]]` and `![[image]]` embeds, and an optional tag index. Can auto-catalog the export so it ships on the next Kobo sync.
-- **Non-destructive** — metadata writes always go to a copy; original file contents are never modified. `import` copies each source into your library by default (`--move` deletes the source after a successful catalog insert)
+- **Non-destructive** — metadata writes always go to a copy; original file contents are never modified. `add` copies each source into your library by default (`--move` deletes the source after a successful catalog insert)
 
 ## Installation
 
@@ -39,7 +39,7 @@ uv sync
 
 ### Optional: PDF conversion
 
-The PDF path in `bookery add` / `bookery import` routes the document
+The PDF path in `bookery add` routes the document
 through a single semantic LLM call that reassembles articles/chapters
 into a clean EPUB. You'll need an OpenAI-compatible endpoint with a
 model strong enough to return structured JSON.
@@ -97,11 +97,14 @@ bookery match ~/Books/ -o ~/Books-fixed/
 # Auto-accept high-confidence matches (no prompts)
 bookery match ~/Books/ -o ~/Books-fixed/ --yes
 
-# Import EPUBs into the catalog (copies into ~/.library/ by default)
-bookery --db ~/library.db import ~/Books/
+# Add a single EPUB to the catalog (copies into ~/.library/ by default)
+bookery --db ~/library.db add ~/Books/dune.epub
 
-# Import and remove the sources after they land in the library
-bookery --db ~/library.db import ~/Downloads/ --move
+# Add an entire directory of EPUBs (recursive)
+bookery --db ~/library.db add ~/Books/
+
+# Add and remove the sources after they land in the library
+bookery --db ~/library.db add ~/Downloads/ --move
 
 # Search and browse the catalog
 bookery search "martian"
@@ -112,7 +115,7 @@ bookery info 42
 ### Common options
 
 - **`--db PATH`** is a top-level option; put it before the subcommand so every command picks it up: `bookery --db ~/library.db ls`. Subcommand-level `--db` still works and overrides the global.
-- **`-y/--yes`** auto-accepts high-confidence matches without prompting (valid on `add`, `import`, `match`, `rematch`, `convert`). `-q/--quiet` is a deprecated alias.
+- **`-y/--yes`** auto-accepts high-confidence matches without prompting (valid on `add`, `match`, `rematch`, `convert`). `-q/--quiet` is a deprecated alias.
 - **`-t/--threshold`** sets the confidence cutoff for auto-accept. The default comes from `[matching].auto_accept_threshold` in `~/.bookery/config.toml` (default `0.8`):
 
   ```toml
@@ -147,8 +150,7 @@ bookery info 42
 
 | Command | Description |
 |---------|-------------|
-| `add <file>` | Add a single EPUB or PDF to the library in one step (copies into `library_root`, matches, catalogs; `--move` deletes the source) |
-| `import <dir>` | Scan for EPUBs, copy into `library_root`, and catalog them (supports `--match`, `--move`) |
+| `add <path>` | Add a single EPUB/PDF or a directory of EPUBs to the library (copies into `library_root`, catalogs). Files default to `--match`; directories default to `--no-match`. Supports `--move`, `--convert`, `--force-duplicates`, `-o/--output-dir`. `import` is a deprecated alias. |
 | `remove <id>...` | Delete one or more books from the catalog and disk (`-y` skips prompt; `--keep-file` keeps the file) |
 | `prune` | Remove catalog rows whose underlying files are missing |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |

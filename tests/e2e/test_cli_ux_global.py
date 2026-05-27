@@ -103,11 +103,6 @@ class TestMatchToggle:
         result = runner.invoke(cli, ["convert", "--help"])
         assert "--match / --no-match" in result.output
 
-    def test_import_help_shows_match_toggle(self) -> None:
-        runner = CliRunner()
-        result = runner.invoke(cli, ["import", "--help"])
-        assert "--match / --no-match" in result.output
-
 
 class TestThresholdDefaultFromConfig:
     """-t/--threshold default is sourced from [matching].auto_accept_threshold."""

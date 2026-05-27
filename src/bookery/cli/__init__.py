@@ -10,7 +10,6 @@ from bookery.cli.commands import (
     add_cmd,
     convert_cmd,
     genre_cmd,
-    import_cmd,
     info_cmd,
     inspect_cmd,
     inventory_cmd,
@@ -62,7 +61,6 @@ def cli(ctx: click.Context, verbose: int, db_path: Path | None) -> None:
 cli.add_command(add_cmd.add_command)
 cli.add_command(convert_cmd.convert)
 cli.add_command(genre_cmd.genre)
-cli.add_command(import_cmd.import_command)
 cli.add_command(info_cmd.info)
 cli.add_command(inspect_cmd.inspect)
 cli.add_command(inventory_cmd.inventory)
@@ -82,3 +80,7 @@ cli.add_command(verify_cmd.verify)
 
 # Deprecated alias for the old `folder` command name. Remove after one release.
 deprecated_command_alias(cli, alias="folder", canonical="reveal")
+
+# Deprecated alias for the old `import` command name. Unified under `add`,
+# which now dispatches on file-vs-directory paths. Remove after one release.
+deprecated_command_alias(cli, alias="import", canonical="add")
