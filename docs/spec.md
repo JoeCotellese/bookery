@@ -56,7 +56,7 @@ Bookery follows the [beets](https://beets.io/) model — a music library manager
 > As a user, I want to import ebooks into my catalog with interactive metadata matching, so that my library is well-organized from the start.
 
 *Acceptance Criteria:*
-- Given a directory path, when I run `bookery import`, EPUB files are discovered recursively
+- Given a directory path, when I run `bookery add <dir>`, EPUB files are discovered recursively
 - For each file, metadata is extracted (title, author, language, publisher, ISBN, cover)
 - If an external metadata source plugin is installed, candidates are matched and presented
 - User confirms, edits, or skips each match interactively
@@ -207,9 +207,10 @@ bookery <command> [subcommand] [query] [flags]
 ### Commands
 
 ```bash
-# Import / Scan
-bookery import ~/Books              # Interactive import workflow
-bookery import ~/Books --quiet      # Auto-accept best matches
+# Add / Scan
+bookery add ~/Books/dune.epub       # Add a single file (matches by default)
+bookery add ~/Books                 # Scan a directory of EPUBs (no match by default)
+bookery add ~/Books --match --yes   # Directory scan + auto-accept matches
 
 # Query / Browse
 bookery ls                          # List all books
@@ -248,7 +249,7 @@ query1 query2        # AND (space)
 ### Import Workflow (beets-style)
 
 ```
-$ bookery import ~/Books/new-acquisitions/
+$ bookery add ~/Books/new-acquisitions/ --match
 
 Scanning 12 files...
 
