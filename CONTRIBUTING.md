@@ -175,6 +175,33 @@ Implement the `MetadataProvider` protocol in `metadata/provider.py`:
 
 See `metadata/openlibrary.py` for a complete example.
 
+### Renaming a CLI Command or Flag
+
+When renaming a Click command or option, keep the old name working for one
+release as a deprecated alias. Use the shared helpers in
+`bookery.cli.deprecation` rather than rolling your own warning callback:
+
+```python
+from bookery.cli.deprecation import deprecated_command_alias, deprecated_option
+
+# Command rename: old `import` -> canonical `add`
+deprecated_command_alias(cli, alias="import", canonical="add")
+
+# Flag rename: old `--uuid stable|random` -> canonical `--random-ids`
+@deprecated_option(
+    ["--uuid"],
+    canonical="--random-ids",
+    type=click.Choice(["stable", "random"]),
+    transform=lambda v: {"random_ids": v == "random"} if v is not None else {},
+)
+@click.option("--random-ids", is_flag=True, default=False)
+def cmd(random_ids: bool) -> None: ...
+```
+
+Both helpers print a one-line warning to stderr (once per invocation) and
+forward args/options to the canonical surface unchanged. See
+`src/bookery/cli/deprecation.py` and `tests/unit/test_cli_deprecation.py`.
+
 ### Adding a Format
 
 Format handlers live in `formats/`. Each format needs:
