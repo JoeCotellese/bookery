@@ -1,9 +1,9 @@
-# ABOUTME: Unit tests for the parse_bulk_ids helper used by `bookery read --bulk-from`.
+# ABOUTME: Unit tests for the parse_bulk_ids helper used by `bookery mark ... --bulk-from`.
 # ABOUTME: Covers blank-line, comment, whitespace, and bad-ID handling rules.
 
 import pytest
 
-from bookery.cli.commands.status_cmd import parse_bulk_ids
+from bookery.cli.commands.mark_cmd import parse_bulk_ids
 
 
 class TestParseBulkIds:

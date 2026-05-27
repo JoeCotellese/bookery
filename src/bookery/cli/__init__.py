@@ -16,13 +16,13 @@ from bookery.cli.commands import (
     inspect_cmd,
     inventory_cmd,
     ls_cmd,
+    mark_cmd,
     match_cmd,
     prune_cmd,
     rematch_cmd,
     remove_cmd,
     search_cmd,
     serve_cmd,
-    status_cmd,
     sync_cmd,
     tag_cmd,
     vault_export_cmd,
@@ -67,15 +67,13 @@ cli.add_command(info_cmd.info)
 cli.add_command(inspect_cmd.inspect)
 cli.add_command(inventory_cmd.inventory)
 cli.add_command(ls_cmd.ls)
+cli.add_command(mark_cmd.mark)
 cli.add_command(match_cmd.match)
 cli.add_command(prune_cmd.prune)
 cli.add_command(rematch_cmd.rematch)
 cli.add_command(remove_cmd.remove)
 cli.add_command(search_cmd.search)
 cli.add_command(serve_cmd.serve)
-cli.add_command(status_cmd.read_cmd)
-cli.add_command(status_cmd.reading_cmd)
-cli.add_command(status_cmd.unread_cmd)
 cli.add_command(sync_cmd.sync)
 cli.add_command(tag_cmd.tag)
 cli.add_command(vault_export_cmd.vault_export)

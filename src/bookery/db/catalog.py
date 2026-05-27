@@ -948,7 +948,7 @@ class LibraryCatalog:
         """Insert book_status only if no row exists for this book.
 
         The pull seeds the catalog-side mirror from device state, but P1b lets
-        users set status directly via `bookery read/unread/reading`. Once the
+        users set status directly via `bookery mark finished/reading/unread`. Once the
         user has set a value, the pull must never clobber it — hence ON CONFLICT
         DO NOTHING. Later phases overwrite via a different method.
         """
@@ -1002,7 +1002,7 @@ class LibraryCatalog:
         """Upsert book_status for the user-write path.
 
         Differs from `seed_book_status_if_absent` in that this overwrites on
-        conflict — the user's `bookery read/unread/reading` command is the
+        conflict — the user's `bookery mark finished/reading/unread` command is the
         authoritative signal for catalog-side state. Raises ValueError if
         `book_id` is not in the books table so a bad CLI argument fails
         loudly instead of silently writing an orphan row that an FK

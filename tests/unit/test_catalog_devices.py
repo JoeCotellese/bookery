@@ -217,7 +217,7 @@ class TestSeedBookStatusIfAbsent:
         assert row["updated_at"] == "2026-05-26T08:00:00"
 
     def test_second_call_does_not_overwrite(self, catalog: LibraryCatalog) -> None:
-        # P1b: `bookery read` sets status via a different path. The pull must
+        # P1b: `bookery mark finished` sets status via a different path. The pull must
         # never clobber a user's intentional status change — it only seeds when
         # the row is absent. ON CONFLICT (book_id) DO NOTHING.
         book_id = _add_book(catalog)

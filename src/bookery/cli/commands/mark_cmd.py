@@ -1,4 +1,4 @@
-# ABOUTME: The `bookery read`, `bookery unread`, `bookery reading` commands.
+# ABOUTME: The `bookery mark finished|reading|unread` command group.
 # ABOUTME: Set catalog-side book_status; --bulk-from FILE applies to many books at once.
 
 from datetime import UTC, datetime
@@ -127,28 +127,33 @@ _bulk_from_option = click.option(
 )
 
 
-@click.command("read")
+@click.group("mark")
+def mark() -> None:
+    """Set a book's read status."""
+
+
+@mark.command("finished")
 @click.argument("book_id", type=int, required=False)
 @_bulk_from_option
 @db_option
-def read_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
+def finished_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
     """Mark a book as finished (status = 2)."""
     _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_FINISHED)
 
 
-@click.command("unread")
-@click.argument("book_id", type=int, required=False)
-@_bulk_from_option
-@db_option
-def unread_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
-    """Mark a book as unread (status = 0)."""
-    _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_UNREAD)
-
-
-@click.command("reading")
+@mark.command("reading")
 @click.argument("book_id", type=int, required=False)
 @_bulk_from_option
 @db_option
 def reading_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
     """Mark a book as in-progress (status = 1)."""
     _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_READING)
+
+
+@mark.command("unread")
+@click.argument("book_id", type=int, required=False)
+@_bulk_from_option
+@db_option
+def unread_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
+    """Mark a book as unread (status = 0)."""
+    _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_UNREAD)
