@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from bookery.cli.deprecation import deprecated_command_alias
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.genre_applier import (
     apply_genres,
@@ -121,13 +122,15 @@ def genre_stats(limit: int, db_path: Path | None) -> None:
     conn.close()
 
 
-@genre.command("apply")
+@genre.command("auto-assign")
 @click.option("--dry-run", is_flag=True, help="Show what would be assigned without writing.")
 @click.option("--force", is_flag=True, help="Re-evaluate all books, even those with genres.")
 @db_option
 @click.pass_context
-def genre_apply(ctx: click.Context, dry_run: bool, force: bool, db_path: Path | None) -> None:
-    """Batch-assign genres from subjects for cataloged books."""
+def genre_auto_assign(
+    ctx: click.Context, dry_run: bool, force: bool, db_path: Path | None
+) -> None:
+    """Auto-assign genres from subjects for cataloged books."""
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
     verbose = ctx.parent.params.get("verbose", 0) if ctx.parent else 0
@@ -169,6 +172,12 @@ def genre_auto(
     """Auto-map subjects to canonical genres across the catalog.
 
     Without ``--all``, only books that don't yet have a genre are processed
-    (matches ``genre apply``). With ``--all``, every book is re-evaluated.
+    (matches ``genre auto-assign``). With ``--all``, every book is re-evaluated.
     """
-    ctx.invoke(genre_apply, dry_run=dry_run, force=all_books, db_path=db_path)
+    ctx.invoke(genre_auto_assign, dry_run=dry_run, force=all_books, db_path=db_path)
+
+
+# Register the deprecated `genre apply` alias forwarding to `genre auto-assign`.
+# The alias keeps the old surface working for one release while warning users to
+# migrate. Hidden from `genre --help` so the canonical name is what's advertised.
+deprecated_command_alias(genre, alias="apply", canonical="auto-assign")
