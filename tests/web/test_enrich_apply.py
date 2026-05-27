@@ -463,6 +463,84 @@ class TestEnrichApplyPost:
         assert any(category == "error" for category, _ in flashes)
         assert any("source" in msg.lower() for _, msg in flashes)
 
+    def test_uses_library_copy_when_source_path_missing(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """Imported books keep their original source_path even when the user
+        deletes the original file (e.g. empties Calibre's trash). The library
+        copy at output_path is the canonical file and must be used as the
+        read source for enrichment in that case.
+        """
+        missing_source = tmp_path / "gone-from-calibre-trash.epub"  # never created
+        library_copy = tmp_path / "library" / "Author - Title.epub"
+        library_copy.parent.mkdir()
+        library_copy.write_bytes(b"epub")
+
+        mock_catalog.get_by_id.return_value = make_book(
+            1, source_path=missing_source, output_path=library_copy
+        )
+
+        open_library.by_isbn = [
+            make_candidate(source="Open Library", source_id="OL:1"),
+        ]
+        dest = tmp_path / "library" / "Author - Title (enriched).epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        # apply_metadata_safely must be called with the library copy as source,
+        # writing into the library directory.
+        mock_apply.assert_called_once()
+        called_source, _called_metadata, called_output_dir = mock_apply.call_args.args
+        assert called_source == library_copy
+        assert called_output_dir == library_copy.parent
+
+        # Catalog write proceeds normally.
+        mock_catalog.update_book.assert_called_once()
+        mock_catalog.set_output_path.assert_called_once_with(1, dest)
+        assert response.headers.get("HX-Redirect") == "/books/1"
+
+    def test_no_readable_file_flashes_error(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """Both source_path and output_path missing → flash error, no writes."""
+        missing_source = tmp_path / "missing-source.epub"
+        missing_output = tmp_path / "missing-library.epub"
+        mock_catalog.get_by_id.return_value = make_book(
+            1, source_path=missing_source, output_path=missing_output
+        )
+
+        open_library.by_isbn = [
+            make_candidate(source="Open Library", source_id="OL:1"),
+        ]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "query": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+        mock_catalog.set_output_path.assert_not_called()
+        assert response.headers.get("HX-Redirect") == "/books/1"
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        assert any(category == "error" for category, _ in flashes)
+
     def test_write_failure_flashes_error(self, mock_catalog, client, open_library, tmp_path):
         source = tmp_path / "src.epub"
         source.write_bytes(b"epub")

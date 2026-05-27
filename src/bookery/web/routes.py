@@ -797,10 +797,18 @@ def enrich_apply(book_id):
 
     detail_url = url_for("web.book_detail", book_id=book_id)
 
-    source = book.source_path
+    # The library copy is the canonical file post-import. The original
+    # source_path may no longer exist (e.g. user emptied Calibre's trash
+    # after importing from there), so prefer output_path when it's readable.
+    library_copy = book.output_path
+    if library_copy is not None and library_copy.exists():
+        source = library_copy
+    else:
+        source = book.source_path
     if source is None or not source.exists():
         flash(
-            f"Cannot apply: source file is missing ({source})",
+            "Cannot apply: no readable EPUB for this book "
+            f"(source={book.source_path}, library={book.output_path})",
             "error",
         )
         response = make_response("", 200)
