@@ -1,4 +1,4 @@
-# ABOUTME: Integration tests for the genre apply workflow with a real database.
+# ABOUTME: Integration tests for the genre auto-assign workflow with a real database.
 # ABOUTME: Validates end-to-end genre assignment, idempotency, force, and dry-run.
 
 from pathlib import Path
@@ -63,8 +63,8 @@ def _populate_catalog(catalog: LibraryCatalog) -> dict[str, int]:
     return ids
 
 
-class TestGenreApplyWorkflow:
-    """Integration tests for the full genre apply workflow."""
+class TestGenreAutoAssignWorkflow:
+    """Integration tests for the full genre auto-assign workflow."""
 
     def test_default_assigns_ungenred_matchable(self, catalog: LibraryCatalog) -> None:
         """Default mode assigns genres only to ungenred books with matchable subjects."""

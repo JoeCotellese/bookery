@@ -165,7 +165,7 @@ bookery info 42
 | `tag rm <id> <tag>` | Remove a tag from a book |
 | `tag ls` | List all tags with book counts |
 | `genre assign <id> <genre>` | Assign a canonical genre to a book |
-| `genre apply` | Batch-assign genres from subjects for cataloged books |
+| `genre auto-assign` | Auto-assign genres from subjects for cataloged books |
 | `genre auto` | Auto-map provider subjects to canonical genres across the catalog |
 | `genre ls` | List all canonical genres with book counts |
 | `genre stats` | Show the most common subjects that don't map to a canonical genre |
