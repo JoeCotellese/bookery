@@ -1,12 +1,34 @@
 # ABOUTME: SQLite database connection management for the Bookery library catalog.
 # ABOUTME: Opens or creates the database, applies schema, and provides connection context.
 
+import json
 import sqlite3
 from pathlib import Path
 
+from bookery.core.text_sort import compute_author_sort
 from bookery.db.schema import MIGRATIONS, SCHEMA_V1
 
 DEFAULT_DB_PATH = Path.home() / ".bookery" / "library.db"
+
+
+def _author_sort_from_json(authors_json: str | None) -> str:
+    """SQLite UDF: derive an author sort key from a stored authors-JSON cell.
+
+    Used by the V10 backfill to express the same "Last, First Middle"
+    inversion rule that `compute_author_sort` enforces on the Python write
+    path. Gracefully handles NULL / empty / malformed JSON so the migration
+    can be run against any historical row shape — bad rows fall back to
+    "Unknown" rather than aborting the entire migration.
+    """
+    if not authors_json:
+        return "Unknown"
+    try:
+        authors = json.loads(authors_json)
+    except (TypeError, ValueError):
+        return "Unknown"
+    if not isinstance(authors, list):
+        return "Unknown"
+    return compute_author_sort([str(a) for a in authors])
 
 
 def _schema_exists(conn: sqlite3.Connection) -> bool:
@@ -67,6 +89,11 @@ def open_library(
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+
+    # Register the JSON-aware author-sort UDF so SCHEMA_V10's backfill can call
+    # it from raw SQL. Registered before migrations run; left in place after
+    # so any future migration (or ad-hoc query) can reuse it.
+    conn.create_function("bookery_author_sort_from_json", 1, _author_sort_from_json)
 
     if not _schema_exists(conn):
         _apply_schema(conn)
