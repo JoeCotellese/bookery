@@ -394,7 +394,7 @@ header .logo {
 
 .metadata-grid {
     display: grid;
-    grid-template-columns: 8rem 1fr;
+    grid-template-columns: 8rem minmax(0, 1fr);
     gap: 0.25rem 1rem;
 }
 
@@ -403,38 +403,46 @@ header .logo {
     color: var(--color-muted);
 }
 
+.metadata-grid dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .metadata-grid code {
     font-size: 0.85rem;
     word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 /* Edit layout — two columns >=720px, stacked below. */
 
-.edit-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-}
-
-@media (min-width: 720px) {
-    .edit-layout {
-        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    }
-}
+/* Provenance disclosure — collapsible reference panel below the edit form. */
 
 .provenance {
+    margin-top: 1.5rem;
+    max-width: 600px;
     background: var(--color-hover);
-    padding: 1rem;
     border-radius: 4px;
     font-size: 0.9rem;
 }
 
-.provenance h3 {
+.provenance summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
     font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-muted);
-    margin-bottom: 0.5rem;
+    user-select: none;
+}
+
+.provenance[open] summary {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.provenance > .metadata-grid {
+    padding: 1rem;
 }
 
 /* Mobile: collapse detail metadata-grid to single column. */

@@ -1,72 +1,70 @@
-{# ABOUTME: Inline edit form with read-only provenance panel and Esc-to-cancel. #}
-{# ABOUTME: Two-column on >=720px viewports, stacked on mobile (handled by CSS). #}
+{# ABOUTME: Inline edit form with collapsible provenance disclosure and Esc-to-cancel. #}
+{# ABOUTME: Provenance lives below the form — reference data, not editing data. #}
 {% include "_book_subhead.html" %}
 <h1 class="page-title">Edit: {{ book.metadata.title }}</h1>
-<div class="edit-layout">
-    <form class="edit-form"
-          hx-post="{{ url_for('web.update_book', book_id=book.id, return_to=return_to or none) }}"
-          hx-target="#book-content"
-          hx-swap="innerHTML">
-        {% if error %}
-        <div class="form-error" role="alert">{{ error }}</div>
-        {% endif %}
+<form class="edit-form"
+      hx-post="{{ url_for('web.update_book', book_id=book.id, return_to=return_to or none) }}"
+      hx-target="#book-content"
+      hx-swap="innerHTML">
+    {% if error %}
+    <div class="form-error" role="alert">{{ error }}</div>
+    {% endif %}
 
-        <div class="form-group">
-            <label for="title">Title <span class="required">*</span></label>
-            <input type="text" id="title" name="title" value="{{ book.metadata.title }}" required>
+    <div class="form-group">
+        <label for="title">Title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" value="{{ book.metadata.title }}" required>
+    </div>
+
+    <div class="form-group">
+        <label for="authors">Authors <span class="hint">(semicolon-separated)</span></label>
+        <input type="text" id="authors" name="authors" value="{{ book.metadata.authors | join('; ') }}">
+    </div>
+
+    <div class="form-group">
+        <label for="isbn">ISBN</label>
+        <input type="text" id="isbn" name="isbn" value="{{ book.metadata.isbn or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="language">Language</label>
+        <input type="text" id="language" name="language" value="{{ book.metadata.language or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="publisher">Publisher</label>
+        <input type="text" id="publisher" name="publisher" value="{{ book.metadata.publisher or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="4">{{ book.metadata.description or '' }}</textarea>
+    </div>
+
+    <div class="form-group form-row">
+        <div>
+            <label for="series">Series</label>
+            <input type="text" id="series" name="series" value="{{ book.metadata.series or '' }}">
         </div>
-
-        <div class="form-group">
-            <label for="authors">Authors <span class="hint">(semicolon-separated)</span></label>
-            <input type="text" id="authors" name="authors" value="{{ book.metadata.authors | join('; ') }}">
+        <div>
+            <label for="series_index">Series #</label>
+            <input type="number" id="series_index" name="series_index" step="any" value="{{ book.metadata.series_index if book.metadata.series_index is not none else '' }}">
         </div>
+    </div>
 
-        <div class="form-group">
-            <label for="isbn">ISBN</label>
-            <input type="text" id="isbn" name="isbn" value="{{ book.metadata.isbn or '' }}">
-        </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        {%- set cancel_url = url_for('web.book_detail', book_id=book.id, return_to=return_to or none) -%}
+        <button type="button"
+                class="btn btn-secondary"
+                id="edit-cancel"
+                hx-get="{{ cancel_url }}"
+                hx-push-url="{{ cancel_url }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Cancel</button>
+    </div>
+</form>
 
-        <div class="form-group">
-            <label for="language">Language</label>
-            <input type="text" id="language" name="language" value="{{ book.metadata.language or '' }}">
-        </div>
-
-        <div class="form-group">
-            <label for="publisher">Publisher</label>
-            <input type="text" id="publisher" name="publisher" value="{{ book.metadata.publisher or '' }}">
-        </div>
-
-        <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4">{{ book.metadata.description or '' }}</textarea>
-        </div>
-
-        <div class="form-group form-row">
-            <div>
-                <label for="series">Series</label>
-                <input type="text" id="series" name="series" value="{{ book.metadata.series or '' }}">
-            </div>
-            <div>
-                <label for="series_index">Series #</label>
-                <input type="number" id="series_index" name="series_index" step="any" value="{{ book.metadata.series_index if book.metadata.series_index is not none else '' }}">
-            </div>
-        </div>
-
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save</button>
-            {%- set cancel_url = url_for('web.book_detail', book_id=book.id, return_to=return_to or none) -%}
-            <button type="button"
-                    class="btn btn-secondary"
-                    id="edit-cancel"
-                    hx-get="{{ cancel_url }}"
-                    hx-push-url="{{ cancel_url }}"
-                    hx-target="#book-content"
-                    hx-swap="innerHTML">Cancel</button>
-        </div>
-    </form>
-
-    {% include "_provenance.html" %}
-</div>
+{% include "_provenance.html" %}
 
 <script>
     // Esc cancels the edit and swaps back to the detail view.
