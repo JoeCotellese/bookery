@@ -43,8 +43,9 @@ def verify_library(catalog: LibraryCatalog, *, check_hash: bool = False) -> Veri
     for record in catalog.list_all():
         has_issue = False
 
-        # Check source file
-        source_exists = record.source_path.exists()
+        # Check source file. A NULL source_path counts as missing — the row
+        # has no on-disk original to verify against.
+        source_exists = record.source_path is not None and record.source_path.exists()
         if not source_exists:
             result.missing_source.append(record)
             has_issue = True
@@ -56,6 +57,7 @@ def verify_library(catalog: LibraryCatalog, *, check_hash: bool = False) -> Veri
 
         # Check hash (only if requested and source exists)
         if check_hash and source_exists:
+            assert record.source_path is not None  # narrowed by source_exists
             current_hash = compute_file_hash(record.source_path)
             if current_hash != record.file_hash:
                 result.hash_mismatch.append(record)

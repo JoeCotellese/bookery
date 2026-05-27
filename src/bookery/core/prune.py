@@ -51,7 +51,7 @@ def classify_row(
       ``SOURCE_MISSING_OUTPUT_PRESENT`` — a future flag will let the
       operator rewrite ``source_path`` instead of deleting the row.
     """
-    source_exists = record.source_path.exists()
+    source_exists = record.source_path is not None and record.source_path.exists()
     output_exists = (
         record.output_path.exists() if record.output_path is not None else False
     )

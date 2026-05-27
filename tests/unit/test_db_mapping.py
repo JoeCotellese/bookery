@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from bookery.db.mapping import BookRecord, metadata_to_row, row_to_metadata
+from bookery.db.mapping import BookRecord, metadata_to_row, row_to_metadata, row_to_record
 from bookery.metadata.types import BookMetadata
 
 
@@ -187,3 +187,55 @@ class TestBookRecord:
         assert record.metadata.title == "Test"
         assert record.file_hash == "abc123"
         assert record.output_path is None
+
+
+class TestRowToRecord:
+    """Tests for the full row → BookRecord converter."""
+
+    def _row(self, **overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "id": 1,
+            "title": "Test",
+            "subtitle": None,
+            "authors": json.dumps(["A"]),
+            "author_sort": "A",
+            "language": "en",
+            "publisher": None,
+            "isbn": None,
+            "description": None,
+            "series": None,
+            "series_index": None,
+            "identifiers": json.dumps({}),
+            "subjects": json.dumps([]),
+            "cover_url": None,
+            "published_date": None,
+            "original_publication_date": None,
+            "page_count": None,
+            "rating": None,
+            "ratings_count": None,
+            "print_type": None,
+            "maturity_rating": None,
+            "source_path": "/lib/test.epub",
+            "output_path": None,
+            "file_hash": "deadbeef",
+            "date_added": "2024-01-01T00:00:00",
+            "date_modified": "2024-01-01T00:00:00",
+            "metadata_matched_at": None,
+        }
+        base.update(overrides)
+        return base
+
+    def test_source_path_restored_as_path(self) -> None:
+        record = row_to_record(self._row())
+        assert record.source_path == Path("/lib/test.epub")
+
+    def test_null_source_path_yields_none(self) -> None:
+        """A row whose source_path is NULL must not crash row_to_record.
+
+        Schema declares NOT NULL, but the runtime has produced a NULL here
+        (in-flight write state observed in production). The converter
+        should yield ``source_path=None`` rather than raise from ``Path(None)``.
+        """
+        record = row_to_record(self._row(source_path=None))
+        assert record.source_path is None
+        assert record.metadata.source_path is None
