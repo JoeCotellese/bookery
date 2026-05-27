@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from bookery.core.dedup import normalize_isbn
-from bookery.core.text_sort import compute_title_sort
+from bookery.core.text_sort import compute_author_sort, compute_title_sort
 from bookery.metadata.types import BookMetadata
 
 
@@ -67,7 +67,7 @@ def metadata_to_row(
         "title_sort": compute_title_sort(metadata.title) if metadata.title else None,
         "subtitle": metadata.subtitle,
         "authors": json.dumps(metadata.authors),
-        "author_sort": metadata.author_sort,
+        "author_sort": compute_author_sort(metadata.authors, metadata.author_sort),
         "language": metadata.language,
         "publisher": metadata.publisher,
         "isbn": normalize_isbn(metadata.isbn) or None,
