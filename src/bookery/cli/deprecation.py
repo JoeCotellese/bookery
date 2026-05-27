@@ -179,8 +179,11 @@ def _build_callback(
     def callback(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
         # `value is None` means the user did not supply the deprecated option;
         # leave the canonical value untouched. For flags whose default is
-        # False, treat False the same way so unused flags stay quiet.
-        if value is None or value is False:
+        # False, treat False the same way so unused flags stay quiet. For
+        # repeatable options (`multiple=True`), Click delivers an empty tuple
+        # when nothing was supplied — also skip those so the canonical-only
+        # path stays warning-free.
+        if value is None or value is False or value == ():
             return value
         _emit_warning(primary_old, canonical)
         mapping = (

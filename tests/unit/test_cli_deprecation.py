@@ -185,6 +185,65 @@ def test_flag_alias_simple_passthrough_without_transform() -> None:
     assert "warning: '--old-name' is deprecated" in result.stderr
 
 
+# --- multiple=True repeatable option --------------------------------------
+
+
+def _make_multiple_cmd() -> click.Command:
+    """Build a command with a deprecated repeatable option."""
+
+    @click.command()
+    @deprecated_option(["--folder"], canonical="--include-folder", multiple=True)
+    @click.option("--include-folder", multiple=True, default=())
+    def cmd(include_folder: tuple[str, ...]) -> None:
+        click.echo(f"include_folder={include_folder!r}")
+
+    return cmd
+
+
+def test_flag_alias_multiple_canonical_only_is_silent() -> None:
+    reset_deprecation_state()
+    runner = CliRunner()
+    result = runner.invoke(
+        _make_multiple_cmd(),
+        ["--include-folder", "a", "--include-folder", "b"],
+    )
+    assert result.exit_code == 0
+    assert "include_folder=('a', 'b')" in result.stdout
+    assert "deprecated" not in result.stderr
+
+
+def test_flag_alias_multiple_neither_is_silent() -> None:
+    reset_deprecation_state()
+    runner = CliRunner()
+    result = runner.invoke(_make_multiple_cmd(), [])
+    assert result.exit_code == 0
+    assert "include_folder=()" in result.stdout
+    assert "deprecated" not in result.stderr
+
+
+def test_flag_alias_multiple_deprecated_forwards_values() -> None:
+    reset_deprecation_state()
+    runner = CliRunner()
+    result = runner.invoke(
+        _make_multiple_cmd(),
+        ["--folder", "a", "--folder", "b"],
+    )
+    assert result.exit_code == 0
+    assert "include_folder=('a', 'b')" in result.stdout
+    assert "warning: '--folder' is deprecated; use '--include-folder' instead." in result.stderr
+
+
+def test_flag_alias_multiple_warns_only_once_for_repeats() -> None:
+    reset_deprecation_state()
+    runner = CliRunner()
+    result = runner.invoke(
+        _make_multiple_cmd(),
+        ["--folder", "a", "--folder", "b", "--folder", "c"],
+    )
+    assert result.exit_code == 0
+    assert result.stderr.count("warning: '--folder' is deprecated") == 1
+
+
 # --- dedupe ---------------------------------------------------------------
 
 

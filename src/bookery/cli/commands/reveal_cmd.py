@@ -1,4 +1,4 @@
-# ABOUTME: The `bookery folder` command for opening a book's folder on disk.
+# ABOUTME: The `bookery reveal` command for opening a book's folder on disk.
 # ABOUTME: Resolves an ID or title to a BookRecord and opens the folder in the OS file manager.
 
 from pathlib import Path
@@ -26,7 +26,7 @@ from bookery.util.file_manager import (
 console = Console()  # TODO: move Console() inside command for testability
 
 
-@click.command("folder")
+@click.command("reveal")
 @click.argument("query")
 @click.option(
     "--print",
@@ -36,7 +36,7 @@ console = Console()  # TODO: move Console() inside command for testability
     help="Print the folder path instead of opening the file manager.",
 )
 @db_option
-def folder(query: str, print_only: bool, db_path: Path | None) -> None:
+def reveal(query: str, print_only: bool, db_path: Path | None) -> None:
     """Open the on-disk folder for a book by ID or title."""
     conn = open_library(resolve_db_path(db_path))
     try:
