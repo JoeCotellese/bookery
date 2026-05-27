@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from ebooklib import epub
 
 from bookery.cli import cli
+from bookery.cli.deprecation import reset_deprecation_state
 
 pytestmark = pytest.mark.skipif(
     shutil.which("pandoc") is None, reason="pandoc not installed"
@@ -339,3 +340,87 @@ def test_vault_export_default_output_lands_in_library_root_with_catalog(
     # Default filename is derived from --title so the EPUB lands at a
     # stable, predictable path under the library root.
     assert (_isolate_library_root / "Test Vault.epub").exists()
+
+
+def test_vault_export_include_folder_filters_to_subset(tmp_path: Path) -> None:
+    """`--include-folder` is the canonical name for selecting subfolders; it is
+    repeatable and additive. Restricting to `3_Permanent Notes` should still
+    surface that folder's notes in the TOC while excluding others.
+    """
+    reset_deprecation_state()
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--include-folder", "3_Permanent Notes",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    # Canonical invocation must not warn.
+    assert "deprecated" not in result.stderr
+    assert out.exists()
+
+
+def test_vault_export_folder_alias_still_works(tmp_path: Path) -> None:
+    """The deprecated `--folder` alias should still forward to `--include-folder`."""
+    reset_deprecation_state()
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--folder", "3_Permanent Notes",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert (
+        "warning: '--folder' is deprecated; use '--include-folder' instead."
+        in result.stderr
+    )
+
+
+def test_vault_export_folder_alias_warns_once_when_repeated(tmp_path: Path) -> None:
+    """Even with multiple `--folder` flags, the warning fires exactly once."""
+    reset_deprecation_state()
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--folder", "3_Permanent Notes",
+            "--folder", "2_Literature Notes",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert result.stderr.count("warning: '--folder' is deprecated") == 1
+
+
+def test_vault_export_include_folder_repeatable(tmp_path: Path) -> None:
+    """`--include-folder` is repeatable; multiple flags accumulate."""
+    reset_deprecation_state()
+    runner = CliRunner()
+    out = tmp_path / "vault.epub"
+    result = runner.invoke(
+        cli,
+        [
+            "vault-export", "--vault", str(FIXTURE),
+            "-o", str(out),
+            "--include-folder", "3_Permanent Notes",
+            "--include-folder", "2_Literature Notes",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "deprecated" not in result.stderr
+    assert out.exists()

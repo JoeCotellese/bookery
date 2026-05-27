@@ -9,7 +9,6 @@ import click
 from bookery.cli.commands import (
     add_cmd,
     convert_cmd,
-    folder_cmd,
     genre_cmd,
     import_cmd,
     info_cmd,
@@ -21,6 +20,7 @@ from bookery.cli.commands import (
     prune_cmd,
     rematch_cmd,
     remove_cmd,
+    reveal_cmd,
     search_cmd,
     serve_cmd,
     sync_cmd,
@@ -28,6 +28,7 @@ from bookery.cli.commands import (
     vault_export_cmd,
     verify_cmd,
 )
+from bookery.cli.deprecation import deprecated_command_alias
 
 
 @click.group()
@@ -60,7 +61,6 @@ def cli(ctx: click.Context, verbose: int, db_path: Path | None) -> None:
 
 cli.add_command(add_cmd.add_command)
 cli.add_command(convert_cmd.convert)
-cli.add_command(folder_cmd.folder)
 cli.add_command(genre_cmd.genre)
 cli.add_command(import_cmd.import_command)
 cli.add_command(info_cmd.info)
@@ -72,9 +72,13 @@ cli.add_command(match_cmd.match)
 cli.add_command(prune_cmd.prune)
 cli.add_command(rematch_cmd.rematch)
 cli.add_command(remove_cmd.remove)
+cli.add_command(reveal_cmd.reveal)
 cli.add_command(search_cmd.search)
 cli.add_command(serve_cmd.serve)
 cli.add_command(sync_cmd.sync)
 cli.add_command(tag_cmd.tag)
 cli.add_command(vault_export_cmd.vault_export)
 cli.add_command(verify_cmd.verify)
+
+# Deprecated alias for the old `folder` command name. Remove after one release.
+deprecated_command_alias(cli, alias="folder", canonical="reveal")
