@@ -38,10 +38,12 @@ class TestEnrichSearchForm:
         )
 
         html = client.get("/books/1/enrich").data.decode()
-        # Free-text query input pre-fills with "title author".
-        assert 'name="query"' in html
-        assert "Dune" in html
-        assert "Herbert, Frank" in html
+        # Title and author go into their own inputs so providers receive
+        # them as structured args (see #209).
+        assert 'name="title"' in html
+        assert 'name="author"' in html
+        assert 'value="Dune"' in html
+        assert 'value="Herbert, Frank"' in html
 
     def test_form_posts_to_search_endpoint(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(1)
@@ -83,53 +85,73 @@ class TestEnrichSearchPost:
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_isbn = [make_candidate(title="A", confidence=0.9)]
 
-        client.post("/books/1/enrich/search", data={"isbn": "9780441172719", "query": ""})
+        client.post(
+            "/books/1/enrich/search",
+            data={"isbn": "9780441172719", "title": "", "author": ""},
+        )
 
         assert open_library.isbn_calls == ["9780441172719"]
         assert google_books.isbn_calls == ["9780441172719"]
         assert open_library.title_author_calls == []
         assert open_library.url_calls == []
 
-    def test_isbn_like_query_dispatches_to_search_by_isbn(
+    def test_isbn_like_title_dispatches_to_search_by_isbn(
         self, mock_catalog, client, open_library
     ):
         mock_catalog.get_by_id.return_value = make_book(1)
 
-        client.post("/books/1/enrich/search", data={"query": "9780441172719"})
+        client.post("/books/1/enrich/search", data={"title": "9780441172719"})
 
         assert open_library.isbn_calls == ["9780441172719"]
         assert open_library.title_author_calls == []
 
-    def test_isbn10_query_dispatches_to_search_by_isbn(self, mock_catalog, client, open_library):
+    def test_isbn10_in_title_dispatches_to_search_by_isbn(
+        self, mock_catalog, client, open_library
+    ):
         mock_catalog.get_by_id.return_value = make_book(1)
 
-        client.post("/books/1/enrich/search", data={"query": "044117271X"})
+        client.post("/books/1/enrich/search", data={"title": "044117271X"})
 
         assert open_library.isbn_calls == ["044117271X"]
 
-    def test_url_query_dispatches_to_lookup_by_url(self, mock_catalog, client, open_library):
+    def test_url_in_title_dispatches_to_lookup_by_url(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_url = make_candidate(title="From URL", confidence=0.95)
 
         client.post(
             "/books/1/enrich/search",
-            data={"query": "https://openlibrary.org/works/OL1234W"},
+            data={"title": "https://openlibrary.org/works/OL1234W"},
         )
 
         assert open_library.url_calls == ["https://openlibrary.org/works/OL1234W"]
         assert open_library.isbn_calls == []
         assert open_library.title_author_calls == []
 
-    def test_free_text_query_dispatches_to_search_by_title_author(
+    def test_title_and_author_dispatch_to_search_by_title_author(
+        self, mock_catalog, client, open_library
+    ):
+        """Author goes through as a structured argument, not concatenated
+        into the title — that's the fix for #209.
+        """
+        mock_catalog.get_by_id.return_value = make_book(1)
+
+        client.post(
+            "/books/1/enrich/search",
+            data={"title": "Dune", "author": "Frank Herbert"},
+        )
+
+        assert open_library.title_author_calls == [("Dune", "Frank Herbert")]
+        assert open_library.isbn_calls == []
+        assert open_library.url_calls == []
+
+    def test_title_only_dispatch_passes_none_author(
         self, mock_catalog, client, open_library
     ):
         mock_catalog.get_by_id.return_value = make_book(1)
 
-        client.post("/books/1/enrich/search", data={"query": "Dune Frank Herbert"})
+        client.post("/books/1/enrich/search", data={"title": "Dune"})
 
-        assert open_library.title_author_calls == [("Dune Frank Herbert", None)]
-        assert open_library.isbn_calls == []
-        assert open_library.url_calls == []
+        assert open_library.title_author_calls == [("Dune", None)]
 
     def test_renders_candidates_for_each_provider(
         self, mock_catalog, client, open_library, google_books
@@ -143,7 +165,7 @@ class TestEnrichSearchPost:
             make_candidate(title="GB One", confidence=0.8, source="Google Books"),
         ]
 
-        html = client.post("/books/1/enrich/search", data={"query": "Dune"}).data.decode()
+        html = client.post("/books/1/enrich/search", data={"title": "Dune"}).data.decode()
 
         assert "Open Library" in html
         assert "Open Library (2)" in html
@@ -164,7 +186,7 @@ class TestEnrichSearchPost:
         ]
         google_books.by_title_author = []
 
-        html = client.post("/books/1/enrich/search", data={"query": "Dune"}).data.decode()
+        html = client.post("/books/1/enrich/search", data={"title": "Dune"}).data.decode()
 
         high_pos = html.find("High")
         mid_pos = html.find("Mid")
@@ -178,7 +200,7 @@ class TestEnrichSearchPost:
         open_library.by_title_author = [make_candidate(title="OL", confidence=0.5)]
         google_books.by_title_author = []  # empty
 
-        html = client.post("/books/1/enrich/search", data={"query": "Dune"}).data.decode()
+        html = client.post("/books/1/enrich/search", data={"title": "Dune"}).data.decode()
 
         assert "No candidates from Google Books" in html
 
@@ -190,7 +212,7 @@ class TestEnrichSearchPost:
         google_books.by_title_author = []
 
         html = client.post(
-            "/books/1/enrich/search", data={"query": "Nothing matches"}
+            "/books/1/enrich/search", data={"title": "Nothing matches"}
         ).data.decode()
 
         assert "No candidates found" in html
@@ -213,7 +235,7 @@ class TestEnrichSearchPost:
         ]
         google_books.by_title_author = []
 
-        html = client.post("/books/1/enrich/search", data={"query": "Dune"}).data.decode()
+        html = client.post("/books/1/enrich/search", data={"title": "Dune"}).data.decode()
 
         assert "Dune" in html
         assert "Herbert, Frank" in html
@@ -229,7 +251,7 @@ class TestEnrichSearchPost:
         open_library.by_title_author = [make_candidate(title="X", confidence=0.5)]
         google_books.by_title_author = []
 
-        html = client.post("/books/1/enrich/search", data={"query": "X"}).data.decode()
+        html = client.post("/books/1/enrich/search", data={"title": "X"}).data.decode()
 
         assert "View" in html
         # View now fires the diff fetch into #book-content (issue #115).
@@ -238,7 +260,7 @@ class TestEnrichSearchPost:
 
     def test_missing_book_returns_404(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = None
-        response = client.post("/books/999/enrich/search", data={"query": "Dune"})
+        response = client.post("/books/999/enrich/search", data={"title": "Dune"})
         assert response.status_code == 404
 
 

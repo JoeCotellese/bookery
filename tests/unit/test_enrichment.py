@@ -112,9 +112,14 @@ class TestMultiProviderSearch:
 
     def test_title_author_dispatch(self):
         p = _Provider("A")
-        multi_provider_search({"a": p}, title_author="Dune Herbert")
-        assert p.title_author_calls == [("Dune Herbert", None)]
+        multi_provider_search({"a": p}, title="Dune", author="Frank Herbert")
+        assert p.title_author_calls == [("Dune", "Frank Herbert")]
         assert p.isbn_calls == []
+
+    def test_title_only_dispatch_passes_none_author(self):
+        p = _Provider("A")
+        multi_provider_search({"a": p}, title="Dune")
+        assert p.title_author_calls == [("Dune", None)]
 
     def test_url_dispatch_returns_single_candidate(self):
         cand = _cand("via url", 0.8)
@@ -134,47 +139,56 @@ class TestMultiProviderSearch:
             "A",
             by_title_author=[_cand("low", 0.1), _cand("high", 0.9), _cand("mid", 0.5)],
         )
-        results = multi_provider_search({"a": p}, title_author="x")
+        results = multi_provider_search({"a": p}, title="x")
         assert [c.metadata.title for c in results[0].candidates] == ["high", "mid", "low"]
 
     def test_preserves_provider_order(self):
         a = _Provider("Alpha")
         b = _Provider("Beta")
         c = _Provider("Gamma")
-        results = multi_provider_search({"a": a, "b": b, "c": c}, title_author="x")
+        results = multi_provider_search({"a": a, "b": b, "c": c}, title="x")
         assert [r.name for r in results] == ["Alpha", "Beta", "Gamma"]
 
 
 class TestDispatchFromForm:
-    def test_isbn_field_wins_over_query(self):
-        d = dispatch_from_form("9780441172719", "ignored free text")
+    def test_isbn_field_wins_over_title(self):
+        d = dispatch_from_form("9780441172719", "ignored title", "ignored author")
         assert d.isbn == "9780441172719"
         assert d.url is None
-        assert d.title_author is None
+        assert d.title is None
+        assert d.author is None
 
     def test_isbn_field_normalizes_hyphens(self):
         d = dispatch_from_form("978-0-441-17271-9", "")
         assert d.isbn == "9780441172719"
 
-    def test_isbn_like_query_routes_to_isbn(self):
+    def test_isbn_like_title_routes_to_isbn(self):
         d = dispatch_from_form("", "9780441172719")
         assert d.isbn == "9780441172719"
 
-    def test_url_query_routes_to_url(self):
+    def test_url_in_title_routes_to_url(self):
         d = dispatch_from_form("", "https://openlibrary.org/works/OL1")
         assert d.url == "https://openlibrary.org/works/OL1"
         assert d.isbn is None
+        assert d.title is None
 
-    def test_free_text_routes_to_title_author(self):
-        d = dispatch_from_form("", "Dune Frank Herbert")
-        assert d.title_author == "Dune Frank Herbert"
+    def test_title_and_author_route_separately(self):
+        d = dispatch_from_form("", "Dune", "Frank Herbert")
+        assert d.title == "Dune"
+        assert d.author == "Frank Herbert"
+
+    def test_title_only_route(self):
+        d = dispatch_from_form("", "Dune")
+        assert d.title == "Dune"
+        assert d.author is None
 
     def test_empty_inputs_produce_empty_dispatch(self):
         d = dispatch_from_form("", "")
         assert d.is_empty
         assert d.isbn is None
         assert d.url is None
-        assert d.title_author is None
+        assert d.title is None
+        assert d.author is None
 
 
 class TestProviderResult:

@@ -331,7 +331,8 @@ class TestEnrichUrlIsReal:
         assert 'class="logo"' in html
         # Search form is still rendered.
         assert 'name="isbn"' in html
-        assert 'name="query"' in html
+        assert 'name="title"' in html
+        assert 'name="author"' in html
 
     def test_search_htmx_get_returns_fragment_only(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(1, title="Book One")
@@ -343,7 +344,8 @@ class TestEnrichUrlIsReal:
         assert "Skip to main content" not in html
         # Form fields still present in the partial.
         assert 'name="isbn"' in html
-        assert 'name="query"' in html
+        assert 'name="title"' in html
+        assert 'name="author"' in html
 
     def test_search_refresh_renders_full_page(self, mock_catalog, client):
         """Browser refresh sends no HX-Request header — same path as direct nav."""
@@ -360,7 +362,7 @@ class TestEnrichUrlIsReal:
     # --- /books/<id>/enrich/candidate (diff panel) ----------------------------
 
     def _candidate_url(self) -> str:
-        return "/books/1/enrich/candidate?provider=fake&query=9780441172719&candidate_id=fake:1"
+        return "/books/1/enrich/candidate?provider=fake&isbn=9780441172719&candidate_id=fake:1"
 
     def test_candidate_plain_get_returns_full_styled_page(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(1, title="Diff Book")
