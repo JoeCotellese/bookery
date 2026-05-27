@@ -62,40 +62,47 @@ def looks_like_url(value: str) -> bool:
 class QueryDispatch:
     """The parsed shape of an enrich search request.
 
-    Exactly one of the three slots is populated, mirroring the dispatch
-    branches in :func:`multi_provider_search`.
+    Exactly one of ISBN, URL, or title is populated. Author is only
+    meaningful alongside title — providers receive (title, author) as
+    structured arguments, not as a concatenated string.
     """
 
     isbn: str | None = None
     url: str | None = None
-    title_author: str | None = None
+    title: str | None = None
+    author: str | None = None
 
     @property
     def is_empty(self) -> bool:
-        return not (self.isbn or self.url or self.title_author)
+        return not (self.isbn or self.url or self.title)
 
 
-def dispatch_from_form(isbn_field: str, query_field: str) -> QueryDispatch:
+def dispatch_from_form(
+    isbn_field: str,
+    title_field: str,
+    author_field: str = "",
+) -> QueryDispatch:
     """Parse raw form fields into a :class:`QueryDispatch`.
 
-    A non-empty ``isbn_field`` always wins. Otherwise the free-text
-    ``query_field`` is inspected: ISBN-shaped digits route to the ISBN
-    branch (digits/hyphens stripped), anything starting with ``http(s)://``
-    or ``www.`` routes to the URL branch, and the remainder is treated
-    as a title+author search string.
+    A non-empty ``isbn_field`` always wins. Otherwise ``title_field`` is
+    inspected: ISBN-shaped digits route to the ISBN branch (digits/hyphens
+    stripped), URL-shaped values route to the URL branch (author is
+    ignored in both escape hatches), and the remainder is treated as a
+    title search paired with ``author_field``.
     """
     isbn_input = (isbn_field or "").strip()
-    query = (query_field or "").strip()
+    title = (title_field or "").strip()
+    author = (author_field or "").strip() or None
 
     if isbn_input:
         return QueryDispatch(isbn=normalize_isbn(isbn_input))
-    if not query:
+    if not title:
         return QueryDispatch()
-    if looks_like_isbn(query):
-        return QueryDispatch(isbn=normalize_isbn(query))
-    if looks_like_url(query):
-        return QueryDispatch(url=query)
-    return QueryDispatch(title_author=query)
+    if looks_like_isbn(title):
+        return QueryDispatch(isbn=normalize_isbn(title))
+    if looks_like_url(title):
+        return QueryDispatch(url=title)
+    return QueryDispatch(title=title, author=author)
 
 
 def multi_provider_search(
@@ -103,14 +110,16 @@ def multi_provider_search(
     *,
     isbn: str | None = None,
     url: str | None = None,
-    title_author: str | None = None,
+    title: str | None = None,
+    author: str | None = None,
 ) -> list[ProviderResult]:
     """Fan a single query out across every registered provider.
 
-    Exactly one of ``isbn``, ``url``, or ``title_author`` should be provided.
-    For each provider, the matching method is called and results are wrapped
-    in a :class:`ProviderResult` ordered by confidence descending. URL lookups
-    return at most one candidate per provider.
+    Exactly one of ``isbn``, ``url``, or ``title`` should be provided.
+    ``author`` is optional and only consulted alongside ``title``. For
+    each provider, the matching method is called and results are wrapped
+    in a :class:`ProviderResult` ordered by confidence descending. URL
+    lookups return at most one candidate per provider.
 
     Provider iteration order matches ``providers`` insertion order so the UI
     layout is deterministic.
@@ -124,8 +133,8 @@ def multi_provider_search(
             single = provider.lookup_by_url(url)
             if single is not None:
                 candidates = [single]
-        elif title_author:
-            candidates = list(provider.search_by_title_author(title_author))
+        elif title:
+            candidates = list(provider.search_by_title_author(title, author))
         candidates.sort(key=lambda c: c.confidence, reverse=True)
         results.append(ProviderResult(name=provider.name, candidates=candidates))
     return results

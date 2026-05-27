@@ -36,7 +36,10 @@
               hx-post="{{ url_for('web.enrich_apply', book_id=book.id) }}"
               hx-swap="none">
             <input type="hidden" name="provider" value="{{ provider_name }}">
-            <input type="hidden" name="query" value="{{ query }}">
+            <input type="hidden" name="isbn" value="{{ dispatch_isbn }}">
+            <input type="hidden" name="url" value="{{ dispatch_url }}">
+            <input type="hidden" name="title" value="{{ dispatch_title }}">
+            <input type="hidden" name="author" value="{{ dispatch_author }}">
             <input type="hidden" name="candidate_id" value="{{ candidate_id }}">
             <button type="submit" class="btn btn-primary">
                 Apply{% if write_count %} ({{ write_count }} change{{ '' if write_count == 1 else 's' }}){% endif %}
@@ -50,7 +53,7 @@
 
         <button type="button"
                 class="btn btn-secondary"
-                hx-get="{{ url_for('web.enrich_form', book_id=book.id) }}"
+                hx-get="{{ url_for('web.enrich_form', book_id=book.id, isbn=dispatch_isbn or none, title=dispatch_title or none, author=dispatch_author or none) }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Back to results</button>
 

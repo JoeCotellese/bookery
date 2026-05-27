@@ -140,7 +140,7 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:M/123",
             },
         )
@@ -168,7 +168,7 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "Old Title",
+                "title": "Old Title",
                 "candidate_id": "OL:1",
             },
         )
@@ -191,7 +191,7 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:1",
             },
         )
@@ -204,7 +204,7 @@ class TestEnrichCandidateGet:
         mock_catalog.get_by_id.return_value = None
         response = client.get(
             "/books/999/enrich/candidate",
-            query_string={"provider": "Open Library", "query": "x", "candidate_id": "x"},
+            query_string={"provider": "Open Library", "title": "x", "candidate_id": "x"},
         )
         assert response.status_code == 404
 
@@ -212,7 +212,7 @@ class TestEnrichCandidateGet:
         mock_catalog.get_by_id.return_value = make_book(1)
         response = client.get(
             "/books/1/enrich/candidate",
-            query_string={"provider": "Unknown", "query": "x", "candidate_id": "x"},
+            query_string={"provider": "Unknown", "title": "x", "candidate_id": "x"},
         )
         assert response.status_code == 404
 
@@ -226,7 +226,7 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:does-not-exist",
             },
         )
@@ -242,15 +242,19 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:1",
             },
         )
 
         html = response.data.decode()
-        # Apply form carries provider, query, candidate_id so POST can re-fetch.
+        # Apply form carries dispatch slots so POST can re-fetch the same
+        # candidate (issue #209 — was a single "query" string before).
         assert 'name="provider"' in html
-        assert 'name="query"' in html
+        assert 'name="isbn"' in html
+        assert 'name="url"' in html
+        assert 'name="title"' in html
+        assert 'name="author"' in html
         assert 'name="candidate_id"' in html
 
     def test_back_to_results_link_present(self, mock_catalog, client, open_library):
@@ -263,7 +267,7 @@ class TestEnrichCandidateGet:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:1",
             },
         )
@@ -304,7 +308,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -340,7 +344,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -370,7 +374,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -393,7 +397,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -416,7 +420,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -445,7 +449,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -491,7 +495,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -527,7 +531,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -558,7 +562,7 @@ class TestEnrichApplyPost:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -571,7 +575,7 @@ class TestEnrichApplyPost:
         mock_catalog.get_by_id.return_value = None
         response = client.post(
             "/books/999/enrich/apply",
-            data={"provider": "Open Library", "query": "x", "candidate_id": "x"},
+            data={"provider": "Open Library", "title": "x", "candidate_id": "x"},
         )
         assert response.status_code == 404
 
@@ -581,7 +585,7 @@ class TestEnrichApplyPost:
         mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
         response = client.post(
             "/books/1/enrich/apply",
-            data={"provider": "Unknown", "query": "x", "candidate_id": "x"},
+            data={"provider": "Unknown", "title": "x", "candidate_id": "x"},
         )
         assert response.status_code == 404
 
@@ -596,7 +600,7 @@ class TestEnrichApplyPost:
             "/books/1/enrich/apply",
             data={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:missing",
             },
         )
@@ -642,7 +646,7 @@ class TestEnrichApplyStripsDescriptionHtml:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -697,7 +701,7 @@ class TestCandidateRowViewWiring:
 
         response = client.post(
             "/books/1/enrich/search",
-            data={"isbn": "9780441172719", "query": ""},
+            data={"isbn": "9780441172719", "title": ""},
         )
 
         html = response.data.decode()
@@ -793,7 +797,7 @@ class TestEnrichApplySkipClear:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -827,7 +831,7 @@ class TestEnrichApplySkipClear:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -861,7 +865,7 @@ class TestEnrichApplySkipClear:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -897,7 +901,7 @@ class TestEnrichApplySkipClear:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -933,7 +937,7 @@ class TestEnrichApplySkipClear:
                 "/books/1/enrich/apply",
                 data={
                     "provider": "Open Library",
-                    "query": "9780441172719",
+                    "isbn": "9780441172719",
                     "candidate_id": "OL:1",
                 },
             )
@@ -961,7 +965,7 @@ class TestEnrichDiffSkipClearRendering:
             "/books/1/enrich/candidate",
             query_string={
                 "provider": "Open Library",
-                "query": "9780441172719",
+                "isbn": "9780441172719",
                 "candidate_id": "OL:1",
             },
         )

@@ -490,21 +490,21 @@ def update_book(book_id):
     return response
 
 
-def _prefill_for_book(book) -> tuple[str | None, str | None]:
+def _prefill_for_book(book) -> tuple[str | None, str | None, str | None]:
     """Compute the search-form pre-fill values for a BookRecord.
 
-    Returns ``(isbn, free_text_query)``. ISBN is preferred when present;
-    otherwise a ``"title author"`` string is composed for the free-text input.
-    Either tuple slot may be ``None``.
+    Returns ``(isbn, title, author)``. Title and author come from the
+    book's structured metadata so providers receive them as separate
+    arguments — concatenating them into a single free-text query produces
+    misses on most provider search APIs.
     """
     isbn = book.metadata.isbn or None
-    if isbn:
-        return isbn, None
-    parts = [book.metadata.title or ""]
+    title = (book.metadata.title or "").strip() or None
+    author = None
     if book.metadata.authors:
-        parts.append(book.metadata.authors[0])
-    query = " ".join(p for p in parts if p).strip()
-    return None, query or None
+        first = (book.metadata.authors[0] or "").strip()
+        author = first or None
+    return isbn, title, author
 
 
 @bp.route("/books/<int:book_id>/enrich", methods=["GET"])
@@ -515,21 +515,55 @@ def enrich_form(book_id):
     in-place swap into ``#book-content``. A plain GET — direct nav, browser
     refresh, shared link — returns the full styled page so the user lands
     on a real URL rather than an unstyled fragment.
+
+    Accepts optional ``isbn``/``title``/``author`` query params. When any
+    are present, the form is prefilled with those values (overriding the
+    metadata-based prefill) and the same multi-provider search is re-run
+    so the candidate list is restored on the page. This is what the diff
+    panel's "Back to results" button relies on to avoid forcing the user
+    to retype their query.
     """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
     if book is None:
         abort(404)
 
-    prefill_isbn, prefill_query = _prefill_for_book(book)
     return_to = _safe_return_to(request.args.get("return_to"))
+
+    query_isbn = (request.args.get("isbn") or "").strip()
+    query_title = (request.args.get("title") or "").strip()
+    query_author = (request.args.get("author") or "").strip()
+    has_query = bool(query_isbn or query_title or query_author)
+
+    if has_query:
+        prefill_isbn = query_isbn or None
+        prefill_title = query_title or None
+        prefill_author = query_author or None
+        providers = current_app.config.get("PROVIDERS", {})
+        dispatch = dispatch_from_form(query_isbn, query_title, query_author)
+        results = multi_provider_search(
+            providers,
+            isbn=dispatch.isbn,
+            url=dispatch.url,
+            title=dispatch.title,
+            author=dispatch.author,
+        )
+        any_results = any(not r.is_empty for r in results)
+    else:
+        prefill_isbn, prefill_title, prefill_author = _prefill_for_book(book)
+        results = None
+        any_results = False
+
     template = "_enrich_search.html" if request.headers.get("HX-Request") else "enrich.html"
     return render_template(
         template,
         book=book,
         prefill_isbn=prefill_isbn,
-        prefill_query=prefill_query,
+        prefill_title=prefill_title,
+        prefill_author=prefill_author,
         return_to=return_to,
+        results=results,
+        any_results=any_results,
     )
 
 
@@ -545,29 +579,33 @@ def enrich_search(book_id):
 
     dispatch = dispatch_from_form(
         request.form.get("isbn", ""),
-        request.form.get("query", ""),
+        request.form.get("title", ""),
+        request.form.get("author", ""),
     )
 
     results = multi_provider_search(
         providers,
         isbn=dispatch.isbn,
         url=dispatch.url,
-        title_author=dispatch.title_author,
+        title=dispatch.title,
+        author=dispatch.author,
     )
     any_results = any(not r.is_empty for r in results)
 
-    # Reconstruct the query string passed to the diff route so View can
-    # re-fetch without keeping per-session state. Whatever dispatch path
-    # was taken (ISBN, URL, title/author), the diff route's own
-    # ``dispatch_from_form`` will resolve the same shape.
-    diff_query = dispatch.isbn or dispatch.url or dispatch.title_author or ""
-
+    # The View buttons rendered into the candidate list need to carry
+    # enough state for the diff/apply routes to re-run the same provider
+    # query and locate the chosen candidate by source_id. We pass the
+    # populated dispatch slots as separate URL params rather than a single
+    # merged "query" string — that's the bug that produced #209.
     return render_template(
         "_enrich_candidates.html",
         book=book,
         results=results,
         any_results=any_results,
-        diff_query=diff_query,
+        dispatch_isbn=dispatch.isbn or "",
+        dispatch_url=dispatch.url or "",
+        dispatch_title=dispatch.title or "",
+        dispatch_author=dispatch.author or "",
     )
 
 
@@ -601,22 +639,29 @@ def _find_provider_by_name(name: str) -> MetadataProvider | None:
     return providers.get(name)
 
 
-def _refetch_candidate(provider: MetadataProvider, query: str) -> list[MetadataCandidate]:
-    """Re-run the original search against ``provider`` for ``query``.
+def _refetch_candidate(
+    provider: MetadataProvider,
+    *,
+    isbn: str = "",
+    url: str = "",
+    title: str = "",
+    author: str = "",
+) -> list[MetadataCandidate]:
+    """Re-run the original search against ``provider`` from dispatch slots.
 
-    Apply requests carry no candidate state across the wire, so we re-call
-    the same dispatch path used by ``enrich_search`` and pick the candidate
-    by ``source_id``. ISBN-shaped queries hit ``search_by_isbn``, URLs go to
-    ``lookup_by_url``, everything else is treated as a title/author search.
+    Diff/apply requests carry no candidate state across the wire, so we
+    re-call the same dispatch path used by ``enrich_search`` and pick the
+    candidate by ``source_id``. Only the populated slot is honored — the
+    caller threads exactly one of ``isbn``/``url``/``title`` (with
+    optional ``author``) back from the candidate row.
     """
-    dispatch = dispatch_from_form("", query)
-    if dispatch.isbn:
-        return list(provider.search_by_isbn(dispatch.isbn))
-    if dispatch.url:
-        single = provider.lookup_by_url(dispatch.url)
+    if isbn:
+        return list(provider.search_by_isbn(isbn))
+    if url:
+        single = provider.lookup_by_url(url)
         return [single] if single is not None else []
-    if dispatch.title_author:
-        return list(provider.search_by_title_author(dispatch.title_author))
+    if title:
+        return list(provider.search_by_title_author(title, author or None))
     return []
 
 
@@ -733,14 +778,19 @@ def enrich_candidate(book_id):
         abort(404)
 
     provider_name = request.args.get("provider", "")
-    query = request.args.get("query", "")
+    isbn = request.args.get("isbn", "")
+    url = request.args.get("url", "")
+    title = request.args.get("title", "")
+    author = request.args.get("author", "")
     candidate_id = request.args.get("candidate_id", "")
 
     provider = _find_provider_by_name(provider_name)
     if provider is None:
         abort(404)
 
-    candidates = _refetch_candidate(provider, query)
+    candidates = _refetch_candidate(
+        provider, isbn=isbn, url=url, title=title, author=author
+    )
     candidate = _find_candidate(candidates, candidate_id)
     if candidate is None:
         abort(404)
@@ -757,7 +807,10 @@ def enrich_candidate(book_id):
         candidate=candidate,
         diffs=diffs,
         provider_name=provider_name,
-        query=query,
+        dispatch_isbn=isbn,
+        dispatch_url=url,
+        dispatch_title=title,
+        dispatch_author=author,
         candidate_id=candidate_id,
         return_to=return_to,
     )
@@ -783,14 +836,19 @@ def enrich_apply(book_id):
         abort(404)
 
     provider_name = request.form.get("provider", "")
-    query = request.form.get("query", "")
+    isbn = request.form.get("isbn", "")
+    url = request.form.get("url", "")
+    title = request.form.get("title", "")
+    author = request.form.get("author", "")
     candidate_id = request.form.get("candidate_id", "")
 
     provider = _find_provider_by_name(provider_name)
     if provider is None:
         abort(404)
 
-    candidates = _refetch_candidate(provider, query)
+    candidates = _refetch_candidate(
+        provider, isbn=isbn, url=url, title=title, author=author
+    )
     candidate = _find_candidate(candidates, candidate_id)
     if candidate is None:
         abort(404)

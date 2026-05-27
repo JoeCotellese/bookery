@@ -1,5 +1,5 @@
 {# ABOUTME: Search form partial for the multi-provider enrich flow. #}
-{# ABOUTME: Pre-fills ISBN when present; otherwise pre-fills "title author" free-text. #}
+{# ABOUTME: ISBN, Title, and Author are independent inputs; pasting a URL or ISBN into Title is honored. #}
 {% include "_book_subhead.html" %}
 <section class="enrich" aria-labelledby="enrich-heading">
     <h3 id="enrich-heading">Search providers</h3>
@@ -20,12 +20,22 @@
         </div>
 
         <div class="form-group">
-            <label for="enrich-query">or free text / URL</label>
+            <label for="enrich-title">Title</label>
             <input type="text"
-                   id="enrich-query"
-                   name="query"
-                   value="{{ prefill_query or '' }}"
-                   placeholder="title author or https://openlibrary.org/..."
+                   id="enrich-title"
+                   name="title"
+                   value="{{ prefill_title or '' }}"
+                   placeholder="title (or paste a provider URL)"
+                   autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label for="enrich-author">Author</label>
+            <input type="text"
+                   id="enrich-author"
+                   name="author"
+                   value="{{ prefill_author or '' }}"
+                   placeholder="author name (optional)"
                    autocomplete="off">
         </div>
 
@@ -40,5 +50,9 @@
         </div>
     </form>
 
-    <div id="enrich-results" aria-live="polite"></div>
+    <div id="enrich-results" aria-live="polite">
+        {% if results is not none %}
+            {% include "_enrich_candidates.html" %}
+        {% endif %}
+    </div>
 </section>

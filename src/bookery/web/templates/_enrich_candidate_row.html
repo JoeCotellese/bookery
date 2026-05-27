@@ -22,7 +22,7 @@
     </div>
     <button type="button"
             class="btn btn-secondary"
-            hx-get="{{ url_for('web.enrich_candidate', book_id=book.id, provider=candidate.source, query=diff_query, candidate_id=candidate.source_id) }}"
+            hx-get="{{ url_for('web.enrich_candidate', book_id=book.id, provider=candidate.source, isbn=dispatch_isbn, url=dispatch_url, title=dispatch_title, author=dispatch_author, candidate_id=candidate.source_id) }}"
             hx-target="#book-content"
             hx-swap="innerHTML">View</button>
 </li>
