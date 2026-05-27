@@ -290,6 +290,97 @@ class TestTitleSortPersistence:
         assert self._title_sort_for(catalog, book_id) == "Hobbit"
 
 
+class TestAuthorSortPersistence:
+    """`author_sort` is populated on insert and refreshed on authors updates (#196)."""
+
+    def _author_sort_for(self, catalog: LibraryCatalog, book_id: int) -> str | None:
+        # Mirrors `_title_sort_for`: read the column directly so the test
+        # asserts the persisted value rather than a derived view.
+        row = catalog._conn.execute(
+            "SELECT author_sort FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
+        return row["author_sort"] if row is not None else None
+
+    def test_insert_with_explicit_author_sort_is_stored_as_is(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(
+                title="The Name of the Rose",
+                authors=["Umberto Eco"],
+                author_sort="Eco, Umberto",
+                source_path=Path("/r.epub"),
+            ),
+            file_hash="hashexplicit",
+        )
+        assert self._author_sort_for(catalog, book_id) == "Eco, Umberto"
+
+    def test_insert_without_author_sort_derives_from_authors(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(
+                title="The Name of the Rose",
+                authors=["Umberto Eco"],
+                source_path=Path("/r.epub"),
+            ),
+            file_hash="hashderive",
+        )
+        assert self._author_sort_for(catalog, book_id) == "Eco, Umberto"
+
+    def test_insert_no_authors_falls_back_to_unknown(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(title="Anonymous Work", source_path=Path("/a.epub")),
+            file_hash="hashanon",
+        )
+        assert self._author_sort_for(catalog, book_id) == "Unknown"
+
+    def test_update_authors_refreshes_author_sort(self, catalog: LibraryCatalog) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(
+                title="Title",
+                authors=["Umberto Eco"],
+                source_path=Path("/t.epub"),
+            ),
+            file_hash="hashupdate1",
+        )
+        catalog.update_book(book_id, authors=["Gabriel Garcia Marquez"])
+        assert self._author_sort_for(catalog, book_id) == "Marquez, Gabriel Garcia"
+
+    def test_update_unrelated_field_preserves_author_sort(
+        self, catalog: LibraryCatalog
+    ) -> None:
+        book_id = catalog.add_book(
+            BookMetadata(
+                title="Title",
+                authors=["Umberto Eco"],
+                source_path=Path("/t.epub"),
+            ),
+            file_hash="hashupdate2",
+        )
+        catalog.update_book(book_id, description="A description")
+        assert self._author_sort_for(catalog, book_id) == "Eco, Umberto"
+
+    def test_update_with_explicit_author_sort_wins(self, catalog: LibraryCatalog) -> None:
+        """When the caller passes both ``authors`` and ``author_sort``, the
+        explicit value wins — same convention as ``title_sort`` honoring an
+        explicit ``title`` field when both are updated together."""
+        book_id = catalog.add_book(
+            BookMetadata(
+                title="Title",
+                authors=["Umberto Eco"],
+                source_path=Path("/t.epub"),
+            ),
+            file_hash="hashupdate3",
+        )
+        catalog.update_book(
+            book_id,
+            authors=["Gabriel Garcia Marquez"],
+            author_sort="Curator, Override",
+        )
+        assert self._author_sort_for(catalog, book_id) == "Curator, Override"
+
+
 class TestListMethodsArticleStrippedOrder:
     """Catalog list methods sort by the persisted article-stripped key (#192).
 

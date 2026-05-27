@@ -257,6 +257,23 @@ UPDATE books SET title_sort = title WHERE title_sort IS NULL OR title_sort = '';
 INSERT INTO schema_version (version) VALUES (9);
 """
 
+# Backfill `author_sort` for legacy rows whose source EPUB didn't declare one
+# (issue #196). The column has existed since V1 but was only ever populated
+# when the metadata supplied it, so SQLite's "NULLs sort first" rule made
+# browse-by-author look randomly ordered on the first few pages. SQLite has
+# no REVERSE / split-by-last-whitespace primitive, so the migration delegates
+# to a UDF registered in `db.connection.open_library` that calls the same
+# `compute_author_sort` helper used by the catalog write path — keeping one
+# source of truth for the "Last, First Middle" inversion rule. Only rows with
+# a NULL or empty `author_sort` are touched; explicit values stay untouched.
+SCHEMA_V10 = """
+UPDATE books
+SET author_sort = bookery_author_sort_from_json(authors)
+WHERE author_sort IS NULL OR author_sort = '';
+
+INSERT INTO schema_version (version) VALUES (10);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -266,4 +283,5 @@ MIGRATIONS = [
     (7, SCHEMA_V7),
     (8, SCHEMA_V8),
     (9, SCHEMA_V9),
+    (10, SCHEMA_V10),
 ]

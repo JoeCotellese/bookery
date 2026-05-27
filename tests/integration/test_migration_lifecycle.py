@@ -30,7 +30,7 @@ class TestMigrationLifecycle:
 
         # Step 2: Open with bookery to trigger migration
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 9
+        assert _get_schema_version(conn) == 10
 
         # Step 3: Verify the book survived and tags work
         catalog = LibraryCatalog(conn)
@@ -51,7 +51,7 @@ class TestMigrationLifecycle:
         # Open 3 times
         for _ in range(3):
             conn = open_library(db_path)
-            assert _get_schema_version(conn) == 9
+            assert _get_schema_version(conn) == 10
             conn.close()
 
         # Final open — add a book and tag it
@@ -105,7 +105,7 @@ class TestMigrationLifecycle:
 
         # Step 3: open via the library code, which applies V9.
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 9
+        assert _get_schema_version(conn) == 10
 
         # Step 4: verify backfill on every row.
         cursor = conn.execute("SELECT title, title_sort FROM books ORDER BY id")
@@ -117,6 +117,68 @@ class TestMigrationLifecycle:
             "Dune": "Dune",
             "the lower case": "lower case",
             "The": "The",  # fallback when stripping leaves empty
+        }
+        conn.close()
+
+    def test_v9_db_with_authorless_books_backfills_author_sort(self, tmp_path: Path) -> None:
+        """V10 backfill derives author_sort from authors for existing rows.
+
+        Stage a database at V9 (the pre-#196 production schema), insert books
+        whose ``author_sort`` is NULL or empty across the derivation rules,
+        then trigger the V10 migration via ``open_library`` and assert each
+        row's ``author_sort`` matches what ``compute_author_sort`` would
+        produce. Existing non-empty values must be preserved.
+        """
+        db_path = tmp_path / "v10_backfill.db"
+
+        # Step 1: hand-roll a V9 database — V1 plus every migration up to and
+        # including V9. Stops short of V10 so we can verify its backfill.
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(SCHEMA_V1)
+        for version, sql in MIGRATIONS:
+            if version <= 9:
+                conn.executescript(sql)
+
+        # Step 2: insert rows directly so we bypass any Python-side population
+        # of `author_sort`. Mix NULL/empty author_sort cases (the backfill
+        # targets) with a pre-set value (must survive untouched).
+        # Tuple shape: (title, authors_json, author_sort)
+        rows = [
+            ("Two-word inverts", '["Umberto Eco"]', None),
+            ("Three-word inverts on last", '["Gabriel Garcia Marquez"]', None),
+            ("Single-word kept", '["Madonna"]', None),
+            ("Comma-name kept", '["Eco, Umberto"]', None),
+            ("Co-authors use first", '["Neil Gaiman", "Terry Pratchett"]', None),
+            ("No authors falls to Unknown", "[]", None),
+            ("Empty-string also backfilled", '["Umberto Eco"]', ""),
+            ("Pre-set author_sort preserved", '["Should be ignored"]', "Already, Set"),
+        ]
+        for i, (title, authors_json, author_sort) in enumerate(rows):
+            conn.execute(
+                "INSERT INTO books (title, authors, author_sort, source_path, file_hash) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (title, authors_json, author_sort, f"/{i}.epub", f"hash{i}"),
+            )
+        conn.commit()
+        conn.close()
+
+        # Step 3: open via the library code, which applies V10.
+        conn = open_library(db_path)
+        assert _get_schema_version(conn) == 10
+
+        # Step 4: verify backfill on every row.
+        cursor = conn.execute("SELECT title, author_sort FROM books ORDER BY id")
+        backfilled = {row[0]: row[1] for row in cursor.fetchall()}
+        assert backfilled == {
+            "Two-word inverts": "Eco, Umberto",
+            "Three-word inverts on last": "Marquez, Gabriel Garcia",
+            "Single-word kept": "Madonna",
+            "Comma-name kept": "Eco, Umberto",
+            "Co-authors use first": "Gaiman, Neil",
+            "No authors falls to Unknown": "Unknown",
+            "Empty-string also backfilled": "Eco, Umberto",
+            "Pre-set author_sort preserved": "Already, Set",
         }
         conn.close()
 

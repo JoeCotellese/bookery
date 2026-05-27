@@ -5,6 +5,7 @@ import re
 import unicodedata
 from pathlib import Path
 
+from bookery.core.text_sort import compute_author_sort
 from bookery.metadata.types import BookMetadata
 
 # Characters unsafe for common filesystems (Windows, macOS, Linux)
@@ -62,27 +63,11 @@ def derive_author_sort(metadata: BookMetadata) -> str:
     Priority: author_sort field > first author inverted > "Unknown".
     Single-word names and names already containing commas are kept as-is.
     Multi-word names are inverted: "First Middle Last" -> "Last, First Middle".
+
+    Thin wrapper around `compute_author_sort` so the catalog write path
+    (`db.mapping`) and the V10 backfill (`db.schema`) share the same rule.
     """
-    if metadata.author_sort:
-        return metadata.author_sort
-
-    if not metadata.authors:
-        return "Unknown"
-
-    name = metadata.authors[0].strip()
-    if not name:
-        return "Unknown"
-
-    # Already contains a comma — assume it's already "Last, First"
-    if "," in name:
-        return name
-
-    parts = name.split()
-    if len(parts) == 1:
-        return name
-
-    # Invert: "First Middle Last" -> "Last, First Middle"
-    return f"{parts[-1]}, {' '.join(parts[:-1])}"
+    return compute_author_sort(metadata.authors, metadata.author_sort)
 
 
 def build_output_path(

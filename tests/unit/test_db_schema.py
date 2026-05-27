@@ -86,7 +86,7 @@ class TestOpenLibrary:
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 9
+        assert row[0] == 10
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""

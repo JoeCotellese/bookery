@@ -3,7 +3,11 @@
 
 import pytest
 
-from bookery.core.text_sort import LEADING_ARTICLE_RE, compute_title_sort
+from bookery.core.text_sort import (
+    LEADING_ARTICLE_RE,
+    compute_author_sort,
+    compute_title_sort,
+)
 
 
 class TestComputeTitleSort:
@@ -63,3 +67,56 @@ class TestLeadingArticleRe:
         # Vault assemble.py reuses this. Lock the import contract.
         assert LEADING_ARTICLE_RE.match("The Hobbit") is not None
         assert LEADING_ARTICLE_RE.match("Hobbit") is None
+
+
+class TestComputeAuthorSort:
+    """Author-side twin of compute_title_sort. Mirrors derive_author_sort's rules
+    so it can be reused both at write-time (mapping.py) and during the V10
+    migration backfill (issue #196)."""
+
+    def test_explicit_value_wins(self) -> None:
+        """An explicit author_sort always overrides the derived value."""
+        assert compute_author_sort(["Umberto Eco"], "Eco, Umberto") == "Eco, Umberto"
+
+    def test_explicit_value_overrides_even_when_unrelated(self) -> None:
+        """The helper trusts the caller — it does not re-derive when an
+        explicit value is supplied."""
+        assert compute_author_sort(["Madonna"], "Curator Override") == "Curator Override"
+
+    def test_empty_explicit_falls_through_to_derivation(self) -> None:
+        """Empty string for the explicit slot is treated as "no value" so we
+        still derive — matches `derive_author_sort`'s `if metadata.author_sort:`
+        truthiness check."""
+        assert compute_author_sort(["Umberto Eco"], "") == "Eco, Umberto"
+
+    def test_none_explicit_falls_through_to_derivation(self) -> None:
+        assert compute_author_sort(["Umberto Eco"], None) == "Eco, Umberto"
+
+    def test_empty_authors_returns_unknown(self) -> None:
+        assert compute_author_sort([]) == "Unknown"
+
+    def test_first_author_whitespace_only_returns_unknown(self) -> None:
+        assert compute_author_sort(["   "]) == "Unknown"
+
+    def test_two_word_name_inverts(self) -> None:
+        assert compute_author_sort(["Umberto Eco"]) == "Eco, Umberto"
+
+    def test_three_word_name_inverts_on_last_token(self) -> None:
+        assert compute_author_sort(["Gabriel Garcia Marquez"]) == "Marquez, Gabriel Garcia"
+
+    def test_single_word_kept_as_is(self) -> None:
+        assert compute_author_sort(["Madonna"]) == "Madonna"
+
+    def test_comma_containing_name_kept_as_is(self) -> None:
+        """Pre-inverted "Last, First" stays as-is — no double inversion."""
+        assert compute_author_sort(["Eco, Umberto"]) == "Eco, Umberto"
+
+    def test_only_first_author_considered(self) -> None:
+        """Co-authors are ignored; sort key derives from the first listed name
+        — same convention as `derive_author_sort`."""
+        assert compute_author_sort(["Neil Gaiman", "Terry Pratchett"]) == "Gaiman, Neil"
+
+    def test_strips_surrounding_whitespace_before_deciding(self) -> None:
+        """Leading/trailing whitespace on the first author is ignored when
+        classifying single-token vs multi-token."""
+        assert compute_author_sort(["  Umberto Eco  "]) == "Eco, Umberto"

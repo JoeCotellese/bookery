@@ -24,3 +24,36 @@ def compute_title_sort(title: str) -> str:
         return title
     stripped = LEADING_ARTICLE_RE.sub(r"\1", title, count=1).strip()
     return stripped or title
+
+
+def compute_author_sort(
+    authors: list[str], explicit_author_sort: str | None = None
+) -> str:
+    """Return a sortable author key derived from an authors list.
+
+    Mirrors `bookery.core.pathformat.derive_author_sort` but takes the raw
+    list directly so the same logic powers both the write path
+    (`db.mapping.metadata_to_row`) and the V10 backfill (issue #196), which
+    sees a JSON authors string rather than a `BookMetadata` wrapper.
+
+    Rules (in priority order):
+    1. A truthy ``explicit_author_sort`` wins — curator/provider values stay.
+    2. Empty / whitespace-only first author → "Unknown".
+    3. First-author already contains a comma → assumed pre-inverted, kept as-is.
+    4. Single-token first author (e.g. "Madonna") → kept as-is.
+    5. Multi-token name → "Last, First Middle" (split on whitespace, last
+       token first).
+    """
+    if explicit_author_sort:
+        return explicit_author_sort
+    if not authors:
+        return "Unknown"
+    name = authors[0].strip()
+    if not name:
+        return "Unknown"
+    if "," in name:
+        return name
+    parts = name.split()
+    if len(parts) == 1:
+        return name
+    return f"{parts[-1]}, {' '.join(parts[:-1])}"

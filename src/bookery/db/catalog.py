@@ -10,7 +10,7 @@ from bookery.core.dedup import (
     normalize_for_dedup,
     normalize_isbn,
 )
-from bookery.core.text_sort import compute_title_sort
+from bookery.core.text_sort import compute_author_sort, compute_title_sort
 from bookery.db.mapping import (
     BookRecord,
     DuplicateMatch,
@@ -423,6 +423,16 @@ class LibraryCatalog:
             fields["title_sort"] = (
                 compute_title_sort(title_val) if isinstance(title_val, str) and title_val else None
             )
+
+        # Author-side twin: when `authors` changes (and the caller didn't
+        # explicitly set `author_sort` in the same call), re-derive the sort
+        # key from the new list so it stays in lock-step. An explicit
+        # `author_sort` always wins — curator/provider intent is respected.
+        # Runs before JSON-serialization so the helper sees a plain list.
+        if "authors" in fields and "author_sort" not in fields:
+            authors_val = fields["authors"]
+            if isinstance(authors_val, list):
+                fields["author_sort"] = compute_author_sort(authors_val)
 
         # JSON-serialize list/dict fields
         if "authors" in fields:
