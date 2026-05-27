@@ -17,6 +17,7 @@ CLI-first ebook library manager. EPUB-focused, metadata-first, non-destructive.
 - Tests are mandatory: unit, integration, and e2e for every feature
 - TDD: write failing test first, then minimal code to pass
 - Never modify original EPUB file contents — work on copies in the library
+- When you change user-facing surface (CLI commands, flags, config keys, output format), update `README.md` and `docs/` in the same PR
 
 ## Package Layout
 
