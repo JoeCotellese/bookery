@@ -248,7 +248,9 @@ def _sync_record(
 
     source = record.output_path
     if source is None:
-        report.skipped.append((record.source_path, "no canonical EPUB in library"))
+        report.skipped.append(
+            (record.source_path or Path(f"book#{record.id}"), "no canonical EPUB in library")
+        )
         return
     if source.suffix.lower() != ".epub":
         report.skipped.append((source, "output is not an EPUB"))
@@ -438,7 +440,9 @@ def sync_library_to_kobo(
                 on_progress(idx, total, record)
             source = record.output_path
             if source is None:
-                report.skipped.append((record.source_path, "no canonical EPUB in library"))
+                report.skipped.append(
+            (record.source_path or Path(f"book#{record.id}"), "no canonical EPUB in library")
+        )
                 continue
             if source.suffix.lower() != ".epub":
                 report.skipped.append((source, "output is not an EPUB"))

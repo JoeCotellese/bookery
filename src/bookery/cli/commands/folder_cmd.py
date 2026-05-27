@@ -67,7 +67,13 @@ def folder(query: str, print_only: bool, db_path: Path | None) -> None:
         # Books that went through the match/write pipeline have an explicit
         # output_path. Books imported without --match only have source_path,
         # so fall back to the directory containing the original file.
-        folder_path = record.output_path or record.source_path.parent
+        folder_path = record.output_path or (
+            record.source_path.parent if record.source_path is not None else None
+        )
+
+        if folder_path is None:
+            console.print("[red]No path on record:[/red] both source and output are missing.")
+            raise SystemExit(1)
 
         if not folder_path.exists():
             console.print(f"[red]Folder does not exist:[/red] {folder_path}")

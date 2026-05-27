@@ -29,7 +29,7 @@ class BookRecord:
     id: int
     metadata: BookMetadata
     file_hash: str
-    source_path: Path
+    source_path: Path | None
     output_path: Path | None
     date_added: str
     date_modified: str
@@ -133,7 +133,14 @@ def row_to_metadata(row: Any) -> BookMetadata:
 
 
 def row_to_record(row: Any) -> BookRecord:
-    """Convert a full database row to a BookRecord with metadata and DB fields."""
+    """Convert a full database row to a BookRecord with metadata and DB fields.
+
+    ``source_path`` is declared ``NOT NULL`` in the schema, but the runtime
+    has been observed to surface NULL transiently (in-flight write state).
+    Tolerating NULL here keeps the read path from 500ing on rows that
+    otherwise have a usable ``output_path``.
+    """
+    source = row["source_path"]
     output = row["output_path"]
     try:
         matched_at = row["metadata_matched_at"]
@@ -143,7 +150,7 @@ def row_to_record(row: Any) -> BookRecord:
         id=row["id"],
         metadata=row_to_metadata(row),
         file_hash=row["file_hash"],
-        source_path=Path(row["source_path"]),
+        source_path=Path(source) if source else None,
         output_path=Path(output) if output else None,
         date_added=row["date_added"],
         date_modified=row["date_modified"],

@@ -162,7 +162,9 @@ def cross_reference_db(
         A DbCrossReference with books split into cataloged and uncataloged.
     """
     cataloged_paths: set[Path] = {
-        record.source_path for record in catalog.list_all()
+        record.source_path
+        for record in catalog.list_all()
+        if record.source_path is not None
     }
 
     in_catalog: list[BookEntry] = []

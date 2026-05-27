@@ -197,7 +197,7 @@ def info(
     tags = catalog.get_tags_for_book(book_id)
     if tags:
         table.add_row("Tags", ", ".join(tags))
-    table.add_row("Source", str(record.source_path))
+    table.add_row("Source", str(record.source_path) if record.source_path else "—")
     if record.output_path:
         table.add_row("Output", str(record.output_path))
     if record.metadata_matched_at:
