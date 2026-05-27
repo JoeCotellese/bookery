@@ -1,7 +1,7 @@
-{# ABOUTME: Read-only provenance panel for the edit page — paths, hash, dates. #}
-{# ABOUTME: Mirrors _detail_file.html content so editors see file context alongside the form. #}
-<aside class="provenance" aria-labelledby="edit-provenance">
-    <h2 id="edit-provenance">Provenance</h2>
+{# ABOUTME: Collapsible provenance disclosure for the edit page — paths, hash, dates. #}
+{# ABOUTME: Reference data, not editing data — closed by default to keep the form focused. #}
+<details class="provenance">
+    <summary>Provenance</summary>
     <dl class="metadata-grid">
         <dt>Format</dt>
         <dd>{{ file_info.format or "—" }}</dd>
@@ -18,4 +18,4 @@
         <dt>Modified</dt>
         <dd>{{ book.date_modified }}</dd>
     </dl>
-</aside>
+</details>

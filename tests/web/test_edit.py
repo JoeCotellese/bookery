@@ -69,6 +69,37 @@ class TestUpdateStillRendersDetail:
         assert 'aria-labelledby="detail-header"' in html
 
 
+class TestProvenanceDisclosure:
+    """Provenance is a collapsible disclosure below the form (issue #166)."""
+
+    def _html(self, mock_catalog, client) -> str:
+        mock_catalog.get_by_id.return_value = make_book(1)
+        return client.get("/books/1/edit").data.decode()
+
+    def test_provenance_is_a_details_element(self, mock_catalog, client):
+        html = self._html(mock_catalog, client)
+        # The panel must be wrapped in <details> so users can collapse it.
+        assert "<details" in html and "</details>" in html
+
+    def test_provenance_has_summary_label(self, mock_catalog, client):
+        html = self._html(mock_catalog, client)
+        assert re.search(r"<summary[^>]*>\s*Provenance\s*</summary>", html)
+
+    def test_provenance_is_closed_by_default(self, mock_catalog, client):
+        html = self._html(mock_catalog, client)
+        # No `open` attribute — the disclosure is collapsed on first render.
+        match = re.search(r"<details[^>]*>", html)
+        assert match, "expected a <details> element"
+        assert " open" not in match.group(0)
+
+    def test_provenance_renders_below_the_form(self, mock_catalog, client):
+        html = self._html(mock_catalog, client)
+        form_end = html.rfind("</form>")
+        provenance_start = html.find("<details")
+        assert form_end != -1 and provenance_start != -1
+        assert provenance_start > form_end
+
+
 class TestProvenanceOverflowCss:
     """CSS rules that keep long provenance values inside the panel (issue #166)."""
 
