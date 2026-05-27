@@ -132,6 +132,67 @@ class TestRematchQuietMode:
         assert record.output_path is not None
         conn.close()
 
+    def test_rematch_uses_library_copy_when_source_missing(
+        self, sample_epub: Path, tmp_path: Path,
+    ) -> None:
+        """Same bug pattern as issue #205: when the original source file is
+        gone (e.g. the user emptied Calibre's trash after import), rematch
+        must fall through to the library-canonical output_path instead of
+        skipping with "Source file missing".
+        """
+        db_path = tmp_path / "test.db"
+        output_dir = tmp_path / "output"
+
+        # Import, then point output_path at a library copy that *does* exist.
+        book_id = _import_book(sample_epub, db_path)
+        library_dir = tmp_path / "library"
+        library_dir.mkdir()
+        library_copy = library_dir / "imported.epub"
+        shutil.copy(sample_epub, library_copy)
+
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        catalog.set_output_path(book_id, library_copy)
+        # Re-point source_path at a file that no longer exists.
+        missing_source = tmp_path / "gone-from-calibre-trash.epub"
+        conn.execute(
+            "UPDATE books SET source_path = ? WHERE id = ?",
+            (str(missing_source), book_id),
+        )
+        conn.commit()
+        conn.close()
+
+        candidate = _make_candidate("Il Nome della Rosa", "Umberto Eco", 0.95)
+
+        with patch(
+            "bookery.cli.commands.rematch_cmd._create_provider"
+        ) as mock_fn:
+            mock_provider = MagicMock()
+            mock_provider.search_by_isbn.return_value = []
+            mock_provider.search_by_title_author.return_value = [candidate]
+            mock_fn.return_value = mock_provider
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "rematch", str(book_id),
+                    "-q", "--db", str(db_path),
+                    "-o", str(output_dir),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Source file missing" not in result.output
+        assert "1 matched" in result.output
+
+        conn = open_library(db_path)
+        catalog = LibraryCatalog(conn)
+        record = catalog.get_by_id(book_id)
+        assert record is not None
+        assert record.metadata.title == "Il Nome della Rosa"
+        conn.close()
+
     def test_rematch_all_quiet(
         self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
     ) -> None:
