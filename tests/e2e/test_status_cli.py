@@ -1,4 +1,4 @@
-# ABOUTME: End-to-end tests for `bookery read`, `unread`, `reading`, and the
+# ABOUTME: End-to-end tests for `bookery mark finished|reading|unread`, and the
 # ABOUTME: `ls --reading/--finished/--unread` filters plus info Reading section.
 
 from pathlib import Path
@@ -23,19 +23,19 @@ class TestStatusAuthoring:
         _import_one(runner, db_path, sample_epub)
 
         # Mark finished — title should appear in confirmation.
-        result = runner.invoke(cli, ["read", "1", "--db", str(db_path)])
+        result = runner.invoke(cli, ["mark", "finished", "1", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "Marked" in result.output
         assert "finished" in result.output
         assert "Name of the Rose" in result.output
 
         # Mark unread.
-        result = runner.invoke(cli, ["unread", "1", "--db", str(db_path)])
+        result = runner.invoke(cli, ["mark", "unread", "1", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "unread" in result.output
 
         # Mark in-progress.
-        result = runner.invoke(cli, ["reading", "1", "--db", str(db_path)])
+        result = runner.invoke(cli, ["mark", "reading", "1", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "reading" in result.output
 
@@ -44,7 +44,7 @@ class TestStatusAuthoring:
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
 
-        result = runner.invoke(cli, ["read", "999", "--db", str(db_path)])
+        result = runner.invoke(cli, ["mark", "finished", "999", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "999" in result.output
 
@@ -52,7 +52,7 @@ class TestStatusAuthoring:
         db_path = tmp_path / "status.db"
         runner = CliRunner()
         # Empty DB but the command should still fail at usage validation.
-        result = runner.invoke(cli, ["read", "--db", str(db_path)])
+        result = runner.invoke(cli, ["mark", "finished", "--db", str(db_path)])
         assert result.exit_code != 0
         assert "BOOK_ID" in result.output or "bulk-from" in result.output
 
@@ -65,7 +65,9 @@ class TestStatusAuthoring:
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\n")
 
-        result = runner.invoke(cli, ["read", "1", "--bulk-from", str(bulk), "--db", str(db_path)])
+        result = runner.invoke(
+            cli, ["mark", "finished", "1", "--bulk-from", str(bulk), "--db", str(db_path)]
+        )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
 
@@ -79,7 +81,9 @@ class TestBulkFrom:
         bulk = tmp_path / "ids.txt"
         bulk.write_text("# bulk wave 1\n1\n\n# trailing comment\n")
 
-        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
+        result = runner.invoke(
+            cli, ["mark", "finished", "--bulk-from", str(bulk), "--db", str(db_path)]
+        )
         assert result.exit_code == 0
         assert "1 book(s) as finished" in result.output
 
@@ -92,7 +96,9 @@ class TestBulkFrom:
 
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\n999\n")
-        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
+        result = runner.invoke(
+            cli, ["mark", "finished", "--bulk-from", str(bulk), "--db", str(db_path)]
+        )
         assert result.exit_code == 0
         assert "Skipped 999" in result.output
         assert "1 book(s) as finished" in result.output
@@ -104,7 +110,9 @@ class TestBulkFrom:
 
         bulk = tmp_path / "ids.txt"
         bulk.write_text("1\nnot-a-number\n")
-        result = runner.invoke(cli, ["read", "--bulk-from", str(bulk), "--db", str(db_path)])
+        result = runner.invoke(
+            cli, ["mark", "finished", "--bulk-from", str(bulk), "--db", str(db_path)]
+        )
         assert result.exit_code != 0
         assert "not-a-number" in result.output
 
@@ -116,7 +124,7 @@ class TestInfoReadingSection:
         db_path = tmp_path / "info.db"
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
-        runner.invoke(cli, ["read", "1", "--db", str(db_path)])
+        runner.invoke(cli, ["mark", "finished", "1", "--db", str(db_path)])
 
         result = runner.invoke(cli, ["info", "1", "--db", str(db_path)])
         assert result.exit_code == 0
@@ -142,7 +150,7 @@ class TestLsStatusFilters:
         db_path = tmp_path / "lsfilters.db"
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
-        runner.invoke(cli, ["read", "1", "--db", str(db_path)])
+        runner.invoke(cli, ["mark", "finished", "1", "--db", str(db_path)])
 
         result = runner.invoke(cli, ["ls", "--finished", "--db", str(db_path)])
         assert result.exit_code == 0
@@ -173,8 +181,8 @@ class TestLsStatusFilters:
         db_path = tmp_path / "lsunread2.db"
         runner = CliRunner()
         _import_one(runner, db_path, sample_epub)
-        runner.invoke(cli, ["read", "1", "--db", str(db_path)])
-        runner.invoke(cli, ["unread", "1", "--db", str(db_path)])
+        runner.invoke(cli, ["mark", "finished", "1", "--db", str(db_path)])
+        runner.invoke(cli, ["mark", "unread", "1", "--db", str(db_path)])
 
         result = runner.invoke(cli, ["ls", "--unread", "--db", str(db_path)])
         assert result.exit_code == 0

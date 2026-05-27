@@ -170,6 +170,7 @@ bookery info 42
 | `genre ls` | List all canonical genres with book counts |
 | `genre stats` | Show the most common subjects that don't map to a canonical genre |
 | `genre unmatched` | Show books with subjects but no genre assigned |
+| `mark finished <id>` | Mark a book as finished (also `mark reading <id>`, `mark unread <id>`; supports `--bulk-from FILE`) |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
 
 ### Web UI

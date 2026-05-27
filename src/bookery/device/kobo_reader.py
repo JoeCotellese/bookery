@@ -148,7 +148,7 @@ def pull_read_state(
     the device's most recent reality. ``book_status`` goes through the
     timestamp-aware merge in :meth:`LibraryCatalog.merge_book_status_from_device`:
     device-newer-or-equal overwrites catalog, catalog-newer keeps the user's
-    bookery read/unread/reading intent intact. The push half of the sync
+    bookery mark finished/reading/unread intent intact. The push half of the sync
     (in :mod:`bookery.device.kobo`) handles the reverse direction.
 
     Best-effort: a missing or unreadable KoboReader.sqlite logs a warning and

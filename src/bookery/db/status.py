@@ -28,7 +28,7 @@ def status_name(status: int) -> str:
 class BookStatus:
     """A row from the ``book_status`` table — catalog-side read state.
 
-    This is the truth that the user manipulates via ``bookery read/unread/reading``
+    This is the truth that the user manipulates via ``bookery mark finished/reading/unread``
     and that the web detail page surfaces. The device-side mirror lives in
     ``DeviceReadState`` and is populated by the P1a pull.
     """

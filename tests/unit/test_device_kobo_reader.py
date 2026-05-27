@@ -259,7 +259,7 @@ class TestPullReadState:
         self, tmp_path: Path
     ) -> None:
         """The P2 merge: catalog with a strictly newer timestamp wins, so the
-        user's bookery read/unread/reading intent is preserved across syncs.
+        user's bookery mark finished/reading/unread intent is preserved across syncs.
         """
         mount, kobo_dir = self._build_mount(tmp_path)
         _create_kobo_db(kobo_dir / "KoboReader.sqlite")
