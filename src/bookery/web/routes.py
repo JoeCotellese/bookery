@@ -515,14 +515,45 @@ def enrich_form(book_id):
     in-place swap into ``#book-content``. A plain GET — direct nav, browser
     refresh, shared link — returns the full styled page so the user lands
     on a real URL rather than an unstyled fragment.
+
+    Accepts optional ``isbn``/``title``/``author`` query params. When any
+    are present, the form is prefilled with those values (overriding the
+    metadata-based prefill) and the same multi-provider search is re-run
+    so the candidate list is restored on the page. This is what the diff
+    panel's "Back to results" button relies on to avoid forcing the user
+    to retype their query.
     """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
     if book is None:
         abort(404)
 
-    prefill_isbn, prefill_title, prefill_author = _prefill_for_book(book)
     return_to = _safe_return_to(request.args.get("return_to"))
+
+    query_isbn = (request.args.get("isbn") or "").strip()
+    query_title = (request.args.get("title") or "").strip()
+    query_author = (request.args.get("author") or "").strip()
+    has_query = bool(query_isbn or query_title or query_author)
+
+    if has_query:
+        prefill_isbn = query_isbn or None
+        prefill_title = query_title or None
+        prefill_author = query_author or None
+        providers = current_app.config.get("PROVIDERS", {})
+        dispatch = dispatch_from_form(query_isbn, query_title, query_author)
+        results = multi_provider_search(
+            providers,
+            isbn=dispatch.isbn,
+            url=dispatch.url,
+            title=dispatch.title,
+            author=dispatch.author,
+        )
+        any_results = any(not r.is_empty for r in results)
+    else:
+        prefill_isbn, prefill_title, prefill_author = _prefill_for_book(book)
+        results = None
+        any_results = False
+
     template = "_enrich_search.html" if request.headers.get("HX-Request") else "enrich.html"
     return render_template(
         template,
@@ -531,6 +562,8 @@ def enrich_form(book_id):
         prefill_title=prefill_title,
         prefill_author=prefill_author,
         return_to=return_to,
+        results=results,
+        any_results=any_results,
     )
 
 

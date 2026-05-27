@@ -53,7 +53,7 @@
 
         <button type="button"
                 class="btn btn-secondary"
-                hx-get="{{ url_for('web.enrich_form', book_id=book.id) }}"
+                hx-get="{{ url_for('web.enrich_form', book_id=book.id, isbn=dispatch_isbn or none, title=dispatch_title or none, author=dispatch_author or none) }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Back to results</button>
 

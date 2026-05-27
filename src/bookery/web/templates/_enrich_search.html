@@ -50,5 +50,9 @@
         </div>
     </form>
 
-    <div id="enrich-results" aria-live="polite"></div>
+    <div id="enrich-results" aria-live="polite">
+        {% if results is not none %}
+            {% include "_enrich_candidates.html" %}
+        {% endif %}
+    </div>
 </section>
