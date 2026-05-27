@@ -1,5 +1,5 @@
 # ABOUTME: The `bookery info` command for displaying detailed book metadata.
-# ABOUTME: Shows all fields for a single cataloged book by ID.
+# ABOUTME: Dispatches on argument shape: cataloged ID -> DB record; path -> loose EPUB on disk.
 
 from pathlib import Path
 
@@ -11,8 +11,13 @@ from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.status import status_name
+from bookery.formats.epub import EpubReadError, read_epub_metadata
 
 console = Console()  # TODO: move Console() inside command for testability
+
+# Suffixes that unambiguously identify a path argument. If the user passes one
+# of these, we never try the catalog-ID path — the intent is clearly a file.
+_PATH_SUFFIXES = frozenset({".epub", ".mobi", ".pdf"})
 
 
 _SETTABLE_FIELDS = {
@@ -57,8 +62,54 @@ def _parse_set_pairs(pairs: tuple[str, ...]) -> dict[str, object]:
     return out
 
 
+def _looks_like_path(arg: str) -> bool:
+    """Return True when an argument is obviously a filesystem path, not an ID.
+
+    A bare numeric string (e.g. ``42``) is ambiguous and goes through the
+    ID-first fallback; anything containing path separators, dots, leading
+    ``~``, or an ebook-shaped suffix is treated as a path unconditionally.
+    """
+    if not arg:
+        return False
+    if any(ch in arg for ch in ("/", "\\")):
+        return True
+    if arg.startswith("~") or arg.startswith("."):
+        return True
+    suffix = Path(arg).suffix.lower()
+    return suffix in _PATH_SUFFIXES
+
+
+def _show_loose_epub(path: Path) -> None:
+    """Render extracted metadata for an EPUB file that isn't in the catalog."""
+    try:
+        meta = read_epub_metadata(path)
+    except EpubReadError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    table = Table(title=str(path.name), show_header=False, pad_edge=False)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    table.add_row("Title", meta.title)
+    table.add_row("Author", meta.author or "[dim]unknown[/dim]")
+    table.add_row("Language", meta.language or "[dim]unknown[/dim]")
+    table.add_row("Publisher", meta.publisher or "[dim]unknown[/dim]")
+    table.add_row("ISBN", meta.isbn or "[dim]none[/dim]")
+    table.add_row("Description", meta.description or "[dim]none[/dim]")
+    table.add_row("Series", meta.series or "[dim]none[/dim]")
+    if meta.series_index is not None:
+        table.add_row("Series Index", str(meta.series_index))
+    table.add_row("Cover", "yes" if meta.has_cover else "no")
+    if meta.identifiers:
+        ids_str = ", ".join(f"{k}={v}" for k, v in meta.identifiers.items())
+        table.add_row("Identifiers", ids_str)
+
+    console.print(table)
+
+
 @click.command("info")
-@click.argument("book_id", type=int)
+@click.argument("target")
 @db_option
 @click.option(
     "--provenance",
@@ -88,30 +139,112 @@ def _parse_set_pairs(pairs: tuple[str, ...]) -> dict[str, object]:
     help="Unlock a previously locked field. Repeatable.",
 )
 def info(
-    book_id: int,
+    target: str,
     db_path: Path | None,
     show_provenance: bool,
     set_pairs: tuple[str, ...],
     lock_fields: tuple[str, ...],
     unlock_fields: tuple[str, ...],
 ) -> None:
-    """Show detailed metadata for a book by ID.
+    """Show metadata for a cataloged book by ID, or for a loose EPUB on disk.
 
-    Use ``--set field=value`` to hand-edit values (recorded as ``user`` in
-    the provenance table). Add ``--lock field`` to protect a value from
-    being clobbered by a future ``rematch``.
+    TARGET is either a book ID from the catalog or a path to an EPUB file.
+    When given a numeric ID, dispatches to the catalog and supports
+    ``--set field=value`` (recorded as ``user`` in the provenance table) and
+    ``--lock field`` (protects a value from being clobbered by ``rematch``).
+
+    When given a path (or any value ending in ``.epub``/``.mobi``/``.pdf``),
+    reads the file directly and prints the metadata extracted from disk.
+    The catalog-only flags (``--set``, ``--lock``, ``--unlock``,
+    ``--provenance``) are not meaningful for loose files and are rejected.
     """
-    # TODO: wrap conn in try-finally or context manager to prevent leak on exception
-    conn = open_library(resolve_db_path(db_path))
-    catalog = LibraryCatalog(conn)
+    catalog_only_flags = bool(
+        set_pairs or lock_fields or unlock_fields or show_provenance,
+    )
 
-    record = catalog.get_by_id(book_id)
+    # Unambiguous path-shaped argument: skip the catalog probe and read the
+    # file directly. Combining a path with catalog-only flags is operator
+    # error — we fail fast instead of silently dropping them.
+    if _looks_like_path(target):
+        path = Path(target).expanduser()
+        if not path.exists():
+            console.print(f"[red]File not found:[/red] {path}")
+            raise SystemExit(1)
+        if catalog_only_flags:
+            raise click.UsageError(
+                "--set/--lock/--unlock/--provenance only apply to cataloged "
+                "books (numeric ID), not to loose files.",
+            )
+        _show_loose_epub(path)
+        return
 
-    if record is None:
-        console.print(f"[red]Book {book_id} not found.[/red]")
+    # Numeric arg → try ID first, fall back to path only if a file exists.
+    if target.isdigit():
+        book_id = int(target)
+        # TODO: wrap conn in try-finally or context manager to prevent leak on exception
+        conn = open_library(resolve_db_path(db_path))
+        catalog = LibraryCatalog(conn)
+        record = catalog.get_by_id(book_id)
+        if record is not None:
+            _show_catalog_record(
+                conn=conn,
+                catalog=catalog,
+                book_id=book_id,
+                record=record,
+                show_provenance=show_provenance,
+                set_pairs=set_pairs,
+                lock_fields=lock_fields,
+                unlock_fields=unlock_fields,
+            )
+            return
         conn.close()
+        # Catalog miss — fall back to path interpretation if the numeric
+        # string happens to name a file on disk.
+        fallback = Path(target)
+        if fallback.exists():
+            if catalog_only_flags:
+                raise click.UsageError(
+                    "--set/--lock/--unlock/--provenance only apply to "
+                    "cataloged books (numeric ID), not to loose files.",
+                )
+            _show_loose_epub(fallback)
+            return
+        console.print(
+            f"[red]Not found:[/red] no book with ID {book_id} in the catalog, "
+            f"and no file at path {target!r}.",
+        )
         raise SystemExit(1)
 
+    # Non-numeric, non-path-shaped string (e.g. a UUID or bare slug).
+    # The catalog only accepts integer IDs today, so this can only be a path.
+    fallback = Path(target).expanduser()
+    if fallback.exists():
+        if catalog_only_flags:
+            raise click.UsageError(
+                "--set/--lock/--unlock/--provenance only apply to cataloged "
+                "books (numeric ID), not to loose files.",
+            )
+        _show_loose_epub(fallback)
+        return
+    console.print(
+        f"[red]Not found:[/red] {target!r} is neither a catalog ID "
+        "(IDs are integers) nor a path to an existing file.",
+    )
+    raise SystemExit(1)
+
+
+def _show_catalog_record(
+    *,
+    conn,  # type: ignore[no-untyped-def]
+    catalog: LibraryCatalog,
+    book_id: int,
+    record,  # type: ignore[no-untyped-def]
+    show_provenance: bool,
+    set_pairs: tuple[str, ...],
+    lock_fields: tuple[str, ...],
+    unlock_fields: tuple[str, ...],
+) -> None:
+    """Render a cataloged book and apply any --set/--lock/--unlock edits."""
     if set_pairs:
         parsed = _parse_set_pairs(set_pairs)
         catalog.update_book(book_id, source="user", **parsed)  # type: ignore[arg-type]

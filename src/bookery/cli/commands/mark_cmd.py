@@ -137,7 +137,7 @@ def mark() -> None:
 @_bulk_from_option
 @db_option
 def finished_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
-    """Mark a book as finished (status = 2)."""
+    """Mark a cataloged book as finished by ID (status = 2)."""
     _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_FINISHED)
 
 
@@ -146,7 +146,7 @@ def finished_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | No
 @_bulk_from_option
 @db_option
 def reading_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
-    """Mark a book as in-progress (status = 1)."""
+    """Mark a cataloged book as in-progress by ID (status = 1)."""
     _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_READING)
 
 
@@ -155,5 +155,5 @@ def reading_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | Non
 @_bulk_from_option
 @db_option
 def unread_cmd(book_id: int | None, bulk_from: Path | None, db_path: Path | None) -> None:
-    """Mark a book as unread (status = 0)."""
+    """Mark a cataloged book as unread by ID (status = 0)."""
     _apply_status(db_path=db_path, book_id=book_id, bulk_from=bulk_from, status=STATUS_UNREAD)

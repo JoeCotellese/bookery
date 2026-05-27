@@ -11,7 +11,6 @@ from bookery.cli.commands import (
     convert_cmd,
     genre_cmd,
     info_cmd,
-    inspect_cmd,
     inventory_cmd,
     ls_cmd,
     mark_cmd,
@@ -62,7 +61,6 @@ cli.add_command(add_cmd.add_command)
 cli.add_command(convert_cmd.convert)
 cli.add_command(genre_cmd.genre)
 cli.add_command(info_cmd.info)
-cli.add_command(inspect_cmd.inspect)
 cli.add_command(inventory_cmd.inventory)
 cli.add_command(ls_cmd.ls)
 cli.add_command(mark_cmd.mark)
@@ -84,3 +82,8 @@ deprecated_command_alias(cli, alias="folder", canonical="reveal")
 # Deprecated alias for the old `import` command name. Unified under `add`,
 # which now dispatches on file-vs-directory paths. Remove after one release.
 deprecated_command_alias(cli, alias="import", canonical="add")
+
+# Deprecated alias for the old `inspect` command name. Unified under `info`,
+# which now dispatches on cataloged-ID vs path-to-loose-file. Remove after
+# one release.
+deprecated_command_alias(cli, alias="inspect", canonical="info")
