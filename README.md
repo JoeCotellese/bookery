@@ -227,7 +227,9 @@ index_min_count = 1
 exclude_tags = ["type/meeting"]      # drop notes with these exact frontmatter tags
 default_author = "Your Name"
 uuid_mode = "stable"                 # "stable" keeps the same dc:identifier
-                                     # across re-exports so Kobo updates in place
+                                     # across re-exports so Kobo updates in place.
+                                     # Pass `--random-ids` on the command line
+                                     # for a fresh identifier per export.
 catalog = true                       # auto-add the EPUB to the bookery library
                                      # so it ships on the next `sync kobo`
 ```

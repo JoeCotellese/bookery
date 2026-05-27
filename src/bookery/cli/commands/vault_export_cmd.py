@@ -19,6 +19,7 @@ from rich.progress import (
 )
 
 from bookery.cli._match_helpers import build_progress_fn
+from bookery.cli.deprecation import deprecated_option
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.config import get_library_root, load_config
 from bookery.core.importer import import_books
@@ -59,9 +60,16 @@ console = Console()
                    "(repeatable). Overrides vault_export.exclude_tags in config.")
 @click.option("--title", "title_opt", default=None, help="EPUB title metadata.")
 @click.option("--author", "author_opt", default=None, help="EPUB author metadata.")
-@click.option("--uuid", "uuid_opt",
-              type=click.Choice(["stable", "random"], case_sensitive=False), default=None,
-              help="EPUB identifier strategy. stable=deterministic for re-sync.")
+@deprecated_option(
+    ["--uuid"],
+    canonical="--random-ids",
+    type=click.Choice(["stable", "random"], case_sensitive=False),
+    transform=lambda v: {"random_ids": v.lower() == "random"} if v is not None else {},
+)
+@click.option("--random-ids", "random_ids", is_flag=True, default=False,
+              help="Generate a fresh random UUID identifier for the EPUB instead "
+                   "of the stable, vault-path-derived one. Off by default — the "
+                   "stable identifier lets Kobo update the book in place on re-sync.")
 @click.option("--version-label", "version_label_opt", default=None,
               help="Version label injected into the EPUB title (default: today's date).")
 @click.option("--catalog/--no-catalog", "catalog_opt", default=None,
@@ -78,7 +86,7 @@ def vault_export(
     exclude_tags_opt: tuple[str, ...],
     title_opt: str | None,
     author_opt: str | None,
-    uuid_opt: str | None,
+    random_ids: bool,
     version_label_opt: str | None,
     catalog_opt: bool | None,
     db_path: Path | None,
@@ -105,7 +113,10 @@ def vault_export(
     exclude_tags = list(exclude_tags_opt) if exclude_tags_opt else cfg.exclude_tags
     do_catalog = cfg.catalog if catalog_opt is None else catalog_opt
     author = author_opt or cfg.default_author
-    uuid_mode = (uuid_opt or cfg.uuid_mode).lower()
+    # `--random-ids` is the canonical surface; `cfg.uuid_mode` from config
+    # still drives the identifier when no flag is passed, for back-compat
+    # with existing `~/.bookery/config.toml` files.
+    use_random = random_ids or cfg.uuid_mode.lower() == "random"
     # Only stamp the title with a date when the user explicitly asks for one;
     # the stable filename is more useful for re-sync (Kobo and disk) than a
     # date-versioned snapshot that piles up duplicates.
@@ -142,7 +153,7 @@ def vault_export(
     overall_task = overall.add_task("Walking vault", total=None)
     current_task = current.add_task("(scanning…)", total=None)
 
-    identifier = stable_uuid(vault_path) if uuid_mode == "stable" else random_uuid()
+    identifier = random_uuid() if use_random else stable_uuid(vault_path)
     metadata = EpubMetadata(
         title=title,
         author=author,
