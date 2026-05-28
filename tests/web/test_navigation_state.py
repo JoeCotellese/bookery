@@ -390,7 +390,11 @@ class TestEnrichUrlIsReal:
         mock_catalog.get_by_id.return_value = None
         assert client.get(self._candidate_url()).status_code == 404
 
-    def test_candidate_missing_provider_returns_404(self, mock_catalog, client):
+    def test_candidate_missing_provider_renders_recovery(self, mock_catalog, client):
+        # A drifted/unknown provider renders a recoverable panel rather than a
+        # bare 404 so the selection is never a dead end (issue #234).
         mock_catalog.get_by_id.return_value = make_book(1)
         bad = "/books/1/enrich/candidate?provider=ghost&query=q&candidate_id=x"
-        assert client.get(bad).status_code == 404
+        response = client.get(bad)
+        assert response.status_code == 200
+        assert "Couldn't load this candidate" in response.data.decode()

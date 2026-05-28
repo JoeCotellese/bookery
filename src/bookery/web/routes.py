@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
@@ -29,6 +30,7 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
 from bookery.web.browse import BrowsePage, from_request_args
+from bookery.web.candidate_payload import deserialize_candidate, serialize_candidate
 from bookery.web.covers import get_or_extract_cover, invalidate_cover
 from bookery.web.diff import metadata_diff
 
@@ -763,18 +765,35 @@ def delete_book(book_id):
     return response
 
 
+def _hx_redirect(target_url: str) -> Response:
+    """Empty 200 carrying an ``HX-Redirect`` so the htmx client navigates the browser.
+
+    Several enrich-apply exits (success and the various recoverable failures)
+    all need the same "do nothing in-place, send the browser to ``target_url``"
+    shape; this keeps that response in one spot.
+    """
+    response = make_response("", 200)
+    response.headers["HX-Redirect"] = target_url
+    return response
+
+
 @bp.route("/books/<int:book_id>/enrich/candidate", methods=["GET"])
 def enrich_candidate(book_id):
     """Render the field-by-field diff panel for a chosen candidate.
 
     Re-fetches the candidate from its provider using the original query so
-    no per-session state is required. The diff panel includes an Apply form
-    that POSTs back to ``enrich_apply`` with the same dispatch params.
+    no per-session state is required. The chosen candidate is serialized into
+    the Apply form (issue #234) so Apply writes exactly what was previewed
+    without re-querying the provider.
 
     htmx GET (``HX-Request`` header set) returns the bare partial for an
     in-place swap into ``#book-content``. A plain GET — direct nav, browser
     refresh, shared link — returns the full styled page so the user lands
     on a real URL rather than an unstyled fragment.
+
+    If the provider is unreachable or the candidate has drifted out of its
+    result set, render a recoverable inline message rather than a bare 404 so
+    the user's other results remain reachable (issue #234).
     """
     catalog = current_app.config["CATALOG"]
     book = catalog.get_by_id(book_id)
@@ -787,20 +806,27 @@ def enrich_candidate(book_id):
     title = request.args.get("title", "")
     author = request.args.get("author", "")
     candidate_id = request.args.get("candidate_id", "")
+    return_to = _safe_return_to(request.args.get("return_to"))
 
     provider = _find_provider_by_name(provider_name)
-    if provider is None:
-        abort(404)
+    candidate = None
+    if provider is not None:
+        candidates = _refetch_candidate(provider, isbn=isbn, url=url, title=title, author=author)
+        candidate = _find_candidate(candidates, candidate_id)
 
-    candidates = _refetch_candidate(
-        provider, isbn=isbn, url=url, title=title, author=author
-    )
-    candidate = _find_candidate(candidates, candidate_id)
     if candidate is None:
-        abort(404)
+        return _render_enrich_candidate_error(
+            book,
+            provider_name=provider_name,
+            isbn=isbn,
+            url=url,
+            title=title,
+            author=author,
+            candidate_id=candidate_id,
+            return_to=return_to,
+        )
 
     diffs = metadata_diff(book.metadata, candidate.metadata)
-    return_to = _safe_return_to(request.args.get("return_to"))
 
     template = (
         "_enrich_diff.html" if request.headers.get("HX-Request") else "enrich_candidate.html"
@@ -816,8 +842,41 @@ def enrich_candidate(book_id):
         dispatch_title=title,
         dispatch_author=author,
         candidate_id=candidate_id,
+        candidate_payload=serialize_candidate(candidate),
         return_to=return_to,
     )
+
+
+def _render_enrich_candidate_error(
+    book,
+    *,
+    provider_name: str,
+    isbn: str,
+    url: str,
+    title: str,
+    author: str,
+    candidate_id: str,
+    return_to: str | None,
+):
+    """Render a recoverable "couldn't load this candidate" panel (issue #234).
+
+    htmx requests get the bare fragment for an in-place swap; a plain GET gets
+    the full styled page so direct nav/refresh lands on a real URL. Both offer
+    Try again / Back to results so the selection is never a dead end.
+    """
+    context = {
+        "book": book,
+        "provider_name": provider_name,
+        "dispatch_isbn": isbn,
+        "dispatch_url": url,
+        "dispatch_title": title,
+        "dispatch_author": author,
+        "candidate_id": candidate_id,
+        "return_to": return_to,
+    }
+    if request.headers.get("HX-Request"):
+        return render_template("_enrich_candidate_error.html", **context)
+    return render_template("enrich_candidate.html", load_error=True, **context)
 
 
 @bp.route("/books/<int:book_id>/enrich/apply", methods=["POST"])
@@ -839,6 +898,8 @@ def enrich_apply(book_id):
     if book is None:
         abort(404)
 
+    detail_url = url_for("web.book_detail", book_id=book_id)
+
     provider_name = request.form.get("provider", "")
     isbn = request.form.get("isbn", "")
     url = request.form.get("url", "")
@@ -846,18 +907,28 @@ def enrich_apply(book_id):
     author = request.form.get("author", "")
     candidate_id = request.form.get("candidate_id", "")
 
-    provider = _find_provider_by_name(provider_name)
-    if provider is None:
-        abort(404)
-
-    candidates = _refetch_candidate(
-        provider, isbn=isbn, url=url, title=title, author=author
-    )
-    candidate = _find_candidate(candidates, candidate_id)
+    # Prefer the candidate the user previewed, carried verbatim in the form, so
+    # Apply writes exactly what the diff showed without a provider round-trip
+    # (#234). A missing/malformed/tampered payload falls back to re-fetching by
+    # dispatch slot — the original stateless path — so older clients still work.
+    candidate = deserialize_candidate(request.form.get("candidate_payload", ""))
     if candidate is None:
-        abort(404)
+        provider = _find_provider_by_name(provider_name)
+        if provider is not None:
+            candidates = _refetch_candidate(
+                provider, isbn=isbn, url=url, title=title, author=author
+            )
+            candidate = _find_candidate(candidates, candidate_id)
 
-    detail_url = url_for("web.book_detail", book_id=book_id)
+    if candidate is None:
+        # Neither the carried payload nor a re-fetch could recover the
+        # selection. Don't 404 a confirmed Apply — flash and bounce back to the
+        # detail page so the user can retry from a clean state (#234).
+        flash(
+            "Could not apply: the selected candidate is no longer available — search again.",
+            "error",
+        )
+        return _hx_redirect(detail_url)
 
     # The library copy is the canonical file post-import. The original
     # source_path may no longer exist (e.g. user emptied Calibre's trash
@@ -873,9 +944,7 @@ def enrich_apply(book_id):
             f"(source={book.source_path}, library={book.output_path})",
             "error",
         )
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = detail_url
-        return response
+        return _hx_redirect(detail_url)
 
     # Prefer the existing library location of this book (its previous output
     # copy's parent) so multiple enrich passes don't scatter files across
@@ -907,9 +976,7 @@ def enrich_apply(book_id):
             f"Apply failed: {write_result.error or 'unknown error'}",
             "error",
         )
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = detail_url
-        return response
+        return _hx_redirect(detail_url)
 
     # Mirror the candidate's fields into the catalog with provenance credited
     # to the provider. We intentionally only write fields that the provider
@@ -942,11 +1009,12 @@ def enrich_apply(book_id):
     if _should_write_scalar(current.series_index, proposed.series_index):
         update_fields["series_index"] = proposed.series_index
 
-    # Always credit provenance to the matched provider's canonical name
-    # rather than echoing the user-supplied form value verbatim.
+    # Credit provenance to the candidate's source — the provider's canonical
+    # name captured when the candidate was built at View time, carried in the
+    # payload (or recovered via the fallback re-fetch).
     catalog.update_book(
         book_id,
-        source=provider.name,
+        source=candidate.source,
         confidence=candidate.confidence,
         **update_fields,
     )
@@ -958,10 +1026,8 @@ def enrich_apply(book_id):
     # the next GET /books/<id>/cover re-extracts from the new file.
     invalidate_cover(get_library_root(), book_id)
 
-    message = f'Applied "{proposed.title}" from {provider.name}'
+    message = f'Applied "{proposed.title}" from {candidate.source}'
     if cover_skipped:
         message += " (cover could not be fetched and was skipped)"
     flash(message, "success")
-    response = make_response("", 200)
-    response.headers["HX-Redirect"] = detail_url
-    return response
+    return _hx_redirect(detail_url)

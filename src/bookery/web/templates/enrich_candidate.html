@@ -11,7 +11,11 @@
     </nav>
 
     <div id="book-content" aria-live="polite">
-        {% include "_enrich_diff.html" %}
+        {% if load_error %}
+            {% include "_enrich_candidate_error.html" %}
+        {% else %}
+            {% include "_enrich_diff.html" %}
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -1,6 +1,8 @@
 # ABOUTME: Tests for the apply-candidate enrichment flow — diff helper, GET, POST.
 # ABOUTME: Covers metadata_diff unit tests, candidate re-fetch, apply write + catalog updates.
 
+import html
+import re
 from unittest.mock import patch
 
 import pytest
@@ -8,8 +10,15 @@ import pytest
 from bookery.core.pipeline import WriteResult
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
+from bookery.web.candidate_payload import deserialize_candidate, serialize_candidate
 from bookery.web.diff import FieldDiff, metadata_diff
 from tests.web.conftest import FakeProvider, make_book, make_candidate
+
+
+def _extract_payload(html_text: str) -> str | None:
+    """Pull the hidden candidate_payload value out of rendered Apply-form HTML."""
+    match = re.search(r'name="candidate_payload"\s+value="([^"]*)"', html_text)
+    return html.unescape(match.group(1)) if match else None
 
 
 @pytest.fixture
@@ -200,6 +209,37 @@ class TestEnrichCandidateGet:
         # ISBN matches → "same" label rendered.
         assert "same" in html
 
+    def test_diff_embeds_carried_candidate_payload(self, mock_catalog, client, open_library):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune Old")
+        candidate = make_candidate(
+            title="Dune",
+            authors=["Frank Herbert"],
+            isbn="9780441172719",
+            confidence=0.92,
+            source="Open Library",
+            source_id="OL:M/123",
+            cover_url="https://example.test/cover.jpg",
+        )
+        open_library.by_isbn = [candidate]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:M/123",
+            },
+        )
+
+        html_text = response.data.decode()
+        payload = _extract_payload(html_text)
+        assert payload is not None, "Apply form must embed the candidate payload"
+        restored = deserialize_candidate(payload)
+        assert restored is not None
+        assert restored.metadata.title == "Dune"
+        assert restored.source_id == "OL:M/123"
+        assert restored.metadata.cover_url == "https://example.test/cover.jpg"
+
     def test_missing_book_returns_404(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = None
         response = client.get(
@@ -208,15 +248,20 @@ class TestEnrichCandidateGet:
         )
         assert response.status_code == 404
 
-    def test_unknown_provider_returns_404(self, mock_catalog, client):
+    def test_unknown_provider_renders_recovery(self, mock_catalog, client):
+        # An unknown/drifted provider must not 404 the selection — show a
+        # recoverable inline message instead (issue #234).
         mock_catalog.get_by_id.return_value = make_book(1)
         response = client.get(
             "/books/1/enrich/candidate",
             query_string={"provider": "Unknown", "title": "x", "candidate_id": "x"},
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        html_text = response.data.decode()
+        assert "Couldn't load this candidate" in html_text
+        assert "Back to results" in html_text
 
-    def test_candidate_id_not_found_returns_404(self, mock_catalog, client, open_library):
+    def test_candidate_id_not_found_renders_recovery(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_isbn = [
             make_candidate(source="Open Library", source_id="OL:1"),
@@ -230,7 +275,10 @@ class TestEnrichCandidateGet:
                 "candidate_id": "OL:does-not-exist",
             },
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        html_text = response.data.decode()
+        assert "Couldn't load this candidate" in html_text
+        assert "Back to results" in html_text
 
     def test_apply_button_carries_through_params(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1)
@@ -639,32 +687,215 @@ class TestEnrichApplyPost:
         )
         assert response.status_code == 404
 
-    def test_unknown_provider_returns_404(self, mock_catalog, client, tmp_path):
+    def test_unknown_provider_recovers(self, mock_catalog, client, tmp_path):
+        # No carried payload + unknown provider → can't reconstruct the
+        # candidate. Recover gracefully (flash + redirect) instead of 404 (#234).
         source = tmp_path / "src.epub"
         source.write_bytes(b"epub")
         mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
-        response = client.post(
-            "/books/1/enrich/apply",
-            data={"provider": "Unknown", "title": "x", "candidate_id": "x"},
-        )
-        assert response.status_code == 404
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={"provider": "Unknown", "title": "x", "candidate_id": "x"},
+            )
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/books/1"
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
 
-    def test_candidate_not_found_returns_404(self, mock_catalog, client, open_library, tmp_path):
+    def test_candidate_not_found_recovers(self, mock_catalog, client, open_library, tmp_path):
+        # No carried payload + provider result drifted → fallback finds nothing.
+        # Recover gracefully instead of 404 (#234).
         source = tmp_path / "src.epub"
         source.write_bytes(b"epub")
         mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
         open_library.by_isbn = [
             make_candidate(source="Open Library", source_id="OL:1"),
         ]
-        response = client.post(
-            "/books/1/enrich/apply",
-            data={
-                "provider": "Open Library",
-                "isbn": "9780441172719",
-                "candidate_id": "OL:missing",
-            },
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:missing",
+                },
+            )
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/books/1"
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+
+
+class TestEnrichApplyCarriedPayload:
+    """Apply writes the carried candidate without re-querying the provider (#234)."""
+
+    def test_carried_payload_skips_apply_time_provider_call(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        candidate = make_candidate(
+            title="Previewed Title",
+            authors=["Author"],
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
         )
-        assert response.status_code == 404
+        # Provider returns nothing at apply time — the carried payload must not
+        # depend on it (this is the issue's observable success criterion).
+        open_library.by_isbn = []
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "candidate_payload": serialize_candidate(candidate),
+                },
+            )
+
+        assert response.status_code == 200
+        mock_apply.assert_called_once()
+        args, _ = mock_apply.call_args
+        assert args[1].title == "Previewed Title"
+        # No provider round-trip of any kind happened.
+        assert open_library.isbn_calls == []
+        assert open_library.title_author_calls == []
+        assert open_library.url_calls == []
+
+    def test_carried_payload_credits_source_provenance(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        candidate = make_candidate(
+            title="New Title",
+            authors=["New Author"],
+            publisher="Acme",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = []
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "candidate_payload": serialize_candidate(candidate),
+                },
+            )
+
+        mock_catalog.update_book.assert_called()
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs["title"] == "New Title"
+        assert kwargs["authors"] == ["New Author"]
+        assert kwargs["publisher"] == "Acme"
+        assert kwargs.get("source") == "Open Library"
+
+    def test_carried_payload_cover_fetched_without_provider(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        candidate = make_candidate(
+            title="Dune",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+            cover_url="https://example.test/cover.jpg",
+        )
+        open_library.by_isbn = []  # provider fully unreachable at apply
+        dest = tmp_path / "out.epub"
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch(
+                "bookery.web.routes.fetch_cover_image", return_value=_COVER_JPEG
+            ) as mock_fetch,
+            patch("bookery.web.routes.invalidate_cover"),
+        ):
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "candidate_payload": serialize_candidate(candidate),
+                },
+            )
+
+        assert response.status_code == 200
+        mock_fetch.assert_called_once_with("https://example.test/cover.jpg")
+        _, kwargs = mock_apply.call_args
+        assert kwargs.get("cover_image") == _COVER_JPEG
+        assert open_library.isbn_calls == []
+
+    def test_malformed_payload_with_empty_provider_recovers(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        open_library.by_isbn = []  # fallback re-fetch yields nothing too
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "candidate_payload": "not-valid-json{",
+                },
+            )
+
+        # Malformed payload must not 500; it falls back, finds nothing, recovers.
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/books/1"
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+
+    def test_malformed_payload_falls_back_to_provider(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        # A malformed payload with a still-reachable provider must recover the
+        # candidate via the fallback re-fetch path rather than failing.
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        open_library.by_isbn = [
+            make_candidate(title="Recovered", source="Open Library", source_id="OL:1"),
+        ]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "candidate_payload": "garbage",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_apply.assert_called_once()
+        args, _ = mock_apply.call_args
+        assert args[1].title == "Recovered"
+        # Fallback path did query the provider.
+        assert open_library.isbn_calls == ["9780441172719"]
 
 
 # --- description HTML stripping on apply (issue #123) -----------------------
