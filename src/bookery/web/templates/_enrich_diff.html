@@ -22,11 +22,37 @@
             {% for diff in diffs %}
                 {% include "_field_diff_row.html" %}
             {% endfor %}
+            {# Cover is an image, not a text field, so it gets a dedicated row
+               rather than going through metadata_diff / _field_diff_row.html. #}
+            <tr class="diff-row {{ 'diff-changed' if candidate.metadata.cover_url else 'diff-unchanged' }}">
+                <th scope="row" class="diff-field">Cover</th>
+                <td class="diff-current{{ ' changed' if candidate.metadata.cover_url else '' }}">
+                    <img class="enrich-diff-cover"
+                         src="{{ url_for('web.book_cover', book_id=book.id) }}"
+                         alt="Current cover"
+                         width="80"
+                         height="120">
+                </td>
+                {% if candidate.metadata.cover_url %}
+                <td class="diff-proposed changed">
+                    <img class="enrich-diff-cover"
+                         src="{{ candidate.metadata.cover_url }}"
+                         alt="Proposed cover"
+                         width="80"
+                         height="120"
+                         loading="lazy">
+                </td>
+                {% else %}
+                <td class="diff-proposed muted"><span class="diff-same">same</span></td>
+                {% endif %}
+            </tr>
         </tbody>
     </table>
 
-    {# Apply only writes fields that actually change AND aren't a skipped clear. #}
-    {% set write_count = diffs|selectattr('changed')|rejectattr('skip_clear')|list|length %}
+    {# Apply only writes fields that actually change AND aren't a skipped clear.
+       The cover counts as one change whenever the candidate supplied one. #}
+    {% set write_count = (diffs|selectattr('changed')|rejectattr('skip_clear')|list|length)
+                         + (1 if candidate.metadata.cover_url else 0) %}
     {% set skip_clear_count = diffs|selectattr('skip_clear')|list|length %}
 
     <div class="enrich-diff-actions" role="group" aria-label="Diff actions">

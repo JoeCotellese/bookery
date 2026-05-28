@@ -53,6 +53,7 @@ def make_candidate(
     confidence: float = 0.5,
     source: str = "fake",
     source_id: str = "fake:1",
+    cover_url: str | None = None,
 ) -> MetadataCandidate:
     """Build a MetadataCandidate for web tests."""
     return MetadataCandidate(
@@ -62,6 +63,7 @@ def make_candidate(
             isbn=isbn,
             publisher=publisher,
             published_date=published_date,
+            cover_url=cover_url,
         ),
         confidence=confidence,
         source=source,

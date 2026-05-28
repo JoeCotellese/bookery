@@ -276,6 +276,66 @@ class TestEnrichCandidateGet:
         # Back-to-results re-runs the search panel.
         assert "Back to results" in html
 
+    def test_candidate_with_cover_url_shows_proposed_cover(
+        self, mock_catalog, client, open_library
+    ):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune")
+        cover = "https://covers.example.com/dune-large.jpg"
+        open_library.by_isbn = [
+            make_candidate(
+                title="Dune",
+                source="Open Library",
+                source_id="OL:1",
+                cover_url=cover,
+            ),
+        ]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+
+        html = response.data.decode()
+        # Cover row exists and previews the candidate's proposed cover, alongside
+        # the current cover served by the existing /cover route.
+        assert "Cover" in html
+        assert cover in html
+        assert "/books/1/cover" in html
+        assert "Proposed cover" in html
+
+    def test_candidate_without_cover_shows_no_proposed_image(
+        self, mock_catalog, client, open_library
+    ):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune")
+        open_library.by_isbn = [
+            make_candidate(
+                title="Dune",
+                source="Open Library",
+                source_id="OL:1",
+                cover_url=None,
+            ),
+        ]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+
+        html = response.data.decode()
+        # The Cover row still shows the current cover, but there is no proposed
+        # cover image when the candidate carries no cover_url.
+        assert "Cover" in html
+        assert "/books/1/cover" in html
+        assert "Proposed cover" not in html
+
 
 # --- POST /books/<id>/enrich/apply ------------------------------------------
 
