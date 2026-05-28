@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
@@ -764,6 +765,18 @@ def delete_book(book_id):
     return response
 
 
+def _hx_redirect(target_url: str) -> Response:
+    """Empty 200 carrying an ``HX-Redirect`` so the htmx client navigates the browser.
+
+    Several enrich-apply exits (success and the various recoverable failures)
+    all need the same "do nothing in-place, send the browser to ``target_url``"
+    shape; this keeps that response in one spot.
+    """
+    response = make_response("", 200)
+    response.headers["HX-Redirect"] = target_url
+    return response
+
+
 @bp.route("/books/<int:book_id>/enrich/candidate", methods=["GET"])
 def enrich_candidate(book_id):
     """Render the field-by-field diff panel for a chosen candidate.
@@ -915,9 +928,7 @@ def enrich_apply(book_id):
             "Could not apply: the selected candidate is no longer available — search again.",
             "error",
         )
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = detail_url
-        return response
+        return _hx_redirect(detail_url)
 
     # The library copy is the canonical file post-import. The original
     # source_path may no longer exist (e.g. user emptied Calibre's trash
@@ -933,9 +944,7 @@ def enrich_apply(book_id):
             f"(source={book.source_path}, library={book.output_path})",
             "error",
         )
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = detail_url
-        return response
+        return _hx_redirect(detail_url)
 
     # Prefer the existing library location of this book (its previous output
     # copy's parent) so multiple enrich passes don't scatter files across
@@ -967,9 +976,7 @@ def enrich_apply(book_id):
             f"Apply failed: {write_result.error or 'unknown error'}",
             "error",
         )
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = detail_url
-        return response
+        return _hx_redirect(detail_url)
 
     # Mirror the candidate's fields into the catalog with provenance credited
     # to the provider. We intentionally only write fields that the provider
@@ -1023,6 +1030,4 @@ def enrich_apply(book_id):
     if cover_skipped:
         message += " (cover could not be fetched and was skipped)"
     flash(message, "success")
-    response = make_response("", 200)
-    response.headers["HX-Redirect"] = detail_url
-    return response
+    return _hx_redirect(detail_url)
