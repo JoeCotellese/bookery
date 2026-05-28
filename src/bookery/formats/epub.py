@@ -1,6 +1,7 @@
 # ABOUTME: EPUB metadata extraction and writing using ebooklib.
 # ABOUTME: Defensive wrapper that handles malformed files gracefully.
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -287,6 +288,62 @@ def _set_dc_metadata(book: epub.EpubBook, name: str, value: str) -> None:
     book.add_metadata("DC", name, value)
 
 
+_COVER_EXTENSION_FOR_CONTENT_TYPE: dict[str, str] = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+
+
+def _remove_existing_cover(book: epub.EpubBook) -> None:
+    """Drop any existing cover image item and the ``<meta name="cover">`` tags.
+
+    ``EpubBook.set_cover`` is single-use: calling it on a book that already has
+    a cover would leave a duplicate image item and a second cover meta entry.
+    Clearing the prior cover first keeps the write idempotent so re-enrichment
+    swaps the cover cleanly rather than stacking items.
+    """
+    cover_item = _find_cover_item(book)
+    if cover_item is not None:
+        with contextlib.suppress(ValueError, KeyError):
+            book.items.remove(cover_item)
+
+    # OPF cover meta tags live under the OPF namespace as ("meta", ...) or as a
+    # "cover" name depending on how ebooklib parsed them. Strip both shapes.
+    for ns in list(book.metadata):
+        ns_entries = book.metadata.get(ns, {})
+        for name in list(ns_entries):
+            entries = ns_entries[name]
+            kept = [
+                (value, attrs)
+                for value, attrs in entries
+                if not (isinstance(attrs, dict) and attrs.get("name") == "cover")
+            ]
+            if name == "cover":
+                kept = []
+            if len(kept) != len(entries):
+                ns_entries[name] = kept
+
+
+def _write_cover_image(book: epub.EpubBook, cover_image: bytes) -> None:
+    """Embed ``cover_image`` as the EPUB cover, replacing any existing cover.
+
+    The image bytes are sniffed for a content type so the cover item carries a
+    sensible filename extension; ebooklib's ``set_cover`` then registers the
+    image, a cover page, and the ``<meta name="cover">`` pointer.
+    """
+    _remove_existing_cover(book)
+    content_type = _guess_image_content_type(cover_image)
+    ext = _COVER_EXTENSION_FOR_CONTENT_TYPE.get(content_type, "jpg")
+    # create_page=False skips the generated cover XHTML page. That page relies
+    # on ebooklib's "cover" template, which is absent when the book was read
+    # from an existing EPUB rather than freshly constructed — generating it then
+    # serializes an empty document and ebooklib raises. The image item plus the
+    # ``<meta name="cover">`` pointer are all readers (and _find_cover_item) need.
+    book.set_cover(f"cover.{ext}", cover_image, create_page=False)
+
+
 def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
     """Write metadata fields into an existing EPUB file.
 
@@ -323,6 +380,9 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
 
     if metadata.description is not None:
         _set_dc_metadata(book, "description", metadata.description)
+
+    if metadata.cover_image:
+        _write_cover_image(book, metadata.cover_image)
 
     _fix_toc_uids(book)
     _scrub_none_metadata(book)

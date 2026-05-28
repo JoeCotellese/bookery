@@ -180,7 +180,7 @@ bookery info 42
 |---------|-------------|
 | `serve` | Launch the local web UI (`--host`, `--port`; default `127.0.0.1:5000`) |
 
-The web UI provides paginated and sortable browsing, filter chips, cover thumbnails, a responsive mobile card layout, per-book detail and edit pages, a "search active providers" flow that lets you apply candidate metadata with a side-by-side diff, and inline delete.
+The web UI provides paginated and sortable browsing, filter chips, cover thumbnails, a responsive mobile card layout, per-book detail and edit pages, a "search active providers" flow that lets you apply candidate metadata with a side-by-side diff, and inline delete. When you apply a candidate, its cover image (if the provider offers one) is fetched and embedded into the non-destructive EPUB copy alongside the text fields; a cover-fetch failure is non-fatal — the text metadata still applies and the result message notes the cover was skipped.
 
 ### Device sync
 
