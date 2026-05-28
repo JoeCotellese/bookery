@@ -1,0 +1,33 @@
+{# ABOUTME: Recoverable error panel for the apply-candidate flow when a candidate can't load. #}
+{# ABOUTME: Shown instead of a 404 when the provider is unreachable or the candidate drifted (#234). #}
+{% include "_book_subhead.html" %}
+<section class="enrich-candidate-error" aria-labelledby="enrich-candidate-error-heading">
+    <header class="enrich-diff-header">
+        <h3 id="enrich-candidate-error-heading">Couldn't load this candidate</h3>
+    </header>
+    <p class="enrich-candidate-error-message">
+        The provider may be temporarily unavailable, or this result changed since
+        you searched. Your other results are still here — try again or go back to
+        the list.
+    </p>
+
+    <div class="enrich-diff-actions" role="group" aria-label="Recovery actions">
+        <button type="button"
+                class="btn btn-secondary"
+                hx-get="{{ url_for('web.enrich_candidate', book_id=book.id, provider=provider_name, isbn=dispatch_isbn or none, url=dispatch_url or none, title=dispatch_title or none, author=dispatch_author or none, candidate_id=candidate_id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Try again</button>
+
+        <button type="button"
+                class="btn btn-secondary"
+                hx-get="{{ url_for('web.enrich_form', book_id=book.id, isbn=dispatch_isbn or none, title=dispatch_title or none, author=dispatch_author or none) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Back to results</button>
+
+        <button type="button"
+                class="btn btn-muted"
+                hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
+                hx-target="#book-content"
+                hx-swap="innerHTML">Cancel</button>
+    </div>
+</section>
