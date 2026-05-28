@@ -82,7 +82,7 @@ def convert(
     auto_accept: bool,
     threshold: float,
 ) -> None:
-    """Convert MOBI files to EPUB format."""
+    """Convert MOBI files to EPUB format (single file or directory)."""
     console = Console()
 
     if output_dir is None:

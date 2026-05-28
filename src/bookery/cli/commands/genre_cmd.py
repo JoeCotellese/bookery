@@ -50,7 +50,7 @@ def genre_ls(db_path: Path | None) -> None:
 @click.option("--primary", is_flag=True, help="Set as the primary genre.")
 @db_option
 def genre_assign(book_id: int, genre_name: str, primary: bool, db_path: Path | None) -> None:
-    """Assign a genre to a book."""
+    """Assign a genre to a cataloged book by ID."""
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 

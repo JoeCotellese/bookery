@@ -82,8 +82,8 @@ bumping `prompt_version` invalidates only stale entries.
 ## Quick Start
 
 ```bash
-# Inspect a single EPUB
-bookery inspect ~/Books/some-book.epub
+# Inspect a single EPUB (loose file on disk)
+bookery info ~/Books/some-book.epub
 
 # Scan a directory and report format coverage
 bookery inventory ~/Books/
@@ -135,8 +135,7 @@ bookery info 42
 
 | Command | Description |
 |---------|-------------|
-| `inspect <file>` | Show metadata extracted from an EPUB file |
-| `match <path> -o <dir>` | Match EPUBs against Open Library and write corrected copies |
+| `match <path> -o <dir>` | Match metadata for loose EPUB files (not yet in the catalog) and write corrected copies |
 | `rematch [book_id]` | Re-run matching on cataloged books and update the database |
 
 ### Conversion
@@ -154,7 +153,7 @@ bookery info 42
 | `remove <id>...` | Delete one or more books from the catalog and disk (`-y` skips prompt; `--keep-file` keeps the file) |
 | `prune` | Remove catalog rows whose underlying files are missing |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |
-| `info <id>` | Show detailed metadata for a book by ID (`--provenance`, `--set field=value`, `--lock field`, `--unlock field`) |
+| `info <id-or-path>` | Show metadata for a cataloged book by ID, or for a loose EPUB on disk. Catalog mode supports `--provenance`, `--set field=value`, `--lock field`, `--unlock field`. `inspect` is a deprecated alias. |
 | `search <query>` | Search the catalog by title, author, or description |
 | `inventory <path>` | Scan a directory tree and report ebook format coverage |
 | `reveal <query>` | Open the on-disk folder for a book (`--print` to print the path instead). `folder` is a deprecated alias. |

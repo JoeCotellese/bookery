@@ -96,7 +96,12 @@ def match(
     resume: bool,
     no_cache: bool,
 ) -> None:
-    """Match EPUB metadata against Open Library and write corrected copies."""
+    """Match metadata for loose EPUB files (not yet in the catalog).
+
+    Searches Open Library for the best metadata match and writes corrected
+    copies to the output directory. Use ``rematch`` to re-run matching on
+    books already in the catalog.
+    """
     console = Console()
 
     if output_dir is None:

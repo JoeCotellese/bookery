@@ -24,7 +24,7 @@ def tag() -> None:
 @click.argument("tag_name")
 @db_option
 def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
-    """Add a tag to a book."""
+    """Add a tag to a cataloged book by ID."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
@@ -51,7 +51,7 @@ def tag_add(book_id: int, tag_name: str, db_path: Path | None) -> None:
 @click.argument("tag_name")
 @db_option
 def tag_rm(book_id: int, tag_name: str, db_path: Path | None) -> None:
-    """Remove a tag from a book."""
+    """Remove a tag from a cataloged book by ID."""
     # TODO: wrap conn in try-finally or context manager to prevent leak on exception
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
