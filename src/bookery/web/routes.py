@@ -1,6 +1,7 @@
 # ABOUTME: Flask blueprint with route handlers for the Bookery web UI.
 # ABOUTME: Handles book listing, detail view, search, and inline editing with htmx support.
 
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from flask import (
 )
 
 from bookery.core.config import get_library_root
+from bookery.core.coverfetch import fetch_cover_image
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
 from bookery.core.pipeline import apply_metadata_safely
 from bookery.core.remove import remove_book
@@ -27,8 +29,10 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
 from bookery.web.browse import BrowsePage, from_request_args
-from bookery.web.covers import get_or_extract_cover
+from bookery.web.covers import get_or_extract_cover, invalidate_cover
 from bookery.web.diff import metadata_diff
+
+logger = logging.getLogger(__name__)
 
 _STATUS_FROM_FORM: dict[str, int] = {
     "unread": STATUS_UNREAD,
@@ -879,7 +883,25 @@ def enrich_apply(book_id):
     output_dir = book.output_path.parent if book.output_path is not None else source.parent
 
     proposed = candidate.metadata
-    write_result = apply_metadata_safely(source, proposed, output_dir)
+
+    # Fetch the candidate's cover (if any) so it lands in the same atomic write
+    # as the text fields. A cover fetch failure is non-fatal: the text metadata
+    # still applies, and we note the skipped cover in the success flash.
+    cover_image: bytes | None = None
+    cover_skipped = False
+    if proposed.cover_url:
+        cover_image = fetch_cover_image(proposed.cover_url)
+        if cover_image is None:
+            cover_skipped = True
+            logger.warning(
+                "enrich_apply: cover fetch failed for book %s from %s",
+                book_id,
+                proposed.cover_url,
+            )
+
+    write_result = apply_metadata_safely(
+        source, proposed, output_dir, cover_image=cover_image
+    )
     if not write_result.success or write_result.path is None:
         flash(
             f"Apply failed: {write_result.error or 'unknown error'}",
@@ -931,10 +953,15 @@ def enrich_apply(book_id):
     catalog.set_output_path(book_id, write_result.path)
     catalog.set_matched_at(book_id)
 
-    flash(
-        f'Applied "{proposed.title}" from {provider.name}',
-        "success",
-    )
+    # The rewritten copy is a new file (collision-resolved name) and, when a
+    # cover was embedded, different bytes. Drop the stale on-disk cover cache so
+    # the next GET /books/<id>/cover re-extracts from the new file.
+    invalidate_cover(get_library_root(), book_id)
+
+    message = f'Applied "{proposed.title}" from {provider.name}'
+    if cover_skipped:
+        message += " (cover could not be fetched and was skipped)"
+    flash(message, "success")
     response = make_response("", 200)
     response.headers["HX-Redirect"] = detail_url
     return response

@@ -64,6 +64,25 @@ def _find_cached(library_root: Path, book_id: int) -> tuple[bytes, str] | None:
     return None
 
 
+def invalidate_cover(library_root: Path, book_id: int) -> None:
+    """Drop any on-disk cached cover for ``book_id``.
+
+    Covers are cached by book id under ``<library_root>/.covers/<id>.<ext>``.
+    After a write that changes the underlying cover (e.g. enrich-apply embeds a
+    new cover into a fresh EPUB copy), the stale cache entry would otherwise be
+    served on the next request. Removing it forces a re-extract from the new
+    file. Best-effort: a missing cache or unlinkable file is not an error.
+    """
+    cache = library_root / ".covers"
+    if not cache.exists():
+        return
+    for ext in _EXTENSION_FOR_CONTENT_TYPE.values():
+        path = cache / f"{book_id}{ext}"
+        with contextlib.suppress(OSError):
+            if path.exists():
+                path.unlink()
+
+
 def get_or_extract_cover(
     book_id: int,
     epub_path: Path | None,

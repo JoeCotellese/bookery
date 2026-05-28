@@ -123,6 +123,82 @@ class TestCoverRoute:
         assert response.content_type.startswith("image/jpeg")
 
 
+def _epub_without_cover(path: Path) -> Path:
+    book = epub.EpubBook()
+    book.set_identifier("no-cover-fixture")
+    book.set_title("No Cover Fixture")
+    book.set_language("en")
+    book.add_author("Test Author")
+    chapter = epub.EpubHtml(title="Chapter 1", file_name="chap01.xhtml", lang="en")
+    chapter.content = b"<html><body><p>x</p></body></html>"
+    book.add_item(chapter)
+    book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", chapter]
+    epub.write_epub(str(path), book)
+    return path
+
+
+class TestEnrichAppliedCoverServedEndToEnd:
+    """End-to-end: applying a candidate cover makes /cover serve the new bytes.
+
+    Uses the real apply_metadata_safely write (only the network fetch is
+    mocked) so the cover route picks up the embedded cover from the rewritten
+    EPUB on the next request — verifying cache invalidation closes the loop.
+    """
+
+    def test_cover_route_serves_applied_cover(
+        self, mock_catalog, client, library_root: Path
+    ) -> None:
+        from unittest.mock import patch
+
+        from tests.web.conftest import make_candidate
+
+        # A cover-less book living inside the library root.
+        epub_path = _epub_without_cover(library_root / "book.epub")
+        book = make_book(1, source_path=epub_path, output_path=epub_path)
+        mock_catalog.get_by_id.return_value = book
+
+        # Before apply: the cover route serves the placeholder SVG.
+        before = client.get("/books/1/cover")
+        assert before.content_type.startswith("image/svg+xml")
+
+        fetched_jpeg = b"\xff\xd8\xff\xe0" + b"applied-cover" * 16
+        candidate = make_candidate(
+            title="Dune", authors=["Frank Herbert"], source="Open Library", source_id="OL:1"
+        )
+        candidate.metadata.cover_url = "https://example/cover.jpg"
+
+        provider = type("P", (), {"name": "Open Library"})()
+        with (
+            patch("bookery.web.routes.fetch_cover_image", return_value=fetched_jpeg),
+            patch("bookery.web.routes._find_provider_by_name", return_value=provider),
+            patch("bookery.web.routes._refetch_candidate", return_value=[candidate]),
+        ):
+            apply_response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        assert apply_response.headers.get("HX-Redirect") == "/books/1"
+
+        # The real write produced a new file; point the catalog at it so the
+        # cover route reads the rewritten copy (mirrors set_output_path).
+        written_path = mock_catalog.set_output_path.call_args.args[1]
+        book.output_path = written_path
+        mock_catalog.get_by_id.return_value = book
+
+        after = client.get("/books/1/cover")
+        assert after.status_code == 200
+        assert after.content_type.startswith("image/jpeg")
+        assert after.data == fetched_jpeg
+
+
 class TestListThumbnail:
     def test_list_renders_lazy_loading_thumbnail_per_book(self, mock_catalog, client) -> None:
         mock_catalog.browse.return_value = (

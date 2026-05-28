@@ -202,3 +202,48 @@ class TestWriteEpubMetadata:
         assert re_read.authors == ["Umberto Eco"]
         assert re_read.publisher == "Harcourt"
         assert re_read.description == "A mystery set in a medieval monastery."
+
+
+_JPEG_COVER = b"\xff\xd8\xff\xe0" + b"new-cover-bytes" * 8
+_PNG_COVER = b"\x89PNG\r\n\x1a\n" + b"png-cover-bytes" * 8
+
+
+class TestWriteEpubCover:
+    """Tests for embedding a cover image during the metadata write."""
+
+    def test_embeds_cover_when_book_has_none(self, sample_epub: Path) -> None:
+        """A book imported without a cover gets the candidate's cover embedded."""
+        # sample_epub has no cover image to start.
+        assert read_epub_metadata(sample_epub).cover_image is None
+
+        updated = BookMetadata(title="With Cover", cover_image=_JPEG_COVER)
+        write_epub_metadata(sample_epub, updated)
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.cover_image == _JPEG_COVER
+
+    def test_replaces_existing_cover(self, sample_epub: Path) -> None:
+        """Writing a cover onto a book that already has one swaps the bytes."""
+        write_epub_metadata(sample_epub, BookMetadata(title="First", cover_image=_JPEG_COVER))
+        assert read_epub_metadata(sample_epub).cover_image == _JPEG_COVER
+
+        write_epub_metadata(sample_epub, BookMetadata(title="Second", cover_image=_PNG_COVER))
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.cover_image == _PNG_COVER
+
+    def test_no_cover_bytes_leaves_book_coverless(self, sample_epub: Path) -> None:
+        """Omitting cover bytes preserves the prior (cover-less) state."""
+        updated = BookMetadata(title="No Cover", cover_image=None)
+        write_epub_metadata(sample_epub, updated)
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.cover_image is None
+
+    def test_rewritten_epub_opens_cleanly(self, sample_epub: Path) -> None:
+        """The cover-rewritten EPUB re-reads without error (opens in a reader)."""
+        write_epub_metadata(sample_epub, BookMetadata(title="Readable", cover_image=_JPEG_COVER))
+
+        # read_epub_metadata raises EpubReadError on a structurally broken file.
+        meta = read_epub_metadata(sample_epub)
+        assert meta.title == "Readable"
+        assert meta.cover_image == _JPEG_COVER

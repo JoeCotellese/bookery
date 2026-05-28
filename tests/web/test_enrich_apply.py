@@ -974,3 +974,157 @@ class TestEnrichDiffSkipClearRendering:
         assert "diff-clear" in html
         # User-visible note explaining the skipped clear.
         assert "current kept" in html.lower()
+
+
+# --- cover fetch + embed on apply (issue #200) ------------------------------
+
+
+_COVER_JPEG = b"\xff\xd8\xff\xe0" + b"candidate-cover" * 8
+
+
+class TestEnrichApplyCover:
+    """Apply fetches the candidate cover and embeds it; failures are non-fatal."""
+
+    def _candidate_with_cover(self, cover_url: str | None) -> MetadataCandidate:
+        return MetadataCandidate(
+            metadata=BookMetadata(
+                title="Dune",
+                authors=["Frank Herbert"],
+                isbn="9780441172719",
+                cover_url=cover_url,
+            ),
+            confidence=0.9,
+            source="Open Library",
+            source_id="OL:1",
+        )
+
+    def test_fetched_cover_passed_to_write_helper(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        open_library.by_isbn = [self._candidate_with_cover("https://example/cover.jpg")]
+        dest = tmp_path / "out.epub"
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image", return_value=_COVER_JPEG) as mock_fetch,
+            patch("bookery.web.routes.invalidate_cover") as mock_invalidate,
+        ):
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        mock_fetch.assert_called_once_with("https://example/cover.jpg")
+        # Cover bytes flow into apply_metadata_safely as the cover_image kwarg.
+        _, kwargs = mock_apply.call_args
+        assert kwargs.get("cover_image") == _COVER_JPEG
+        # Cache invalidated so the next /cover request re-extracts the new file.
+        mock_invalidate.assert_called_once()
+
+    def test_no_cover_url_skips_fetch(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+        open_library.by_isbn = [self._candidate_with_cover(None)]
+        dest = tmp_path / "out.epub"
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image") as mock_fetch,
+            patch("bookery.web.routes.invalidate_cover"),
+        ):
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        # No cover_url → no network fetch, no cover_image passed through.
+        mock_fetch.assert_not_called()
+        _, kwargs = mock_apply.call_args
+        assert kwargs.get("cover_image") is None
+
+    def test_cover_fetch_failure_is_non_fatal_and_flashed(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", source_path=source)
+        open_library.by_isbn = [self._candidate_with_cover("https://example/cover.jpg")]
+        dest = tmp_path / "out.epub"
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image", return_value=None),
+            patch("bookery.web.routes.invalidate_cover"),
+        ):
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            response = client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        # Text apply still proceeds: write called with no cover, catalog updated.
+        mock_apply.assert_called_once()
+        _, kwargs = mock_apply.call_args
+        assert kwargs.get("cover_image") is None
+        mock_catalog.update_book.assert_called_once()
+        assert response.headers.get("HX-Redirect") == "/books/1"
+
+        # A flash surfaces the skipped cover non-fatally (success category).
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        categories = [c for c, _ in flashes]
+        messages = [m for _, m in flashes]
+        assert "success" in categories
+        assert any("cover" in m.lower() for m in messages)
+        # The apply itself is not reported as a failure.
+        assert "error" not in categories
+
+    def test_successful_cover_flash_does_not_warn(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", source_path=source)
+        open_library.by_isbn = [self._candidate_with_cover("https://example/cover.jpg")]
+        dest = tmp_path / "out.epub"
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image", return_value=_COVER_JPEG),
+            patch("bookery.web.routes.invalidate_cover"),
+        ):
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        messages = [m for _, m in flashes]
+        # Happy path flash should not mention a skipped cover.
+        assert not any("skip" in m.lower() for m in messages)

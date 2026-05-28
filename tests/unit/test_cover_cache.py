@@ -10,6 +10,7 @@ from bookery.web.covers import (
     PLACEHOLDER_CONTENT_TYPE,
     PLACEHOLDER_SVG,
     get_or_extract_cover,
+    invalidate_cover,
 )
 
 
@@ -148,3 +149,31 @@ class TestGetOrExtractCover:
         assert data.startswith(b"\x89PNG")
         # Cache extension matches the media type for browser-friendliness.
         assert (library_root / ".covers" / "99.png").exists()
+
+
+class TestInvalidateCover:
+    def test_removes_cached_entry(self, tmp_path: Path, epub_path: Path) -> None:
+        library_root = tmp_path / "library"
+        library_root.mkdir()
+        get_or_extract_cover(book_id=5, epub_path=epub_path, library_root=library_root)
+        cached = library_root / ".covers" / "5.jpg"
+        assert cached.exists()
+
+        invalidate_cover(library_root, 5)
+        assert not cached.exists()
+
+    def test_no_error_when_nothing_cached(self, tmp_path: Path) -> None:
+        library_root = tmp_path / "library"
+        library_root.mkdir()
+        # Should be a quiet no-op even with no .covers directory.
+        invalidate_cover(library_root, 123)
+
+    def test_only_removes_target_book(self, tmp_path: Path, epub_path: Path) -> None:
+        library_root = tmp_path / "library"
+        library_root.mkdir()
+        get_or_extract_cover(book_id=1, epub_path=epub_path, library_root=library_root)
+        get_or_extract_cover(book_id=2, epub_path=epub_path, library_root=library_root)
+
+        invalidate_cover(library_root, 1)
+        assert not (library_root / ".covers" / "1.jpg").exists()
+        assert (library_root / ".covers" / "2.jpg").exists()

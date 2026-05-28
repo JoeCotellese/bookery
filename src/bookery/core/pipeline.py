@@ -2,7 +2,7 @@
 # ABOUTME: Copies EPUB to output directory then writes updated metadata to the copy.
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bookery.core.filecopy import copy_file
@@ -105,7 +105,11 @@ def _cleanup_dest(dest: Path) -> None:
 
 
 def apply_metadata_safely(
-    source: Path, metadata: BookMetadata, output_dir: Path
+    source: Path,
+    metadata: BookMetadata,
+    output_dir: Path,
+    *,
+    cover_image: bytes | None = None,
 ) -> WriteResult:
     """Copy an EPUB to output_dir and write updated metadata to the copy.
 
@@ -118,6 +122,10 @@ def apply_metadata_safely(
         source: Path to the original EPUB file.
         metadata: BookMetadata to write to the copy.
         output_dir: Directory to place the modified copy.
+        cover_image: Optional cover image bytes to embed in the same write.
+            When supplied, it overrides any ``metadata.cover_image`` so callers
+            can fetch a candidate cover lazily and pass it through without
+            mutating the candidate's metadata. ``None`` leaves the cover as-is.
 
     Returns:
         WriteResult with path, success flag, and verification details.
@@ -128,6 +136,10 @@ def apply_metadata_safely(
 
     logger.debug("apply_metadata_safely: copying %s -> %s", source.name, dest)
     copy_file(source, dest)
+
+    # Embed the supplied cover (if any) in the same write as the text fields.
+    if cover_image is not None:
+        metadata = replace(metadata, cover_image=cover_image)
 
     # Write metadata to the copy
     try:
