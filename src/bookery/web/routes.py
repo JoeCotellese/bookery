@@ -798,9 +798,7 @@ def enrich_candidate(book_id):
     provider = _find_provider_by_name(provider_name)
     candidate = None
     if provider is not None:
-        candidates = _refetch_candidate(
-            provider, isbn=isbn, url=url, title=title, author=author
-        )
+        candidates = _refetch_candidate(provider, isbn=isbn, url=url, title=title, author=author)
         candidate = _find_candidate(candidates, candidate_id)
 
     if candidate is None:
@@ -914,8 +912,7 @@ def enrich_apply(book_id):
         # selection. Don't 404 a confirmed Apply — flash and bounce back to the
         # detail page so the user can retry from a clean state (#234).
         flash(
-            "Could not apply: the selected candidate is no longer available — "
-            "search again.",
+            "Could not apply: the selected candidate is no longer available — search again.",
             "error",
         )
         response = make_response("", 200)

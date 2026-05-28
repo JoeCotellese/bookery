@@ -82,15 +82,13 @@ class TestDeserializeFailsSafe:
 
     def test_missing_title_returns_none(self):
         payload = (
-            '{"confidence": 0.5, "source": "x", "source_id": "1", '
-            '"metadata": {"authors": ["A"]}}'
+            '{"confidence": 0.5, "source": "x", "source_id": "1", "metadata": {"authors": ["A"]}}'
         )
         assert deserialize_candidate(payload) is None
 
     def test_out_of_range_confidence_returns_none(self):
         payload = (
-            '{"confidence": 1.5, "source": "x", "source_id": "1", '
-            '"metadata": {"title": "T"}}'
+            '{"confidence": 1.5, "source": "x", "source_id": "1", "metadata": {"title": "T"}}'
         )
         assert deserialize_candidate(payload) is None
 

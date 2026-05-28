@@ -17,9 +17,7 @@ from tests.web.conftest import FakeProvider, make_book, make_candidate
 
 def _extract_payload(html_text: str) -> str | None:
     """Pull the hidden candidate_payload value out of rendered Apply-form HTML."""
-    match = re.search(
-        r'name="candidate_payload"\s+value="([^"]*)"', html_text
-    )
+    match = re.search(r'name="candidate_payload"\s+value="([^"]*)"', html_text)
     return html.unescape(match.group(1)) if match else None
 
 
