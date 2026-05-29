@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}{{ collection.name }} - Bookery{% endblock %}
+
+{% block content %}
+<div class="collection-detail">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ url_for('web.collections_list') }}">&larr; Back to collections</a>
+    </nav>
+
+    <div id="collection-content" aria-live="polite">
+        {% include "_collection_detail.html" %}
+    </div>
+</div>
+{% endblock %}
