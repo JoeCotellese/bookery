@@ -233,6 +233,7 @@ def book_detail(book_id):
 
     tags = catalog.get_tags_for_book(book_id)
     genres = catalog.get_genres_for_book(book_id)
+    collections = catalog.get_collections_for_book(book_id)
     file_info = _file_context(book)
     return_to = _safe_return_to(request.args.get("return_to"))
     book_status = catalog.get_book_status(book_id)
@@ -245,6 +246,7 @@ def book_detail(book_id):
             book=book,
             tags=tags,
             genres=genres,
+            collections=collections,
             file_info=file_info,
             return_to=return_to,
             book_status=book_status,
@@ -257,6 +259,7 @@ def book_detail(book_id):
         book=book,
         tags=tags,
         genres=genres,
+        collections=collections,
         file_info=file_info,
         return_to=return_to,
         book_status=book_status,
@@ -1031,3 +1034,153 @@ def enrich_apply(book_id):
         message += " (cover could not be fetched and was skipped)"
     flash(message, "success")
     return _hx_redirect(detail_url)
+
+
+# --- Collection routes ------------------------------------------------
+
+@bp.route("/collections")
+def collections_list():
+    """List all collections."""
+    catalog = current_app.config["CATALOG"]
+    collections = catalog.list_collections()
+
+    if request.headers.get("HX-Request"):
+        return render_template("_collections_list.html", collections=collections)
+
+    return render_template("collections_list.html", collections=collections)
+
+
+@bp.route("/collections/<int:collection_id>")
+def collection_detail(collection_id):
+    """Show a collection and its books."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    books = catalog.get_collection_books(collection_id)
+
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "_collection_detail.html",
+            collection=collection,
+            books=books,
+        )
+
+    return render_template(
+        "collection_detail.html",
+        collection=collection,
+        books=books,
+    )
+
+
+@bp.route("/collections/<int:collection_id>/add-books", methods=["POST"])
+def collection_add_books(collection_id):
+    """Add books to a collection from the detail page."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    raw_ids = request.form.getlist("book_ids")
+    if not raw_ids:
+        flash("No books selected.", "warning")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+    try:
+        book_ids = [int(bid) for bid in raw_ids]
+    except (TypeError, ValueError):
+        flash("Invalid book IDs.", "error")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+    try:
+        catalog.add_books_to_collection(collection_id, book_ids)
+        flash(f"Added {len(book_ids)} book(s) to collection.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+
+@bp.route("/collections/<int:collection_id>/remove-book/<int:book_id>", methods=["POST"])
+def collection_remove_book(collection_id, book_id):
+    """Remove a single book from a collection."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    try:
+        catalog.remove_books_from_collection(collection_id, [book_id])
+        flash("Book removed from collection.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+
+@bp.route("/collections/create", methods=["POST"])
+def collection_create():
+    """Create a new collection."""
+    catalog = current_app.config["CATALOG"]
+
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip() or None
+
+    if not name:
+        flash("Collection name is required.", "error")
+        return redirect(url_for("web.collections_list"))
+
+    try:
+        collection_id = catalog.create_collection(name, description)
+        flash(f'Created collection "{name}".', "success")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+    except Exception as exc:
+        flash(f"Failed to create collection: {exc}", "error")
+        return redirect(url_for("web.collections_list"))
+
+
+@bp.route("/collections/<int:collection_id>/delete", methods=["POST"])
+def collection_delete(collection_id):
+    """Delete a collection."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    name = collection["name"]
+
+    try:
+        catalog.delete_collection(collection_id)
+        flash(f'Deleted collection "{name}".', "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("web.collections_list"))
+
+
+@bp.route("/collections/<int:collection_id>/rename", methods=["POST"])
+def collection_rename(collection_id):
+    """Rename a collection."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    new_name = request.form.get("name", "").strip()
+    if not new_name:
+        flash("Collection name is required.", "error")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+    try:
+        catalog.rename_collection(collection_id, new_name)
+        flash(f'Renamed collection to "{new_name}".', "success")
+    except Exception as exc:
+        flash(f"Failed to rename collection: {exc}", "error")
+
+    return redirect(url_for("web.collection_detail", collection_id=collection_id))

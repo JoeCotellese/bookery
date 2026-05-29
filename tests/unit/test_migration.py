@@ -24,7 +24,7 @@ class TestMigrations:
         conn = open_library(db_path)
         version = _get_schema_version(conn)
         conn.close()
-        assert version == 10
+        assert version == 11
 
     def test_migrations_list_is_ordered(self) -> None:
         """MIGRATIONS list has strictly increasing version numbers."""
@@ -126,7 +126,7 @@ class TestMigrations:
         # Now open with bookery — should auto-migrate
         conn = open_library(db_path)
         version = _get_schema_version(conn)
-        assert version == 10
+        assert version == 11
 
         # Tags table should exist
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")
@@ -154,4 +154,76 @@ class TestMigrations:
         row = cursor.fetchone()
         assert row is not None
         assert row[0] == "Preserved Book"
+        conn.close()
+
+    def test_migration_creates_collections_table(self, db_path: Path) -> None:
+        """V11 migration creates the collections table."""
+        conn = open_library(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='collections'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_migration_creates_collection_books_table(self, db_path: Path) -> None:
+        """V11 migration creates the collection_books table."""
+        conn = open_library(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='collection_books'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_collections_name_has_nocase_collation(self, db_path: Path) -> None:
+        """Collections name column uses NOCASE collation to prevent duplicates."""
+        conn = open_library(db_path)
+        conn.execute("INSERT INTO collections (name, description) VALUES ('Favorites', 'My favs')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO collections (name, description) VALUES ('favorites', 'Duplicate')"
+            )
+        conn.close()
+
+    def test_collection_books_cascade_on_collection_delete(self, db_path: Path) -> None:
+        """Deleting a collection cascades to remove collection_books associations."""
+        conn = open_library(db_path)
+        conn.execute(
+            "INSERT INTO books (title, source_path, file_hash) "
+            "VALUES ('Test Book', '/tmp/t.epub', 'hash1')"
+        )
+        conn.execute(
+            "INSERT INTO collections (name, description) VALUES ('Test Collection', 'Test')"
+        )
+        conn.execute(
+            "INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)"
+        )
+        conn.commit()
+
+        conn.execute("DELETE FROM collections WHERE id = 1")
+        conn.commit()
+
+        cursor = conn.execute("SELECT COUNT(*) FROM collection_books")
+        assert cursor.fetchone()[0] == 0
+        conn.close()
+
+    def test_collection_books_cascade_on_book_delete(self, db_path: Path) -> None:
+        """Deleting a book cascades to remove collection_books associations."""
+        conn = open_library(db_path)
+        conn.execute(
+            "INSERT INTO books (title, source_path, file_hash) "
+            "VALUES ('Test Book', '/tmp/t.epub', 'hash1')"
+        )
+        conn.execute(
+            "INSERT INTO collections (name, description) VALUES ('Test Collection', 'Test')"
+        )
+        conn.execute(
+            "INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)"
+        )
+        conn.commit()
+
+        conn.execute("DELETE FROM books WHERE id = 1")
+        conn.commit()
+
+        cursor = conn.execute("SELECT COUNT(*) FROM collection_books")
+        assert cursor.fetchone()[0] == 0
         conn.close()

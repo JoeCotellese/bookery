@@ -1,6 +1,6 @@
-{# ABOUTME: Detail classification partial — tags and genres. #}
+{# ABOUTME: Detail classification partial — tags, genres, and collections. #}
 {# ABOUTME: Primary genres render first, marked with a primary badge. #}
-{% if tags or genres %}
+{% if tags or genres or collections %}
 <section class="section" aria-labelledby="detail-classification">
     <h2 id="detail-classification">Classification</h2>
     {% if tags %}
@@ -19,6 +19,16 @@
         <ul>
             {% for name, is_primary in genres|sort(attribute=1, reverse=true) %}
             <li>{{ name }}{% if is_primary %} <span class="primary-badge">(primary)</span>{% endif %}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% if collections %}
+    <div class="collections">
+        <h3>Collections</h3>
+        <ul>
+            {% for collection in collections %}
+            <li><a href="{{ url_for('web.collection_detail', collection_id=collection.id) }}">{{ collection.name }}</a></li>
             {% endfor %}
         </ul>
     </div>
