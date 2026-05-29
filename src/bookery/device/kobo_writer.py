@@ -6,6 +6,7 @@
 # firmware 4.45.23684, 2026-05-26. ContentID format and writable columns below
 # were validated against a real device.
 
+import json
 import logging
 import sqlite3
 from collections.abc import Callable
@@ -50,6 +51,28 @@ class PushReport:
 
     pushed_count: int = 0
     pull_only_count: int = 0
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionShelfUpdate:
+    """One collection shelf to sync to the device.
+
+    ``shelf_id`` is a UUID-style string used as ContentListID.
+    ``shelf_name`` is the collection name displayed on device.
+    ``content_ids`` are the ContentIDs of books in this shelf.
+    """
+
+    shelf_id: str
+    shelf_name: str
+    content_ids: list[str]
+
+
+@dataclass
+class ShelfPushReport:
+    """Outcome of a ``write_collection_shelves`` batch."""
+
+    pushed_count: int = 0
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -154,6 +177,93 @@ def push_read_status(
             report.pull_only_count = 0
             report.failed = [(upd.content_id, str(exc)) for upd in updates]
             return report
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    return report
+
+
+def write_collection_shelves(
+    *,
+    db_path: Path,
+    updates: list[CollectionShelfUpdate],
+    now: Callable[[], str],
+) -> ShelfPushReport:
+    """Write collection shelves to the Kobo ContentList table.
+
+    Kobo shelves are stored in the ContentList table with:
+    - ContentListID: a UUID-style string
+    - ListName: the shelf name (collection name)
+    - ListType: 'UserShelf'
+    - ContentIDList: JSON-encoded list of ContentIDs
+    - ___UserID: user identifier (we use 'user' as placeholder)
+    - ___SyncTime: timestamp for sync tracking
+    - DateCreated: creation timestamp
+    - DateModified: modification timestamp
+
+    This function replaces existing shelves with the same ContentListID,
+    adds new shelves, and removes shelves that are no longer in the updates
+    list (but only for this device session - we don't have a full sync
+    mechanism yet).
+
+    Returns a report of pushed shelves and any failures.
+    """
+    report = ShelfPushReport()
+    if not updates:
+        return report
+
+    timestamp = now()
+    conn = open_kobo_db_rw(db_path)
+    try:
+        conn.execute("BEGIN")
+        try:
+            # Delete existing user shelves that we're about to update
+            # (avoids stale entries and orphaned books)
+            shelf_ids = [upd.shelf_id for upd in updates]
+            placeholders = ",".join("?" * len(shelf_ids))
+            conn.execute(
+                f"""
+                DELETE FROM ContentList
+                WHERE ListType = 'UserShelf'
+                AND ContentListID IN ({placeholders})
+                """,
+                shelf_ids,
+            )
+
+            # Insert new shelf records
+            for upd in updates:
+                content_id_list = json.dumps(upd.content_ids)
+                conn.execute(
+                    """
+                    INSERT INTO ContentList (
+                        ContentListID, ListName, ListType,
+                        ContentIDList, ___UserID, ___SyncTime,
+                        DateCreated, DateModified
+                    )
+                    VALUES (?, ?, 'UserShelf', ?, 'user', ?, ?, ?)
+                    """,
+                    (
+                        upd.shelf_id,
+                        upd.shelf_name,
+                        content_id_list,
+                        timestamp,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                report.pushed_count += 1
+
+        except sqlite3.Error as exc:
+            conn.execute("ROLLBACK")
+            logger.warning(
+                "Collection shelf push failed; rolling back batch of %d shelf(s): %s",
+                len(updates),
+                exc,
+            )
+            report.pushed_count = 0
+            report.failed = [(upd.shelf_id, str(exc)) for upd in updates]
+            return report
+
         conn.execute("COMMIT")
     finally:
         conn.close()

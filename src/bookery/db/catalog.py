@@ -903,6 +903,26 @@ class LibraryCatalog:
         ).fetchone()
         return int(row["book_id"]) if row is not None else None
 
+    def list_devices(self) -> list[dict[str, object]]:
+        """Return all registered devices ordered by last seen."""
+        cursor = self._conn.execute(
+            """
+            SELECT id, kind, serial, label, last_seen_at
+            FROM devices
+            ORDER BY last_seen_at DESC
+            """
+        )
+        return [
+            {
+                "id": int(row["id"]),
+                "kind": str(row["kind"]),
+                "serial": str(row["serial"]),
+                "label": row["label"],
+                "last_seen_at": str(row["last_seen_at"]),
+            }
+            for row in cursor.fetchall()
+        ]
+
     def upsert_device_read_state(
         self,
         *,
@@ -1171,8 +1191,7 @@ class LibraryCatalog:
             return False
         catalog_ts = str(catalog_row["updated_at"])
         device_row = self._conn.execute(
-            "SELECT MAX(status_updated_at) AS latest "
-            "FROM device_read_state WHERE book_id = ?",
+            "SELECT MAX(status_updated_at) AS latest FROM device_read_state WHERE book_id = ?",
             (book_id,),
         ).fetchone()
         if device_row is None or device_row["latest"] is None:
@@ -1258,5 +1277,370 @@ class LibraryCatalog:
                     else None
                 ),
             )
+            for row in cursor.fetchall()
+        ]
+
+    # --- Collection operations (SCHEMA_V11) ----------------------------
+
+    def create_collection(self, name: str, description: str | None = None) -> int:
+        """Create a new collection.
+
+        Args:
+            name: The collection name (unique, case-insensitive).
+            description: Optional description of the collection.
+
+        Returns:
+            The row ID of the inserted collection.
+
+        Raises:
+            sqlite3.IntegrityError: If a collection with this name already exists.
+        """
+        cursor = self._conn.execute(
+            "INSERT INTO collections (name, description) VALUES (?, ?)",
+            (name, description),
+        )
+        self._conn.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    def get_collection_by_id(self, collection_id: int) -> dict[str, object] | None:
+        """Retrieve a collection by its ID.
+
+        Returns:
+            Dict with collection fields, or None if not found.
+        """
+        row = self._conn.execute(
+            "SELECT id, name, description, created_at, updated_at FROM collections WHERE id = ?",
+            (collection_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def get_collection_by_name(self, name: str) -> dict[str, object] | None:
+        """Retrieve a collection by its name (case-insensitive).
+
+        Returns:
+            Dict with collection fields, or None if not found.
+        """
+        row = self._conn.execute(
+            "SELECT id, name, description, created_at, updated_at "
+            "FROM collections WHERE name = ? COLLATE NOCASE",
+            (name,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def add_books_to_collection(self, collection_id: int, book_ids: list[int]) -> None:
+        """Add books to a collection.
+
+        Args:
+            collection_id: The ID of the collection.
+            book_ids: List of book IDs to add.
+
+        Raises:
+            ValueError: If the collection or any book doesn't exist.
+        """
+        # Verify collection exists
+        if self.get_collection_by_id(collection_id) is None:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        if not book_ids:
+            return
+
+        # Verify all books exist
+        placeholders = ",".join("?" * len(book_ids))
+        cursor = self._conn.execute(
+            f"SELECT id FROM books WHERE id IN ({placeholders})",
+            book_ids,
+        )
+        existing_ids = {int(row["id"]) for row in cursor.fetchall()}
+        missing_ids = set(book_ids) - existing_ids
+        if missing_ids:
+            raise ValueError(f"Books not found: {sorted(missing_ids)}")
+
+        # Insert into junction table (ignore duplicates)
+        rows = [(collection_id, book_id) for book_id in book_ids]
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO collection_books (collection_id, book_id) VALUES (?, ?)",
+            rows,
+        )
+        self._conn.commit()
+
+    def remove_books_from_collection(self, collection_id: int, book_ids: list[int]) -> None:
+        """Remove books from a collection.
+
+        Args:
+            collection_id: The ID of the collection.
+            book_ids: List of book IDs to remove.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+        """
+        # Verify collection exists
+        if self.get_collection_by_id(collection_id) is None:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        if not book_ids:
+            return
+
+        # Delete from junction table
+        placeholders = ",".join("?" * len(book_ids))
+        self._conn.execute(
+            f"DELETE FROM collection_books WHERE collection_id = ? "
+            f"AND book_id IN ({placeholders})",
+            [collection_id, *book_ids],
+        )
+        self._conn.commit()
+
+    def list_collections(self) -> list[dict[str, object]]:
+        """List all collections with their book counts.
+
+        Returns:
+            List of dicts with collection fields plus 'book_count'.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
+                   COUNT(cb.book_id) AS book_count
+            FROM collections c
+            LEFT JOIN collection_books cb ON c.id = cb.collection_id
+            GROUP BY c.id
+            ORDER BY c.name COLLATE NOCASE
+            """
+        )
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "book_count": row["book_count"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_collection_books(self, collection_id: int) -> list[BookRecord]:
+        """Get all books in a collection, ordered by title_sort.
+
+        Args:
+            collection_id: The ID of the collection.
+
+        Returns:
+            List of BookRecords in the collection.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+        """
+        if self.get_collection_by_id(collection_id) is None:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        cursor = self._conn.execute(
+            """
+            SELECT b.* FROM books b
+            JOIN collection_books cb ON b.id = cb.book_id
+            WHERE cb.collection_id = ?
+            ORDER BY b.title_sort COLLATE NOCASE
+            """,
+            (collection_id,),
+        )
+        return [row_to_record(row) for row in cursor.fetchall()]
+
+    def delete_collection(self, collection_id: int) -> None:
+        """Delete a collection and all its book associations.
+
+        Args:
+            collection_id: The ID of the collection to delete.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+        """
+        cursor = self._conn.execute(
+            "DELETE FROM collections WHERE id = ?",
+            (collection_id,),
+        )
+        self._conn.commit()
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Collection {collection_id} not found")
+
+    def rename_collection(self, collection_id: int, new_name: str) -> None:
+        """Rename a collection.
+
+        Args:
+            collection_id: The ID of the collection to rename.
+            new_name: The new name for the collection.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+            sqlite3.IntegrityError: If a collection with the new name already exists.
+        """
+        cursor = self._conn.execute(
+            "UPDATE collections SET name = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            (new_name, collection_id),
+        )
+        self._conn.commit()
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Collection {collection_id} not found")
+
+    def get_collections_for_book(self, book_id: int) -> list[dict[str, object]]:
+        """Get all collections that a book belongs to.
+
+        Args:
+            book_id: The ID of the book.
+
+        Returns:
+            List of collection dicts the book is in, ordered by collection name.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT c.id, c.name, c.description, c.created_at, c.updated_at
+            FROM collections c
+            JOIN collection_books cb ON c.id = cb.collection_id
+            WHERE cb.book_id = ?
+            ORDER BY c.name COLLATE NOCASE
+            """,
+            (book_id,),
+        )
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    # --- Device shelf state (SCHEMA_V12) -------------------------------
+
+    def upsert_device_shelf_state(
+        self,
+        *,
+        device_id: int,
+        collection_id: int,
+        shelf_id: str,
+        shelf_name: str,
+        last_pushed_at: str,
+        book_count_on_device: int | None = None,
+    ) -> None:
+        """Persist what we last pushed for a collection shelf.
+
+        Mirrors device_read_state but for collection→shelf mappings.
+        This lets the sync track whether a shelf needs a refresh.
+        """
+        self._conn.execute(
+            """
+            INSERT INTO device_shelf_state (
+                device_id, collection_id, shelf_id, shelf_name,
+                last_pushed_at, book_count_on_device
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id, collection_id) DO UPDATE SET
+                shelf_id = excluded.shelf_id,
+                shelf_name = excluded.shelf_name,
+                last_pushed_at = excluded.last_pushed_at,
+                book_count_on_device = excluded.book_count_on_device
+            """,
+            (
+                device_id,
+                collection_id,
+                shelf_id,
+                shelf_name,
+                last_pushed_at,
+                book_count_on_device,
+            ),
+        )
+        self._conn.commit()
+
+    def get_collection_shelf_state(
+        self, device_id: int, collection_id: int
+    ) -> dict[str, object] | None:
+        """Return the last-pushed shelf state for a collection on a device."""
+        row = self._conn.execute(
+            """
+            SELECT device_id, collection_id, shelf_id, shelf_name,
+                   last_pushed_at, book_count_on_device
+            FROM device_shelf_state
+            WHERE device_id = ? AND collection_id = ?
+            """,
+            (device_id, collection_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "device_id": int(row["device_id"]),
+            "collection_id": int(row["collection_id"]),
+            "shelf_id": str(row["shelf_id"]),
+            "shelf_name": str(row["shelf_name"]),
+            "last_pushed_at": str(row["last_pushed_at"]),
+            "book_count_on_device": row["book_count_on_device"],
+        }
+
+    def delete_collection_shelf_state(self, device_id: int, collection_id: int) -> None:
+        """Remove the shelf state record for a collection on a device."""
+        self._conn.execute(
+            "DELETE FROM device_shelf_state WHERE device_id = ? AND collection_id = ?",
+            (device_id, collection_id),
+        )
+        self._conn.commit()
+
+    def list_collection_shelf_candidates(self, *, device_id: int) -> list[dict[str, object]]:
+        """Return collections that can be pushed as shelves to a device.
+
+        Returns collections that:
+        - Have at least one book synced to this device
+        - Have a shelf state record (were previously synced)
+        - Or are new collections that need initial sync
+
+        Each candidate includes collection info plus current book count on device.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT
+                c.id AS collection_id,
+                c.name,
+                c.updated_at,
+                COALESCE(dss.shelf_id, NULL) AS shelf_id,
+                COALESCE(dss.last_pushed_at, NULL) AS last_pushed_at,
+                COUNT(DISTINCT df.book_id) AS books_on_device,
+                COUNT(DISTINCT cb.book_id) AS books_in_collection
+            FROM collections c
+            JOIN collection_books cb ON c.id = cb.collection_id
+            JOIN device_files df ON cb.book_id = df.book_id AND df.device_id = ?
+            LEFT JOIN device_shelf_state dss
+                ON dss.collection_id = c.id AND dss.device_id = ?
+            GROUP BY c.id
+            ORDER BY c.name COLLATE NOCASE
+            """,
+            (device_id, device_id),
+        )
+        return [
+            {
+                "collection_id": int(row["collection_id"]),
+                "name": str(row["name"]),
+                "updated_at": str(row["updated_at"]),
+                "shelf_id": row["shelf_id"],
+                "last_pushed_at": row["last_pushed_at"],
+                "books_on_device": int(row["books_on_device"]),
+                "books_in_collection": int(row["books_in_collection"]),
+            }
             for row in cursor.fetchall()
         ]

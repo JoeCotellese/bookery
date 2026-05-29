@@ -274,6 +274,47 @@ WHERE author_sort IS NULL OR author_sort = '';
 INSERT INTO schema_version (version) VALUES (10);
 """
 
+# Static Collections — Manual Book Curation (issue #239)
+# Users can organize books into hand-picked lists. No query engine, no
+# auto-updates — just explicit membership.
+SCHEMA_V11 = """
+CREATE TABLE collections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX idx_collections_name ON collections(name);
+
+CREATE TABLE collection_books (
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    book_id       INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    PRIMARY KEY (collection_id, book_id)
+);
+CREATE INDEX idx_collection_books_book_id ON collection_books(book_id);
+
+INSERT INTO schema_version (version) VALUES (11);
+"""
+
+# V12: Device shelf state for collections sync to Kobo ContentList table
+# Mirrors what we last pushed for each collection->shelf mapping.
+SCHEMA_V12 = """
+CREATE TABLE device_shelf_state (
+    device_id          INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    collection_id      INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    shelf_id           TEXT NOT NULL,
+    shelf_name         TEXT NOT NULL,
+    last_pushed_at     TEXT NOT NULL,
+    book_count_on_device INTEGER,
+    PRIMARY KEY (device_id, collection_id)
+);
+CREATE INDEX idx_device_shelf_state_device_id ON device_shelf_state(device_id);
+CREATE INDEX idx_device_shelf_state_shelf_id ON device_shelf_state(device_id, shelf_id);
+
+INSERT INTO schema_version (version) VALUES (12);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -284,4 +325,6 @@ MIGRATIONS = [
     (8, SCHEMA_V8),
     (9, SCHEMA_V9),
     (10, SCHEMA_V10),
+    (11, SCHEMA_V11),
+    (12, SCHEMA_V12),
 ]

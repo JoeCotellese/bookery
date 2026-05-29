@@ -1,0 +1,18 @@
+{# ABOUTME: Collections list partial — rendered for both full page and htmx. #}
+{% if collections %}
+<ul class="collection-list">
+    {% for collection in collections %}
+    <li>
+        <a href="{{ url_for('web.collection_detail', collection_id=collection.id) }}">
+            {{ collection.name }}
+        </a>
+        {% if collection.description %}
+        <span class="description">— {{ collection.description }}</span>
+        {% endif %}
+        <span class="count">({{ collection.book_count }} book{% if collection.book_count != 1 %}s{% endif %})</span>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No collections yet. Create one from a book's detail page.</p>
+{% endif %}
