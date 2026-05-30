@@ -338,3 +338,8 @@ MIGRATIONS = [
     (12, SCHEMA_V12),
     (13, SCHEMA_V13),
 ]
+
+# The schema version a freshly-opened library converges to. Derived from the
+# migration chain so tests and callers track the latest version automatically
+# instead of hard-coding a number that goes stale every time a migration lands.
+LATEST_SCHEMA_VERSION = MIGRATIONS[-1][0]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import _get_schema_version, open_library
-from bookery.db.schema import MIGRATIONS, SCHEMA_V1
+from bookery.db.schema import LATEST_SCHEMA_VERSION, MIGRATIONS, SCHEMA_V1
 from bookery.metadata.types import BookMetadata
 
 
@@ -30,7 +30,7 @@ class TestMigrationLifecycle:
 
         # Step 2: Open with bookery to trigger migration
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 10
+        assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
 
         # Step 3: Verify the book survived and tags work
         catalog = LibraryCatalog(conn)
@@ -51,7 +51,7 @@ class TestMigrationLifecycle:
         # Open 3 times
         for _ in range(3):
             conn = open_library(db_path)
-            assert _get_schema_version(conn) == 10
+            assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
             conn.close()
 
         # Final open — add a book and tag it
@@ -105,7 +105,7 @@ class TestMigrationLifecycle:
 
         # Step 3: open via the library code, which applies V9.
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 10
+        assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
 
         # Step 4: verify backfill on every row.
         cursor = conn.execute("SELECT title, title_sort FROM books ORDER BY id")
@@ -165,7 +165,7 @@ class TestMigrationLifecycle:
 
         # Step 3: open via the library code, which applies V10.
         conn = open_library(db_path)
-        assert _get_schema_version(conn) == 10
+        assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
 
         # Step 4: verify backfill on every row.
         cursor = conn.execute("SELECT title, author_sort FROM books ORDER BY id")
