@@ -482,3 +482,53 @@ class TestUpdateBook:
         assert response.status_code == 200
         call_kwargs = mock_catalog.update_book.call_args[1]
         assert call_kwargs["series_index"] is None
+
+
+class TestCollectionDetail:
+    def _rule_based(self) -> dict:
+        return {
+            "id": 1,
+            "name": "Sci-Fi",
+            "description": None,
+            "query": 'genre:"Science Fiction"',
+            "created_at": "2026-01-01",
+            "updated_at": "2026-01-01",
+        }
+
+    def _static(self) -> dict:
+        return {
+            "id": 2,
+            "name": "Manual",
+            "description": None,
+            "query": None,
+            "created_at": "2026-01-01",
+            "updated_at": "2026-01-01",
+        }
+
+    def test_rule_based_shows_query_and_live_count(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = self._rule_based()
+        mock_catalog.get_collection_books.return_value = [_make_book(1, title="Foundation")]
+
+        response = client.get("/collections/1")
+        html = response.data.decode()
+
+        assert response.status_code == 200
+        assert "genre:" in html and "Science Fiction" in html
+        assert "Foundation" in html
+        assert "Matches:" in html
+
+    def test_rule_based_hides_manual_remove_controls(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = self._rule_based()
+        mock_catalog.get_collection_books.return_value = [_make_book(1, title="Foundation")]
+
+        html = client.get("/collections/1").data.decode()
+
+        assert "/remove-book/" not in html
+
+    def test_static_shows_manual_remove_controls(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = self._static()
+        mock_catalog.get_collection_books.return_value = [_make_book(1, title="Foundation")]
+
+        html = client.get("/collections/2").data.decode()
+
+        assert "/remove-book/" in html
