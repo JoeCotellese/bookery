@@ -15,13 +15,98 @@ from bookery.db.connection import open_library
 
 console = Console()
 
+# Shared cheat-sheet appended to the --help of every query-aware command
+# (create/edit/preview). The leading "\b" marks each block as no-rewrap so Click
+# keeps the example lines intact. Run `collections query-help` for the full page.
+_QUERY_EPILOG = (
+    "\b\n"
+    "Query syntax (rule-based collections):\n"
+    "  fields   id title author series genre tag language\n"
+    "           publisher subject isbn year rating added\n"
+    '  match    field:value, field:"a phrase", title:prefix*\n'
+    "  numeric  year/rating/added accept [a TO b], {a TO b}, >=, <=, >, <\n"
+    "  boolean  AND  OR  NOT  ( )   (+ require, - exclude)\n"
+    "\n"
+    "\b\n"
+    "Examples:\n"
+    "  series:Dune\n"
+    '  genre:"Science Fiction" AND year:[2020 TO *]\n'
+    "  rating:>=4\n"
+    '  author:"Ursula K. Le Guin" NOT tag:reread\n'
+    "\n"
+    "Run 'bookery collections query-help' for the full query reference."
+)
+
 
 @click.group("collections")
 def collections() -> None:
     """Manage book collections (static curation or rule-based queries)."""
 
 
-@collections.command("create")
+@collections.command("query-help")
+def collections_query_help() -> None:
+    """Show the full reference for rule-based collection query rules."""
+    console.print("[bold]Collection query reference[/bold]\n")
+
+    table = Table(title="Fields")
+    table.add_column("Field", style="cyan")
+    table.add_column("Matches")
+    table.add_column("Example")
+    # No '[' in the Example column — Rich would read it as markup. Bracketed range
+    # syntax lives in the Operators section below, printed with markup disabled.
+    field_rows = [
+        ("id", "exact, IN", "id:42"),
+        ("title", "exact, phrase, prefix*", "title:Dune*"),
+        ("author", "contains", "author:Tolkien"),
+        ("series", "exact", "series:Dune"),
+        ("genre", "exact (canonical)", 'genre:"Science Fiction"'),
+        ("tag", "exact", "tag:favorites"),
+        ("language", "exact", "language:en"),
+        ("publisher", "exact", "publisher:Tor"),
+        ("subject", "contains", "subject:dystopia"),
+        ("isbn", "exact", "isbn:9780441013593"),
+        ("year", "=, range, comparisons", "year:2020"),
+        ("rating", "=, range, comparisons", "rating:>=4"),
+        ("added", "=, range, comparisons", "added:2024-01-31"),
+    ]
+    for field, matches, example in field_rows:
+        table.add_row(field, matches, example)
+    console.print(table)
+
+    # markup=False keeps '[', ']' and '>' literal; soft_wrap keeps lines intact.
+    def line(text: str, *, style: str | None = None) -> None:
+        console.print(text, markup=False, soft_wrap=True, style=style)
+
+    console.print("\n[bold]Operators[/bold]")
+    line("  Boolean:  AND  OR  NOT  ( )    + require, - exclude")
+    line("  Ranges (year, rating, added):  [a TO b] inclusive, {a TO b} exclusive, * open-ended")
+    line("  Comparisons (year, rating, added):  >=  <=  >  <")
+    line("  Prefix (title only):  title:dune*")
+    line('  Phrase (any field):  author:"Ursula K. Le Guin"')
+
+    console.print("\n[bold]Dates[/bold]")
+    line("  'added' uses ISO 8601 calendar dates: YYYY-MM-DD (e.g. added:2024-01-31)")
+    line("  'year' matches the 4-digit publication year (e.g. year:2020)")
+
+    console.print("\n[bold]Examples[/bold]")
+    example_rows = [
+        ("series:Dune", "every book in the Dune series"),
+        ('genre:"Science Fiction" AND year:[2020 TO *]', "sci-fi published in 2020 or later"),
+        ("rating:>=4", "books rated 4 stars or higher"),
+        ('author:"Ursula K. Le Guin" NOT tag:reread', "Le Guin you have not reread"),
+    ]
+    for query, description in example_rows:
+        line(f"  {query}")
+        line(f"      {description}", style="dim")
+
+    console.print("\n[bold]Common pitfalls[/bold]")
+    line("  - genre values must be canonical; an unknown genre is rejected.")
+    line("  - ranges and comparisons work only on year, rating, and added.")
+    line('  - quote multi-word values: series:"The Lord of the Rings".')
+    line("  - author and subject match substrings; series and title match the whole value.")
+
+
+@collections.command("create", epilog=_QUERY_EPILOG)
 @click.argument("name")
 @click.option("--description", "-d", help="Optional description for the collection.")
 @click.option(
@@ -261,7 +346,7 @@ def _show_collection_sync_status(conn, catalog: LibraryCatalog, collection_id: i
     console.print(table)
 
 
-@collections.command("edit")
+@collections.command("edit", epilog=_QUERY_EPILOG)
 @click.argument("collection_id", type=int)
 @click.option(
     "--query",
@@ -324,7 +409,7 @@ def collections_edit(
     conn.close()
 
 
-@collections.command("preview")
+@collections.command("preview", epilog=_QUERY_EPILOG)
 @click.option(
     "--query",
     "query",

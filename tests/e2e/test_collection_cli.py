@@ -33,9 +33,14 @@ class TestCollectionsWorkflow:
         result = runner.invoke(
             cli,
             [
-                "--db", str(db_path), "collections", "create",
-                "Sci-Fi Favorites", "-d", "Best science fiction books"
-            ]
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Sci-Fi Favorites",
+                "-d",
+                "Best science fiction books",
+            ],
         )
         assert result.exit_code == 0
         assert "Created collection" in result.output
@@ -50,7 +55,7 @@ class TestCollectionsWorkflow:
                 BookMetadata(
                     title=f"Sci-Fi Book {i}",
                     authors=[f"Author {i}"],
-                    source_path=Path(f"/books/scifi{i}.epub")
+                    source_path=Path(f"/books/scifi{i}.epub"),
                 ),
                 file_hash=f"hash_{i}",
             )
@@ -60,8 +65,16 @@ class TestCollectionsWorkflow:
         # Step 3: Add books to the collection
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "add-books", "1",
-             str(book_ids[0]), str(book_ids[1]), str(book_ids[2])]
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "add-books",
+                "1",
+                str(book_ids[0]),
+                str(book_ids[1]),
+                str(book_ids[2]),
+            ],
         )
         assert result.exit_code == 0
         assert "Added 3 book(s)" in result.output
@@ -84,8 +97,7 @@ class TestCollectionsWorkflow:
 
         # Step 6: Remove a book from the collection
         result = runner.invoke(
-            cli,
-            ["--db", str(db_path), "collections", "remove-books", "1", str(book_ids[1])]
+            cli, ["--db", str(db_path), "collections", "remove-books", "1", str(book_ids[1])]
         )
         assert result.exit_code == 0
         assert "Removed 1 book(s)" in result.output
@@ -99,8 +111,7 @@ class TestCollectionsWorkflow:
 
         # Step 8: Rename the collection
         result = runner.invoke(
-            cli,
-            ["--db", str(db_path), "collections", "rename", "1", "Best Sci-Fi"]
+            cli, ["--db", str(db_path), "collections", "rename", "1", "Best Sci-Fi"]
         )
         assert result.exit_code == 0
         assert "Renamed collection" in result.output
@@ -114,11 +125,7 @@ class TestCollectionsWorkflow:
         assert "Sci-Fi Favorites" not in result.output
 
         # Step 10: Delete the collection
-        result = runner.invoke(
-            cli,
-            ["--db", str(db_path), "collections", "rm", "1"],
-            input="y\n"
-        )
+        result = runner.invoke(cli, ["--db", str(db_path), "collections", "rm", "1"], input="y\n")
         assert result.exit_code == 0
         assert "Deleted collection" in result.output
 
@@ -204,8 +211,15 @@ class TestQueryBasedCollectionsCLI:
         _seed_sci_fi(db_path)
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Sci-Fi",
-             "--query", 'genre:"Science Fiction"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Sci-Fi",
+                "--query",
+                'genre:"Science Fiction"',
+            ],
         )
         assert result.exit_code == 0
 
@@ -225,8 +239,7 @@ class TestQueryBasedCollectionsCLI:
         _seed_sci_fi(db_path)
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "preview", "--query",
-             'genre:"Science Fiction"'],
+            ["--db", str(db_path), "collections", "preview", "--query", 'genre:"Science Fiction"'],
         )
         assert result.exit_code == 0
         assert "Foundation" in result.output
@@ -239,8 +252,15 @@ class TestQueryBasedCollectionsCLI:
         _seed_sci_fi(db_path)
         runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Sci-Fi",
-             "--query", 'genre:"Science Fiction"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Sci-Fi",
+                "--query",
+                'genre:"Science Fiction"',
+            ],
         )
         result = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
         assert 'genre:"Science Fiction"' in result.output
@@ -251,8 +271,15 @@ class TestQueryBasedCollectionsCLI:
         runner.invoke(cli, ["--db", str(db_path), "collections", "create", "Sci-Fi"])
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "edit", "1", "--query",
-             'genre:"Science Fiction"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "edit",
+                "1",
+                "--query",
+                'genre:"Science Fiction"',
+            ],
         )
         assert result.exit_code == 0
 
@@ -260,14 +287,19 @@ class TestQueryBasedCollectionsCLI:
         assert 'genre:"Science Fiction"' in show.output
         assert "Foundation" in show.output
 
-    def test_edit_clear_query_snapshots_to_static(
-        self, runner: CliRunner, db_path: Path
-    ) -> None:
+    def test_edit_clear_query_snapshots_to_static(self, runner: CliRunner, db_path: Path) -> None:
         _seed_sci_fi(db_path)
         runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Sci-Fi",
-             "--query", 'genre:"Science Fiction"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Sci-Fi",
+                "--query",
+                'genre:"Science Fiction"',
+            ],
         )
         result = runner.invoke(
             cli, ["--db", str(db_path), "collections", "edit", "1", "--clear-query"]
@@ -287,16 +319,31 @@ class TestQueryBasedCollectionsCLI:
 
         both = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "edit", "1", "--query", "series:X",
-             "--clear-query"],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "edit",
+                "1",
+                "--query",
+                "series:X",
+                "--clear-query",
+            ],
         )
         assert both.exit_code != 0
 
     def test_author_query_creates_rule_collection(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Auth", "--query",
-             'author:"Frank Herbert"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Auth",
+                "--query",
+                'author:"Frank Herbert"',
+            ],
         )
         assert result.exit_code == 0
 
@@ -306,8 +353,15 @@ class TestQueryBasedCollectionsCLI:
     def test_boolean_query_creates_rule_collection(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Combo", "--query",
-             'genre:"Science Fiction" AND author:Herbert'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Combo",
+                "--query",
+                'genre:"Science Fiction" AND author:Herbert',
+            ],
         )
         assert result.exit_code == 0
 
@@ -317,11 +371,79 @@ class TestQueryBasedCollectionsCLI:
     def test_non_canonical_genre_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Borg", "--query",
-             'genre:"Borg Romance"'],
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Borg",
+                "--query",
+                'genre:"Borg Romance"',
+            ],
         )
         assert result.exit_code != 0
         # Rich may wrap the long genre list across lines, so assert on stable
         # fragments rather than a single (potentially wrapped) genre name.
         assert "canonical genre" in result.output
         assert "Valid genres" in result.output
+
+
+# The four canonical worked examples surfaced in every query-aware help screen,
+# one per category: single field, boolean, range/comparison, phrase + negation.
+WORKED_EXAMPLES = [
+    "series:Dune",
+    'genre:"Science Fiction" AND year:[2020 TO *]',
+    "rating:>=4",
+    'author:"Ursula K. Le Guin" NOT tag:reread',
+]
+
+
+class TestQueryHelp:
+    def test_query_help_documents_fields_operators_and_dates(
+        self, runner: CliRunner, db_path: Path
+    ) -> None:
+        result = runner.invoke(cli, ["--db", str(db_path), "collections", "query-help"])
+        assert result.exit_code == 0
+        out = result.output
+        # Every whitelisted field is named.
+        for field in [
+            "id",
+            "title",
+            "author",
+            "series",
+            "genre",
+            "tag",
+            "language",
+            "publisher",
+            "subject",
+            "isbn",
+            "year",
+            "rating",
+            "added",
+        ]:
+            assert field in out
+        # Boolean and range operators are documented.
+        assert "AND" in out and "OR" in out and "NOT" in out
+        assert "TO" in out  # range syntax [a TO b]
+        assert ">=" in out
+        # Date format is spelled out.
+        assert "ISO" in out
+        assert "YYYY-MM-DD" in out
+
+    def test_query_help_includes_worked_examples(self, runner: CliRunner, db_path: Path) -> None:
+        result = runner.invoke(cli, ["--db", str(db_path), "collections", "query-help"])
+        for example in WORKED_EXAMPLES:
+            assert example in result.output
+
+    @pytest.mark.parametrize("command", ["create", "edit", "preview"])
+    def test_command_help_has_cheatsheet_and_examples(
+        self, runner: CliRunner, command: str
+    ) -> None:
+        result = runner.invoke(cli, ["collections", command, "--help"])
+        assert result.exit_code == 0
+        out = result.output
+        # Pointer to the full reference.
+        assert "query-help" in out
+        # All four worked examples are present (epilog uses no-rewrap blocks).
+        for example in WORKED_EXAMPLES:
+            assert example in out
