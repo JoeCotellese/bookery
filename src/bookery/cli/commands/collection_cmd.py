@@ -6,6 +6,7 @@ from typing import cast
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from bookery.cli.options import db_option, resolve_db_path
@@ -132,7 +133,7 @@ def collections_create(
         try:
             parse_collection_query(query)
         except CollectionQueryError as exc:
-            console.print(f"[red]{exc}[/red]")
+            console.print(f"[red]{escape(str(exc))}[/red]")
             raise SystemExit(1) from exc
 
     conn = open_library(resolve_db_path(db_path))
@@ -380,7 +381,7 @@ def collections_edit(
         try:
             parse_collection_query(query)
         except CollectionQueryError as exc:
-            console.print(f"[red]{exc}[/red]")
+            console.print(f"[red]{escape(str(exc))}[/red]")
             raise SystemExit(1) from exc
 
     conn = open_library(resolve_db_path(db_path))
@@ -425,7 +426,7 @@ def collections_preview(query: str, db_path: Path | None) -> None:
     try:
         books = catalog.preview_query(query)
     except CollectionQueryError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"[red]{escape(str(exc))}[/red]")
         conn.close()
         raise SystemExit(1) from exc
 

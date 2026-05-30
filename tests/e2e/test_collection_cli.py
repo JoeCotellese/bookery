@@ -447,3 +447,14 @@ class TestQueryHelp:
         # All four worked examples are present (epilog uses no-rewrap blocks).
         for example in WORKED_EXAMPLES:
             assert example in out
+
+    def test_error_message_renders_brackets_literally(
+        self, runner: CliRunner, db_path: Path
+    ) -> None:
+        # The range-on-text-field error names the bracketed syntax; Rich must not
+        # eat '[a TO b]' as console markup.
+        result = runner.invoke(
+            cli, ["--db", str(db_path), "collections", "preview", "--query", "title:[a TO b]"]
+        )
+        assert result.exit_code != 0
+        assert "[a TO b]" in result.output
