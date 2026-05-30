@@ -1,0 +1,41 @@
+{# ABOUTME: Collection create/edit form partial — name, description, raw rule query. #}
+{# ABOUTME: The raw query textarea is the single source of truth; errors render inline at HTTP 200. #}
+<form class="collection-form"
+      hx-post="{{ action_url }}"
+      hx-target="{{ target }}"
+      hx-swap="innerHTML">
+    <div class="form-field">
+        <label for="collection-name">Name</label>
+        <input type="text" id="collection-name" name="name"
+               value="{{ form.name or '' }}"
+               required
+               aria-required="true"
+               {% if errors.name %}aria-invalid="true" aria-describedby="name-error"{% endif %}>
+        {% if errors.name %}
+        <p class="field-error" id="name-error" role="alert">{{ errors.name }}</p>
+        {% endif %}
+    </div>
+
+    <div class="form-field">
+        <label for="collection-description">Description <span class="optional">(optional)</span></label>
+        <textarea id="collection-description" name="description" rows="2">{{ form.description or '' }}</textarea>
+    </div>
+
+    <div class="form-field">
+        <label for="collection-query">Rule query <span class="optional">(optional — leave blank for a hand-picked collection)</span></label>
+        <textarea id="collection-query" name="query" rows="3"
+                  placeholder='e.g. genre:"Science Fiction" AND year:[2000 TO 2010]'
+                  {% if errors.query %}aria-invalid="true" aria-describedby="query-error"{% endif %}>{{ form.query or '' }}</textarea>
+        {% if errors.query %}
+        <span id="query-error">{% include "_collection_query_error.html" %}</span>
+        {% endif %}
+        {# Composer block + match preview are wired in PR 2 / PR 3. #}
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn-primary">
+            {% if mode == "edit" %}Save changes{% else %}Create collection{% endif %}
+        </button>
+        <a href="{{ cancel_url }}" hx-get="{{ cancel_url }}" hx-target="{{ target }}" class="btn-secondary">Cancel</a>
+    </div>
+</form>

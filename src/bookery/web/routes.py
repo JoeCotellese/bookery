@@ -3,6 +3,8 @@
 
 import logging
 import os
+import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -19,7 +21,9 @@ from flask import (
     request,
     url_for,
 )
+from werkzeug.wrappers import Response as WerkzeugResponse
 
+from bookery.collections import CollectionQueryError, parse_collection_query
 from bookery.core.config import get_library_root
 from bookery.core.coverfetch import fetch_cover_image
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
@@ -1124,23 +1128,235 @@ def collection_remove_book(collection_id, book_id):
 
 @bp.route("/collections/create", methods=["POST"])
 def collection_create():
-    """Create a new collection."""
+    """Create a collection (static or rule-based) with inline validation.
+
+    User-input failures (blank name, duplicate name, invalid rule query) re-render
+    the form partial at HTTP 200 so the htmx swap lands; no exception escapes as a
+    500. On success the browser is redirected to the new collection's detail page.
+    """
     catalog = current_app.config["CATALOG"]
 
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip() or None
+    query = request.form.get("query", "").strip() or None
+    form = {
+        "name": name,
+        "description": request.form.get("description", ""),
+        "query": request.form.get("query", ""),
+    }
 
+    errors: dict[str, str] = {}
     if not name:
-        flash("Collection name is required.", "error")
-        return redirect(url_for("web.collections_list"))
+        errors["name"] = "Collection name is required."
+    elif catalog.get_collection_by_name(name) is not None:
+        errors["name"] = f"A collection named '{name}' already exists."
+
+    if query is not None:
+        try:
+            parse_collection_query(query)
+        except CollectionQueryError as exc:
+            errors["query"] = str(exc)
+
+    if errors:
+        return _render_collection_form(
+            mode="create",
+            action_url=url_for("web.collection_create"),
+            target="#collections-content",
+            container_id="collections-content",
+            cancel_url=url_for("web.collections_list"),
+            form=form,
+            errors=errors,
+        )
 
     try:
-        collection_id = catalog.create_collection(name, description)
-        flash(f'Created collection "{name}".', "success")
-        return redirect(url_for("web.collection_detail", collection_id=collection_id))
-    except Exception as exc:
-        flash(f"Failed to create collection: {exc}", "error")
-        return redirect(url_for("web.collections_list"))
+        collection_id = catalog.create_collection(name, description, query=query)
+    except sqlite3.IntegrityError:
+        return _render_collection_form(
+            mode="create",
+            action_url=url_for("web.collection_create"),
+            target="#collections-content",
+            container_id="collections-content",
+            cancel_url=url_for("web.collections_list"),
+            form=form,
+            errors={"name": f"A collection named '{name}' already exists."},
+        )
+
+    flash(f'Created collection "{name}".', "success")
+    return _redirect_after_save(
+        url_for("web.collection_detail", collection_id=collection_id)
+    )
+
+
+def _render_collection_form(
+    *,
+    mode: str,
+    action_url: str,
+    target: str,
+    container_id: str,
+    cancel_url: str,
+    form: Mapping[str, str],
+    errors: Mapping[str, str],
+) -> tuple[str, int]:
+    """Render the collection form, full-page on plain GET and partial under htmx.
+
+    Always returns HTTP 200: validation failures re-render the partial inline so
+    the htmx swap lands rather than surfacing a browser error page.
+    """
+    template = (
+        "_collection_form.html"
+        if request.headers.get("HX-Request")
+        else "collection_form.html"
+    )
+    html = render_template(
+        template,
+        mode=mode,
+        action_url=action_url,
+        target=target,
+        container_id=container_id,
+        cancel_url=cancel_url,
+        form=form,
+        errors=errors,
+    )
+    return html, 200
+
+
+def _redirect_after_save(target_url: str) -> WerkzeugResponse:
+    """Send the browser to ``target_url`` — via HX-Redirect under htmx, else a 302."""
+    if request.headers.get("HX-Request"):
+        return _hx_redirect(target_url)
+    return redirect(target_url)
+
+
+@bp.route("/collections/new")
+def collection_new_form():
+    """Render the create-collection form (full page or htmx partial).
+
+    An optional ``?query=`` prefills the rule textarea so the book-detail
+    "New collection from this book" link (PR 5) can seed a starting rule.
+    """
+    form = {
+        "name": "",
+        "description": "",
+        "query": request.args.get("query", ""),
+    }
+    return _render_collection_form(
+        mode="create",
+        action_url=url_for("web.collection_create"),
+        target="#collections-content",
+        container_id="collections-content",
+        cancel_url=url_for("web.collections_list"),
+        form=form,
+        errors={},
+    )
+
+
+@bp.route("/collections/<int:collection_id>/edit")
+def collection_edit_form(collection_id):
+    """Render the edit-collection form, prefilled with name/description/query."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    form = {
+        "name": str(collection["name"]),
+        "description": str(collection["description"] or ""),
+        "query": str(collection["query"] or ""),
+    }
+    return _render_collection_form(
+        mode="edit",
+        action_url=url_for("web.collection_update", collection_id=collection_id),
+        target="#collection-content",
+        container_id="collection-content",
+        cancel_url=url_for("web.collection_detail", collection_id=collection_id),
+        form=form,
+        errors={},
+    )
+
+
+@bp.route("/collections/<int:collection_id>/edit", methods=["POST"])
+def collection_update(collection_id):
+    """Persist name/description edits, with inline validation at HTTP 200.
+
+    Query handling is intentionally narrow here: a query is only applied when it
+    is a pure re-set on an already rule-based collection. The destructive
+    static<->rule transitions (which drop hand-picked books or snapshot matches)
+    and their warnings are PR 4 — this route leaves the collection's kind
+    unchanged for those cases.
+    """
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip() or None
+    query = request.form.get("query", "").strip() or None
+    form = {
+        "name": name,
+        "description": request.form.get("description", ""),
+        "query": request.form.get("query", ""),
+    }
+
+    def render_errors(errors: dict[str, str]) -> tuple[str, int]:
+        return _render_collection_form(
+            mode="edit",
+            action_url=url_for("web.collection_update", collection_id=collection_id),
+            target="#collection-content",
+            container_id="collection-content",
+            cancel_url=url_for("web.collection_detail", collection_id=collection_id),
+            form=form,
+            errors=errors,
+        )
+
+    errors: dict[str, str] = {}
+    if not name:
+        errors["name"] = "Collection name is required."
+
+    # Only a rule-based collection accepts an in-place rule re-set in this PR;
+    # validate it before any write so an invalid rule never mutates state.
+    # ``rule_query`` stays None for every other case (static collection, blank
+    # query), leaving the collection's kind untouched — the destructive
+    # static<->rule transitions are PR 4.
+    rule_query: str | None = None
+    if collection["query"] is not None and query is not None:
+        try:
+            parse_collection_query(query)
+            rule_query = query
+        except CollectionQueryError as exc:
+            errors["query"] = str(exc)
+
+    # Duplicate-name pre-check, only when the name actually changes.
+    if (
+        not errors.get("name")
+        and name.lower() != str(collection["name"]).lower()
+        and catalog.get_collection_by_name(name) is not None
+    ):
+        errors["name"] = f"A collection named '{name}' already exists."
+
+    if errors:
+        return render_errors(errors)
+
+    if name != collection["name"]:
+        try:
+            catalog.rename_collection(collection_id, name)
+        except sqlite3.IntegrityError:
+            return render_errors(
+                {"name": f"A collection named '{name}' already exists."}
+            )
+
+    if description != collection["description"]:
+        catalog.set_collection_description(collection_id, description)
+
+    if rule_query is not None:
+        catalog.set_collection_query(collection_id, rule_query)
+
+    flash(f'Updated collection "{name}".', "success")
+    return _redirect_after_save(
+        url_for("web.collection_detail", collection_id=collection_id)
+    )
 
 
 @bp.route("/collections/<int:collection_id>/delete", methods=["POST"])
