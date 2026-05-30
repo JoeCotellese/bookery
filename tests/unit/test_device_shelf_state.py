@@ -300,3 +300,73 @@ class TestListCollectionDevicePaths:
             collection_id=collection_id, device_id=device_id
         )
         assert paths == []
+
+
+class TestRuleBasedSyncMembership:
+    """Sync membership for rule-based collections (derived, no collection_books rows)."""
+
+    def _add_sf_and_fantasy(self, catalog: LibraryCatalog) -> tuple[int, int]:
+        sf = catalog.add_book(
+            BookMetadata(title="SF Book", source_path=Path("/books/sf.epub")),
+            file_hash="hash_sf",
+        )
+        catalog.add_genre(sf, "Science Fiction", is_primary=True)
+        fantasy = catalog.add_book(
+            BookMetadata(title="Fantasy Book", source_path=Path("/books/fan.epub")),
+            file_hash="hash_fan",
+        )
+        catalog.add_genre(fantasy, "Fantasy", is_primary=True)
+        return sf, fantasy
+
+    def test_device_paths_for_rule_based_collection(
+        self, catalog: LibraryCatalog, device_id: int
+    ) -> None:
+        """Device paths come from the derived membership, not collection_books."""
+        sf, fantasy = self._add_sf_and_fantasy(catalog)
+        cid = catalog.create_collection("Sci-Fi", query='genre:"Science Fiction"')
+        catalog.upsert_device_file(
+            device_id=device_id,
+            book_id=sf,
+            remote_path="/mnt/onboard/Bookery/SF/SF.kepub.epub",
+            now="2024-01-15T10:00:00",
+        )
+        catalog.upsert_device_file(
+            device_id=device_id,
+            book_id=fantasy,
+            remote_path="/mnt/onboard/Bookery/Fan/Fan.kepub.epub",
+            now="2024-01-15T10:00:00",
+        )
+
+        paths = catalog.list_collection_device_paths(collection_id=cid, device_id=device_id)
+
+        assert paths == ["/mnt/onboard/Bookery/SF/SF.kepub.epub"]
+
+    def test_candidates_include_rule_based_with_on_device_member(
+        self, catalog: LibraryCatalog, device_id: int
+    ) -> None:
+        """A rule-based collection with a derived member on device is a candidate."""
+        sf, _fantasy = self._add_sf_and_fantasy(catalog)
+        cid = catalog.create_collection("Sci-Fi", query='genre:"Science Fiction"')
+        catalog.upsert_device_file(
+            device_id=device_id,
+            book_id=sf,
+            remote_path="/mnt/onboard/Bookery/SF/SF.kepub.epub",
+            now="2024-01-15T10:00:00",
+        )
+
+        candidates = catalog.list_collection_shelf_candidates(device_id=device_id)
+
+        by_id = {c["collection_id"]: c for c in candidates}
+        assert cid in by_id
+        assert by_id[cid]["name"] == "Sci-Fi"
+        assert by_id[cid]["books_on_device"] == 1
+        assert by_id[cid]["books_in_collection"] == 1
+
+    def test_rule_based_without_on_device_member_is_not_candidate(
+        self, catalog: LibraryCatalog, device_id: int
+    ) -> None:
+        """A rule-based collection whose members aren't on the device is excluded."""
+        self._add_sf_and_fantasy(catalog)  # books exist but none on the device
+        catalog.create_collection("Sci-Fi", query='genre:"Science Fiction"')
+
+        assert catalog.list_collection_shelf_candidates(device_id=device_id) == []

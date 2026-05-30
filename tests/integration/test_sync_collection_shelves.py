@@ -225,3 +225,40 @@ def test_deleting_collection_removes_shelf(tmp_path: Path) -> None:
         )
         == []
     )
+
+
+def test_rule_based_collection_auto_updates_on_next_sync(tmp_path: Path) -> None:
+    """A new matching book joins a rule-based shelf on the next sync, no manual edit."""
+    conn = open_library(tmp_path / "library.db")
+    catalog = LibraryCatalog(conn)
+
+    library = tmp_path / "library"
+    epub1 = _add_library_book(library, "Asimov", "Foundation")
+    book1 = _add_catalog_book(catalog, epub1, "Foundation", "Asimov")
+    catalog.add_genre(book1, "Science Fiction", is_primary=True)
+
+    collection_id = catalog.create_collection("Sci-Fi", query='genre:"Science Fiction"')
+
+    mount = _build_fake_kobo_mount(tmp_path)
+    _run_sync(catalog=catalog, mount=mount, tmp_path=tmp_path / "sync1")
+
+    first = _query(
+        _shelf_db(mount),
+        "SELECT ContentId FROM ShelfContent WHERE ShelfName = ?",
+        (f"bookery-{collection_id}",),
+    )
+    assert len(first) == 1
+
+    # Import a second matching book — membership is derived, so no add-books call.
+    epub2 = _add_library_book(library, "Gibson", "Neuromancer")
+    book2 = _add_catalog_book(catalog, epub2, "Neuromancer", "Gibson")
+    catalog.add_genre(book2, "Science Fiction", is_primary=True)
+
+    _run_sync(catalog=catalog, mount=mount, tmp_path=tmp_path / "sync2")
+
+    second = _query(
+        _shelf_db(mount),
+        "SELECT ContentId FROM ShelfContent WHERE ShelfName = ?",
+        (f"bookery-{collection_id}",),
+    )
+    assert len(second) == 2

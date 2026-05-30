@@ -1766,62 +1766,67 @@ class LibraryCatalog:
     def list_collection_shelf_candidates(self, *, device_id: int) -> list[dict[str, object]]:
         """Return collections that can be pushed as shelves to a device.
 
-        Returns collections that:
-        - Have at least one book synced to this device
-        - Have a shelf state record (were previously synced)
-        - Or are new collections that need initial sync
-
-        Each candidate includes collection info plus current book count on device.
+        A collection is a candidate when at least one of its members (resolved via
+        the single membership resolver, so rule-based collections are included even
+        though they hold no ``collection_books`` rows) is present on the device.
+        Each candidate carries its current on-device count, total member count, and
+        any existing shelf state.
         """
-        cursor = self._conn.execute(
-            """
-            SELECT
-                c.id AS collection_id,
-                c.name,
-                c.updated_at,
-                COALESCE(dss.shelf_id, NULL) AS shelf_id,
-                COALESCE(dss.last_pushed_at, NULL) AS last_pushed_at,
-                COUNT(DISTINCT df.book_id) AS books_on_device,
-                COUNT(DISTINCT cb.book_id) AS books_in_collection
-            FROM collections c
-            JOIN collection_books cb ON c.id = cb.collection_id
-            JOIN device_files df ON cb.book_id = df.book_id AND df.device_id = ?
-            LEFT JOIN device_shelf_state dss
-                ON dss.collection_id = c.id AND dss.device_id = ?
-            GROUP BY c.id
-            ORDER BY c.name COLLATE NOCASE
-            """,
-            (device_id, device_id),
-        )
-        return [
-            {
-                "collection_id": int(row["collection_id"]),
-                "name": str(row["name"]),
-                "updated_at": str(row["updated_at"]),
-                "shelf_id": row["shelf_id"],
-                "last_pushed_at": row["last_pushed_at"],
-                "books_on_device": int(row["books_on_device"]),
-                "books_in_collection": int(row["books_in_collection"]),
-            }
-            for row in cursor.fetchall()
-        ]
+        device_book_ids = {
+            int(row["book_id"])
+            for row in self._conn.execute(
+                "SELECT book_id FROM device_files WHERE device_id = ?",
+                (device_id,),
+            )
+        }
+        if not device_book_ids:
+            return []
+
+        candidates: list[dict[str, object]] = []
+        collection_rows = self._conn.execute(
+            "SELECT id, name, updated_at FROM collections ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        for coll in collection_rows:
+            collection_id = int(coll["id"])
+            member_ids = self.resolve_collection_member_ids(collection_id)
+            books_on_device = sum(1 for book_id in member_ids if book_id in device_book_ids)
+            if books_on_device == 0:
+                continue
+
+            state = self._conn.execute(
+                "SELECT shelf_id, last_pushed_at FROM device_shelf_state "
+                "WHERE collection_id = ? AND device_id = ?",
+                (collection_id, device_id),
+            ).fetchone()
+            candidates.append(
+                {
+                    "collection_id": collection_id,
+                    "name": str(coll["name"]),
+                    "updated_at": str(coll["updated_at"]),
+                    "shelf_id": state["shelf_id"] if state is not None else None,
+                    "last_pushed_at": state["last_pushed_at"] if state is not None else None,
+                    "books_on_device": books_on_device,
+                    "books_in_collection": len(member_ids),
+                }
+            )
+        return candidates
 
     def list_collection_device_paths(self, *, collection_id: int, device_id: int) -> list[str]:
         """Return device remote paths for books in a collection that are on a device.
 
-        Only books that are both members of the collection and present on the
-        device (via device_files) are returned, ordered deterministically. The
-        caller turns these into Kobo ContentIDs by prefixing ``file://``.
+        Membership comes from the resolver (so it is correct for both static and
+        rule-based collections); only members also present on the device (via
+        ``device_files``) are returned, ordered deterministically. The caller
+        turns these into Kobo ContentIDs by prefixing ``file://``.
         """
+        member_ids = self.resolve_collection_member_ids(collection_id)
+        if not member_ids:
+            return []
+        placeholders = ",".join("?" * len(member_ids))
         cursor = self._conn.execute(
-            """
-            SELECT df.remote_path
-            FROM collection_books cb
-            JOIN device_files df
-                ON cb.book_id = df.book_id AND df.device_id = ?
-            WHERE cb.collection_id = ?
-            ORDER BY df.remote_path
-            """,
-            (device_id, collection_id),
+            f"SELECT df.remote_path FROM device_files df "
+            f"WHERE df.device_id = ? AND df.book_id IN ({placeholders}) "
+            f"ORDER BY df.remote_path",
+            [device_id, *member_ids],
         )
         return [str(row["remote_path"]) for row in cursor.fetchall()]
