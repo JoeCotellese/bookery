@@ -1,0 +1,21 @@
+{# ABOUTME: Non-persisting query-preview partial — match count + capped sample (#253). #}
+{# ABOUTME: Swapped into the form's aria-live region; distinct empty vs static-notice states. #}
+{% if static_notice %}
+<p class="preview-notice" role="status">Static collection — no rule. Add books by hand instead.</p>
+{% elif total == 0 %}
+<p class="preview-empty" role="status">0 books match this rule yet.</p>
+{% else %}
+<p class="preview-count" role="status">
+    Matches: {{ total }} book{{ "" if total == 1 else "s" }}{% if sample|length < total %} — showing first {{ sample|length }}{% endif %}
+</p>
+<ul class="preview-sample">
+    {% for book in sample %}
+    <li>
+        <span class="preview-title">{{ book.metadata.title }}</span>
+        {% if book.metadata.authors %}
+        <span class="preview-authors">— {{ book.metadata.authors | join(", ") }}</span>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
