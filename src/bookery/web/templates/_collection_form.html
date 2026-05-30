@@ -29,7 +29,17 @@
         {% if errors.query %}
         <span id="query-error">{% include "_collection_query_error.html" %}</span>
         {% endif %}
-        {# Composer block + match preview are wired in PR 2 / PR 3. #}
+        {# Explicit (non-debounced) preview: mid-typing Lucene is constantly invalid. #}
+        {# formaction degrades gracefully without JS by posting to the same route. #}
+        <button type="submit" class="btn-secondary preview-btn"
+                formaction="{{ url_for('web.collection_preview') }}" formmethod="post"
+                hx-post="{{ url_for('web.collection_preview') }}"
+                hx-include="#collection-query"
+                hx-target="#collection-preview"
+                hx-swap="innerHTML">
+            Preview matches
+        </button>
+        <div id="collection-preview" class="collection-preview" aria-live="polite"></div>
     </div>
 
     <div class="form-actions">

@@ -300,6 +300,48 @@ class TestPreviewQuery:
             catalog.preview_query("nonsense:Tor")
 
 
+class TestResolveQueryPreview:
+    """Ad-hoc query preview: (true_total, capped_sample) without persisting (#253)."""
+
+    def test_returns_total_and_ordered_sample(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "The Border", genre="Science Fiction")  # title_sort "Border"
+        _add(catalog, "Apex", genre="Science Fiction")
+        total, sample = catalog.resolve_query_preview(
+            'genre:"Science Fiction"', limit=50
+        )
+        assert total == 2
+        assert [r.metadata.title for r in sample] == ["Apex", "The Border"]
+
+    def test_caps_sample_but_reports_true_total(self, catalog: LibraryCatalog) -> None:
+        for i in range(5):
+            _add(catalog, f"Book {i}", genre="Science Fiction")
+        total, sample = catalog.resolve_query_preview(
+            'genre:"Science Fiction"', limit=2
+        )
+        assert total == 5
+        assert len(sample) == 2
+        # Cap is applied after title_sort ordering, so it's the first 2.
+        assert [r.metadata.title for r in sample] == ["Book 0", "Book 1"]
+
+    def test_invalid_query_raises(self, catalog: LibraryCatalog) -> None:
+        with pytest.raises(CollectionQueryError):
+            catalog.resolve_query_preview("nonsense:Tor", limit=50)
+
+    def test_zero_match_returns_zero_and_empty(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "A Fantasy", genre="Fantasy")
+        total, sample = catalog.resolve_query_preview(
+            'genre:"Science Fiction"', limit=50
+        )
+        assert total == 0
+        assert sample == []
+
+    def test_does_not_persist(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "SF One", genre="Science Fiction")
+        before = len(catalog.list_collections())
+        catalog.resolve_query_preview('genre:"Science Fiction"', limit=50)
+        assert len(catalog.list_collections()) == before
+
+
 class TestConversion:
     def test_set_query_converts_static_to_rule_and_clears_rows(
         self, catalog: LibraryCatalog

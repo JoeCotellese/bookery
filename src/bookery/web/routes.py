@@ -1182,6 +1182,42 @@ def collection_create():
     )
 
 
+# Cap on how many sample books a preview lists; the true total is always shown
+# alongside, so a broad rule (e.g. ``year:>0``) stays fast and bounded.
+PREVIEW_SAMPLE_LIMIT = 50
+
+
+@bp.route("/collections/preview", methods=["POST"])
+def collection_preview():
+    """Resolve a rule query and show its match count + a capped sample, no save.
+
+    Collection-agnostic (no ``<id>``) so it serves the create page (no row yet)
+    and the edit page identically. Invalid queries re-render the inline
+    ``role="alert"`` error at HTTP 200 — never a 500 — matching the create flow.
+    A blank query yields the "static collection" notice rather than an error.
+    """
+    catalog = current_app.config["CATALOG"]
+    query = request.form.get("query", "").strip()
+
+    if not query:
+        return render_template("_collection_preview.html", static_notice=True), 200
+
+    try:
+        total, sample = catalog.resolve_query_preview(query, PREVIEW_SAMPLE_LIMIT)
+    except CollectionQueryError as exc:
+        return render_template(
+            "_collection_query_error.html", errors={"query": str(exc)}
+        ), 200
+
+    return render_template(
+        "_collection_preview.html",
+        static_notice=False,
+        total=total,
+        sample=sample,
+        limit=PREVIEW_SAMPLE_LIMIT,
+    ), 200
+
+
 def _render_collection_form(
     *,
     mode: str,

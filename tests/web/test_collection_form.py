@@ -1,7 +1,10 @@
-# ABOUTME: Integration tests for the web collection create/edit form flow (#252).
-# ABOUTME: Covers GET new, POST create (valid/static/blank/dup/invalid), and edit prefill+save.
+# ABOUTME: Integration tests for the web collection create/edit form flow (#252, #253).
+# ABOUTME: Covers GET new, POST create/edit, and the non-persisting query preview route.
 
 import sqlite3
+
+from bookery.collections import CollectionQueryError
+from tests.web.conftest import make_book
 
 
 def _collection(
@@ -42,6 +45,15 @@ class TestNewForm:
             "/collections/new", query_string={"query": 'genre:"Science Fiction"'}
         ).data.decode()
         assert 'genre:"Science Fiction"' in html
+
+    def test_form_has_preview_button_and_live_region(self, mock_catalog, client):
+        html = client.get("/collections/new").data.decode()
+        # Explicit, non-debounced trigger that posts the query to the preview route.
+        assert 'hx-post="/collections/preview"' in html
+        assert "Preview matches" in html
+        # Results land in an aria-live region so screen readers announce them.
+        assert 'id="collection-preview"' in html
+        assert 'aria-live="polite"' in html
 
 
 class TestCreate:
@@ -229,3 +241,81 @@ class TestListAndDetailAffordances:
         mock_catalog.get_collection_books.return_value = []
         html = client.get("/collections/4").data.decode()
         assert "/collections/4/edit" in html
+
+
+class TestPreview:
+    """POST /collections/preview — non-persisting match preview (#253)."""
+
+    def test_valid_query_renders_count_and_sample(self, mock_catalog, client):
+        mock_catalog.resolve_query_preview.return_value = (
+            2,
+            [make_book(1, title="Apex"), make_book(2, title="The Border")],
+        )
+
+        resp = client.post(
+            "/collections/preview",
+            data={"query": 'genre:"Science Fiction"'},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "Matches: 2" in html
+        assert "Apex" in html
+        assert "The Border" in html
+        mock_catalog.resolve_query_preview.assert_called_once()
+
+    def test_broad_query_caps_sample_but_shows_true_total(self, mock_catalog, client):
+        sample = [make_book(i, title=f"Book {i}") for i in range(50)]
+        mock_catalog.resolve_query_preview.return_value = (312, sample)
+
+        html = client.post(
+            "/collections/preview",
+            data={"query": "year:>0"},
+            headers={"HX-Request": "true"},
+        ).data.decode()
+
+        assert "Matches: 312" in html
+        assert "showing first 50" in html
+
+    def test_zero_match_shows_empty_state_not_error(self, mock_catalog, client):
+        mock_catalog.resolve_query_preview.return_value = (0, [])
+
+        resp = client.post(
+            "/collections/preview",
+            data={"query": 'genre:"Nonexistent"'},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "0 books match" in html
+        assert 'role="alert"' not in html
+
+    def test_invalid_query_inline_alert_http_200(self, mock_catalog, client):
+        mock_catalog.resolve_query_preview.side_effect = CollectionQueryError(
+            "Unknown field 'notafield'."
+        )
+
+        resp = client.post(
+            "/collections/preview",
+            data={"query": "notafield:value"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'role="alert"' in html
+        assert "notafield" in html
+
+    def test_blank_query_shows_static_notice(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/preview",
+            data={"query": "   "},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "Static collection" in html
+        mock_catalog.resolve_query_preview.assert_not_called()
