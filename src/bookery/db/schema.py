@@ -324,6 +324,16 @@ ALTER TABLE device_shelf_state ADD COLUMN member_hash TEXT;
 INSERT INTO schema_version (version) VALUES (13);
 """
 
+# V14: Rule-based collections (issue #240). A nullable `query` column makes a
+# collection's kind a function of the column: NULL = static (explicit rows in
+# collection_books), non-NULL = rule-based (membership derived live from the
+# query). The two are mutually exclusive. Forward-only ALTER on the V11 table.
+SCHEMA_V14 = """
+ALTER TABLE collections ADD COLUMN query TEXT;
+
+INSERT INTO schema_version (version) VALUES (14);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -337,6 +347,7 @@ MIGRATIONS = [
     (11, SCHEMA_V11),
     (12, SCHEMA_V12),
     (13, SCHEMA_V13),
+    (14, SCHEMA_V14),
 ]
 
 # The schema version a freshly-opened library converges to. Derived from the
