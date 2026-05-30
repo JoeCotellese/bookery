@@ -6,7 +6,15 @@ import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
-from bookery.collections import Op, QueryTerm, parse_collection_query
+from bookery.collections import (
+    Op,
+    QueryAnd,
+    QueryNode,
+    QueryNot,
+    QueryOr,
+    QueryTerm,
+    parse_collection_query,
+)
 from bookery.core.dedup import (
     normalize_author_for_dedup,
     normalize_for_dedup,
@@ -129,6 +137,41 @@ def _comparable_predicate(
     if not clauses:
         return f"{operand} IS NOT NULL", []
     return " AND ".join(clauses), params
+
+
+def _compile_node(node: QueryNode) -> tuple[str, list[object]]:
+    """Compile a query IR node to ``(sql, params)`` yielding a book-id set.
+
+    Booleans compose via ``b.id IN (subquery)`` / ``NOT IN`` rather than raw
+    compound set operators: SQLite won't parenthesise compound SELECTs, but nested
+    ``IN`` subqueries give clean, precedence-safe composition with full parameter
+    binding. AND joins child membership with ``AND``, OR with ``OR``, NOT negates.
+    """
+    if isinstance(node, QueryTerm):
+        return _compile_term(node)
+    if isinstance(node, QueryAnd):
+        return _compile_boolean(node.children, "AND")
+    if isinstance(node, QueryOr):
+        return _compile_boolean(node.children, "OR")
+    if isinstance(node, QueryNot):
+        sql, params = _compile_node(node.child)
+        return f"SELECT id FROM books b WHERE b.id NOT IN ({sql})", params
+    # Exhaustive over QueryNode; unreachable for validated trees.
+    raise ValueError(f"Unsupported query node: {type(node).__name__}")  # pragma: no cover
+
+
+def _compile_boolean(
+    children: tuple[QueryNode, ...], conjunction: str
+) -> tuple[str, list[object]]:
+    """Combine child node membership with AND/OR via nested ``b.id IN (...)`` clauses."""
+    clauses: list[str] = []
+    params: list[object] = []
+    for child in children:
+        sql, child_params = _compile_node(child)
+        clauses.append(f"b.id IN ({sql})")
+        params.extend(child_params)
+    joined = f" {conjunction} ".join(clauses)
+    return f"SELECT id FROM books b WHERE {joined}", params
 
 
 def _compile_term(term: QueryTerm) -> tuple[str, list[object]]:
@@ -1697,14 +1740,14 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
-    def _compile_query_member_ids(self, query: QueryTerm) -> list[int]:
-        """Compile a validated query term into the matching book IDs (per-field SQL).
+    def _compile_query_member_ids(self, query: QueryNode) -> list[int]:
+        """Compile a validated query tree into the matching book IDs.
 
-        The query module guarantees ``field`` is whitelisted and ``value`` passed
-        its per-field validation. This only assembles parameter-bound SQL — user
+        The query module guarantees every leaf field is whitelisted and its value
+        passed per-field validation. This only assembles parameter-bound SQL — user
         input is never interpolated into the statement text.
         """
-        sql, params = _compile_term(query)
+        sql, params = _compile_node(query)
         cursor = self._conn.execute(sql, params)
         return [int(row[0]) for row in cursor.fetchall()]
 

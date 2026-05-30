@@ -8,7 +8,21 @@ from enum import StrEnum
 
 from luqum.exceptions import ParseError
 from luqum.parser import parser
-from luqum.tree import From, Phrase, Range, SearchField, To, Word
+from luqum.tree import (
+    AndOperation,
+    From,
+    Group,
+    Not,
+    OrOperation,
+    Phrase,
+    Plus,
+    Prohibit,
+    Range,
+    SearchField,
+    To,
+    UnknownOperation,
+    Word,
+)
 
 from bookery.metadata.genres import CANONICAL_GENRES, is_canonical_genre
 
@@ -58,6 +72,31 @@ class QueryTerm:
     high: str | None = None
     include_low: bool = True
     include_high: bool = True
+
+
+@dataclass(frozen=True)
+class QueryAnd:
+    """Boolean AND of two or more child nodes (intersection of their members)."""
+
+    children: tuple["QueryNode", ...]
+
+
+@dataclass(frozen=True)
+class QueryOr:
+    """Boolean OR of two or more child nodes (union of their members)."""
+
+    children: tuple["QueryNode", ...]
+
+
+@dataclass(frozen=True)
+class QueryNot:
+    """Boolean NOT of a child node (every book not matched by the child)."""
+
+    child: "QueryNode"
+
+
+# A node in the validated query IR: either a leaf term or a boolean combinator.
+QueryNode = QueryTerm | QueryAnd | QueryOr | QueryNot
 
 
 def _validate_genre_value(value: str) -> None:
@@ -150,11 +189,6 @@ _SYNTAX_MSG = (
     f"Invalid query syntax. Use a single term like 'genre:\"Science Fiction\"', "
     f"'series:Dune', or 'author:Tolkien' (valid fields: {_FIELD_LIST})."
 )
-_SINGLE_TERM_MSG = (
-    f"Only a single field:value term is supported in this release "
-    f"(e.g. 'author:Tolkien'). Boolean/range queries are not yet supported. "
-    f"Valid fields: {_FIELD_LIST}."
-)
 _UNSUPPORTED_VALUE_MSG = (
     "Unsupported value. Use an exact field:value (e.g. 'series:Dune'), a trailing "
     "'*' prefix on title, or a range/comparison on a numeric/date field."
@@ -165,18 +199,19 @@ _RANGE_FIELD_MSG = (
 )
 
 
-def parse_collection_query(raw: str) -> QueryTerm:
+def parse_collection_query(raw: str) -> QueryNode:
     """Parse and validate a rule-based collection query into the query IR.
 
     Parse-permissive, validate-restrictive: luqum parses the full Lucene grammar,
-    then the AST is walked and anything outside the supported subset is rejected. A
-    valid query is currently exactly one ``field:value`` / ``field:"phrase"`` /
-    ``field:prefix*`` term over a whitelisted field.
+    then the AST is walked and anything outside the supported subset is rejected.
+    A valid query is one or more whitelisted ``field:value`` terms combined with
+    AND/OR/NOT, ``+``/``-`` prefixes, and parentheses; each leaf is an exact,
+    contains, prefix, range, or comparison match per its field.
 
     Raises:
-        CollectionQueryError: on syntax errors, multi-term/boolean queries,
-            unknown fields, unsupported value shapes (interior wildcards, ranges,
-            comparisons), non-integer ids, or non-canonical genre values.
+        CollectionQueryError: on syntax errors, unknown fields, unsupported value
+            shapes (interior wildcards, ranges/comparisons on non-numeric fields),
+            non-integer ids, bad dates, or non-canonical genre values.
     """
     text = raw.strip()
     if not text:
@@ -187,13 +222,28 @@ def parse_collection_query(raw: str) -> QueryTerm:
     except ParseError as exc:
         raise CollectionQueryError(_SYNTAX_MSG) from exc
 
-    # A single field:value term parses to a SearchField at the top level. Anything
-    # else — implicit multi-term (UnknownOperation), explicit AND/OR (And/OrOperation),
-    # NOT, a parenthesised Group, or a bare Word/Phrase with no field — is rejected.
-    if not isinstance(tree, SearchField):
-        raise CollectionQueryError(_SINGLE_TERM_MSG)
+    return _build_node(tree)
 
-    return _validate_term(tree)
+
+def _build_node(node: object) -> QueryNode:
+    """Recursively validate a luqum AST node into the query IR.
+
+    AND/implicit-juxtaposition map to ``QueryAnd``, OR to ``QueryOr``, NOT/``-`` to
+    ``QueryNot``; ``+`` and parentheses are structural and unwrap to their child.
+    Leaf ``field:value`` terms are validated against the whitelist.
+    """
+    if isinstance(node, SearchField):
+        return _validate_term(node)
+    if isinstance(node, AndOperation | UnknownOperation):
+        return QueryAnd(tuple(_build_node(child) for child in node.children))
+    if isinstance(node, OrOperation):
+        return QueryOr(tuple(_build_node(child) for child in node.children))
+    if isinstance(node, Not | Prohibit):
+        return QueryNot(_build_node(node.children[0]))
+    if isinstance(node, Plus | Group):
+        return _build_node(node.children[0])
+    # A bare Word/Phrase with no field, or any other unsupported shape.
+    raise CollectionQueryError(_SYNTAX_MSG)
 
 
 def _validate_term(node: SearchField) -> QueryTerm:

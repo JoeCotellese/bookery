@@ -6,6 +6,9 @@ import pytest
 from bookery.collections import (
     CollectionQueryError,
     Op,
+    QueryAnd,
+    QueryNot,
+    QueryOr,
     QueryTerm,
     parse_collection_query,
 )
@@ -23,6 +26,7 @@ class TestExactFields:
 
     def test_series_quoted_multiword(self) -> None:
         cq = parse_collection_query('series:"The Lord of the Rings"')
+        assert isinstance(cq, QueryTerm)
         assert cq.field == "series"
         assert cq.value == "The Lord of the Rings"
 
@@ -48,11 +52,13 @@ class TestExactFields:
 
     def test_field_name_is_case_insensitive(self) -> None:
         cq = parse_collection_query('GENRE:"Science Fiction"')
+        assert isinstance(cq, QueryTerm)
         assert cq.field == "genre"
 
     def test_genre_value_is_case_insensitive(self) -> None:
         # Canonical match is case-insensitive; the raw value is preserved.
         cq = parse_collection_query('genre:"science fiction"')
+        assert isinstance(cq, QueryTerm)
         assert cq.field == "genre"
         assert cq.value == "science fiction"
 
@@ -214,25 +220,77 @@ class TestRangeValidation:
             parse_collection_query("year:[abc TO 2010]")
 
 
-class TestStillRejected:
-    """Shapes that land in later sub-slices remain rejected for now."""
+class TestBooleanComposition:
+    def test_explicit_and(self) -> None:
+        cq = parse_collection_query('genre:"Science Fiction" AND series:Dune')
+        assert cq == QueryAnd(
+            (
+                QueryTerm(field="genre", op=Op.EQ, value="Science Fiction"),
+                QueryTerm(field="series", op=Op.EQ, value="Dune"),
+            )
+        )
 
-    def test_explicit_and_is_rejected(self) -> None:
+    def test_explicit_or(self) -> None:
+        cq = parse_collection_query("author:Tolkien OR author:Lewis")
+        assert cq == QueryOr(
+            (
+                QueryTerm(field="author", op=Op.CONTAINS, value="Tolkien"),
+                QueryTerm(field="author", op=Op.CONTAINS, value="Lewis"),
+            )
+        )
+
+    def test_top_level_not(self) -> None:
+        cq = parse_collection_query("NOT genre:Horror")
+        assert cq == QueryNot(QueryTerm(field="genre", op=Op.EQ, value="Horror"))
+
+    def test_implicit_and(self) -> None:
+        cq = parse_collection_query("author:Tolkien author:Lewis")
+        assert cq == QueryAnd(
+            (
+                QueryTerm(field="author", op=Op.CONTAINS, value="Tolkien"),
+                QueryTerm(field="author", op=Op.CONTAINS, value="Lewis"),
+            )
+        )
+
+    def test_and_with_not(self) -> None:
+        cq = parse_collection_query("genre:Fantasy NOT tag:reread")
+        assert cq == QueryAnd(
+            (
+                QueryTerm(field="genre", op=Op.EQ, value="Fantasy"),
+                QueryNot(QueryTerm(field="tag", op=Op.EQ, value="reread")),
+            )
+        )
+
+    def test_plus_minus_prefixes(self) -> None:
+        cq = parse_collection_query("+genre:Fantasy -tag:reread")
+        assert cq == QueryAnd(
+            (
+                QueryTerm(field="genre", op=Op.EQ, value="Fantasy"),
+                QueryNot(QueryTerm(field="tag", op=Op.EQ, value="reread")),
+            )
+        )
+
+    def test_grouping_controls_precedence(self) -> None:
+        cq = parse_collection_query("(author:Tolkien OR author:Lewis) AND year:[2020 TO *]")
+        assert cq == QueryAnd(
+            (
+                QueryOr(
+                    (
+                        QueryTerm(field="author", op=Op.CONTAINS, value="Tolkien"),
+                        QueryTerm(field="author", op=Op.CONTAINS, value="Lewis"),
+                    )
+                ),
+                QueryTerm(field="year", op=Op.RANGE, low="2020", high=None),
+            )
+        )
+
+    def test_validation_applies_inside_boolean(self) -> None:
+        # A non-canonical genre nested in a boolean is still rejected.
         with pytest.raises(CollectionQueryError):
-            parse_collection_query('genre:"Science Fiction" AND series:Dune')
+            parse_collection_query('genre:"Borg Romance" OR series:Dune')
 
-    def test_explicit_or_is_rejected(self) -> None:
-        with pytest.raises(CollectionQueryError):
-            parse_collection_query('genre:"Science Fiction" OR genre:Fantasy')
 
-    def test_explicit_not_is_rejected(self) -> None:
-        with pytest.raises(CollectionQueryError):
-            parse_collection_query("NOT genre:Horror")
-
-    def test_implicit_multi_term_is_rejected(self) -> None:
-        with pytest.raises(CollectionQueryError):
-            parse_collection_query("genre:SF series:Y")
-
+class TestRejectedSyntax:
     def test_bare_term_without_field_is_rejected(self) -> None:
         with pytest.raises(CollectionQueryError):
             parse_collection_query("Dune")

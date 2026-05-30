@@ -243,6 +243,50 @@ class TestRangeAndComparisonRules:
         assert before not in members
 
 
+class TestBooleanRules:
+    def test_and_intersects(self, catalog: LibraryCatalog) -> None:
+        match = _add(catalog, "Dune", genre="Science Fiction", authors=["Frank Herbert"])
+        _add(catalog, "Neuromancer", genre="Science Fiction", authors=["William Gibson"])
+        _add(catalog, "Hellstrom", genre="Horror", authors=["Frank Herbert"])
+        cid = catalog.create_collection(
+            "SF Herbert", query='genre:"Science Fiction" AND author:Herbert'
+        )
+        assert catalog.resolve_collection_member_ids(cid) == [match]
+
+    def test_or_unions(self, catalog: LibraryCatalog) -> None:
+        t = _add(catalog, "Hobbit", authors=["J.R.R. Tolkien"])
+        lewis = _add(catalog, "Narnia", authors=["C.S. Lewis"])
+        _add(catalog, "Dune", authors=["Frank Herbert"])
+        cid = catalog.create_collection("Inklings", query="author:Tolkien OR author:Lewis")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([t, lewis])
+
+    def test_and_not_excludes(self, catalog: LibraryCatalog) -> None:
+        keep = _add(catalog, "Fresh Fantasy", genre="Fantasy")
+        _add(catalog, "Old Favorite", genre="Fantasy", tag="reread")
+        cid = catalog.create_collection("Unread Fantasy", query="genre:Fantasy NOT tag:reread")
+        assert catalog.resolve_collection_member_ids(cid) == [keep]
+
+    def test_top_level_not_returns_complement(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "Scary", genre="Horror")
+        fantasy = _add(catalog, "Friendly", genre="Fantasy")
+        plain = _add(catalog, "Plain")  # no genre at all
+        cid = catalog.create_collection("Not Horror", query="NOT genre:Horror")
+        members = catalog.resolve_collection_member_ids(cid)
+        assert set(members) == {fantasy, plain}
+
+    def test_grouping_controls_precedence(self, catalog: LibraryCatalog) -> None:
+        recent_t = _add(
+            catalog, "New Tolkien", authors=["J.R.R. Tolkien"], published_date="2021-01-01"
+        )
+        _add(catalog, "Old Lewis", authors=["C.S. Lewis"], published_date="2019-01-01")
+        _add(catalog, "New Herbert", authors=["Frank Herbert"], published_date="2022-01-01")
+        cid = catalog.create_collection(
+            "Recent Inklings",
+            query="(author:Tolkien OR author:Lewis) AND year:[2020 TO *]",
+        )
+        assert catalog.resolve_collection_member_ids(cid) == [recent_t]
+
+
 class TestPreviewQuery:
     def test_preview_returns_records_without_saving(self, catalog: LibraryCatalog) -> None:
         _add(catalog, "SF One", genre="Science Fiction")

@@ -303,14 +303,16 @@ class TestQueryBasedCollectionsCLI:
         show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
         assert 'author:"Frank Herbert"' in show.output
 
-    def test_multi_term_query_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
+    def test_boolean_query_creates_rule_collection(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Multi", "--query",
-             "genre:SF series:Dune"],
+            ["--db", str(db_path), "collections", "create", "Combo", "--query",
+             'genre:"Science Fiction" AND author:Herbert'],
         )
-        assert result.exit_code != 0
-        assert "single" in result.output.lower()
+        assert result.exit_code == 0
+
+        show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        assert 'genre:"Science Fiction" AND author:Herbert' in show.output
 
     def test_non_canonical_genre_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(

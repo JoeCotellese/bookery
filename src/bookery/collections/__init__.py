@@ -5,6 +5,10 @@ from bookery.collections.query import (
     QUERY_FIELD_NAMES,
     CollectionQueryError,
     Op,
+    QueryAnd,
+    QueryNode,
+    QueryNot,
+    QueryOr,
     QueryTerm,
     parse_collection_query,
 )
@@ -13,6 +17,10 @@ __all__ = [
     "QUERY_FIELD_NAMES",
     "CollectionQueryError",
     "Op",
+    "QueryAnd",
+    "QueryNode",
+    "QueryNot",
+    "QueryOr",
     "QueryTerm",
     "parse_collection_query",
 ]
