@@ -216,7 +216,7 @@ class TestQueryBasedCollectionsCLI:
     def test_create_with_invalid_query_fails(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Bad", "--query", "publisher:Tor"],
+            ["--db", str(db_path), "collections", "create", "Bad", "--query", "nonsense:Tor"],
         )
         assert result.exit_code != 0
         assert "series" in result.output and "genre" in result.output
@@ -292,14 +292,16 @@ class TestQueryBasedCollectionsCLI:
         )
         assert both.exit_code != 0
 
-    def test_author_query_returns_slice4_deferral(self, runner: CliRunner, db_path: Path) -> None:
+    def test_author_query_creates_rule_collection(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(
             cli,
             ["--db", str(db_path), "collections", "create", "Auth", "--query",
              'author:"Frank Herbert"'],
         )
-        assert result.exit_code != 0
-        assert "#236" in result.output
+        assert result.exit_code == 0
+
+        show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        assert 'author:"Frank Herbert"' in show.output
 
     def test_multi_term_query_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
         result = runner.invoke(

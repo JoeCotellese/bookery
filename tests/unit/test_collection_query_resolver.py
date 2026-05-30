@@ -23,13 +23,30 @@ def _add(
     *,
     series: str | None = None,
     genre: str | None = None,
+    authors: list[str] | None = None,
+    language: str | None = None,
+    publisher: str | None = None,
+    isbn: str | None = None,
+    subjects: list[str] | None = None,
+    tag: str | None = None,
 ) -> int:
     book_id = catalog.add_book(
-        BookMetadata(title=title, series=series, source_path=Path(f"/books/{title}.epub")),
+        BookMetadata(
+            title=title,
+            series=series,
+            authors=authors or [],
+            language=language,
+            publisher=publisher,
+            isbn=isbn,
+            subjects=subjects or [],
+            source_path=Path(f"/books/{title}.epub"),
+        ),
         file_hash=f"hash_{title}",
     )
     if genre is not None:
         catalog.add_genre(book_id, genre, is_primary=True)
+    if tag is not None:
+        catalog.add_tag(book_id, tag)
     return book_id
 
 
@@ -100,6 +117,65 @@ class TestResolveMembers:
         assert [r.id for r in catalog.get_collection_books(cid)] == [sf]
 
 
+class TestScalarFieldRules:
+    def test_author_contains_matches_substring(self, catalog: LibraryCatalog) -> None:
+        a = _add(catalog, "Fellowship", authors=["J.R.R. Tolkien"])
+        b = _add(catalog, "Silmarillion", authors=["J.R.R. Tolkien", "Christopher Tolkien"])
+        _add(catalog, "Narnia", authors=["C.S. Lewis"])
+        cid = catalog.create_collection("Tolkien", query="author:Tolkien")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([a, b])
+
+    def test_subject_contains_matches_substring(self, catalog: LibraryCatalog) -> None:
+        d = _add(catalog, "1984", subjects=["Dystopian fiction", "Politics"])
+        _add(catalog, "Pride", subjects=["Romance"])
+        cid = catalog.create_collection("Dystopia", query="subject:Dystopian")
+        assert catalog.resolve_collection_member_ids(cid) == [d]
+
+    def test_title_prefix_is_left_anchored(self, catalog: LibraryCatalog) -> None:
+        d1 = _add(catalog, "Dune")
+        d2 = _add(catalog, "Dune Messiah")
+        _add(catalog, "Children of Dune")  # "Dune" not a prefix here
+        cid = catalog.create_collection("Dune-prefixed", query="title:Dune*")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([d1, d2])
+
+    def test_publisher_equality(self, catalog: LibraryCatalog) -> None:
+        t = _add(catalog, "Hyperion", publisher="Tor")
+        _add(catalog, "Other", publisher="Ace")
+        cid = catalog.create_collection("Tor", query="publisher:Tor")
+        assert catalog.resolve_collection_member_ids(cid) == [t]
+
+    def test_language_equality(self, catalog: LibraryCatalog) -> None:
+        en = _add(catalog, "English Book", language="en")
+        _add(catalog, "French Book", language="fr")
+        cid = catalog.create_collection("English", query="language:en")
+        assert catalog.resolve_collection_member_ids(cid) == [en]
+
+    def test_isbn_equality(self, catalog: LibraryCatalog) -> None:
+        target = _add(catalog, "ISBN Book", isbn="9780441013593")
+        _add(catalog, "Other ISBN", isbn="9780553283686")
+        cid = catalog.create_collection("ByISBN", query="isbn:9780441013593")
+        assert catalog.resolve_collection_member_ids(cid) == [target]
+
+    def test_tag_membership(self, catalog: LibraryCatalog) -> None:
+        f1 = _add(catalog, "Fav One", tag="favorites")
+        _add(catalog, "Meh", tag="meh")
+        cid = catalog.create_collection("Favs", query="tag:favorites")
+        assert catalog.resolve_collection_member_ids(cid) == [f1]
+
+    def test_id_equality(self, catalog: LibraryCatalog) -> None:
+        a = _add(catalog, "A")
+        _add(catalog, "B")
+        cid = catalog.create_collection("ById", query=f"id:{a}")
+        assert catalog.resolve_collection_member_ids(cid) == [a]
+
+    def test_like_metacharacters_match_literally(self, catalog: LibraryCatalog) -> None:
+        # A literal '%' in the value must not become a wildcard.
+        match = _add(catalog, "Pct", authors=["50% Off"])
+        _add(catalog, "NoPct", authors=["Frank Herbert"])
+        cid = catalog.create_collection("Pct", query='author:"50% Off"')
+        assert catalog.resolve_collection_member_ids(cid) == [match]
+
+
 class TestPreviewQuery:
     def test_preview_returns_records_without_saving(self, catalog: LibraryCatalog) -> None:
         _add(catalog, "SF One", genre="Science Fiction")
@@ -110,7 +186,7 @@ class TestPreviewQuery:
 
     def test_preview_invalid_query_raises(self, catalog: LibraryCatalog) -> None:
         with pytest.raises(CollectionQueryError):
-            catalog.preview_query("publisher:Tor")
+            catalog.preview_query("nonsense:Tor")
 
 
 class TestConversion:
@@ -154,7 +230,7 @@ class TestConversion:
     ) -> None:
         cid = catalog.create_collection("X")
         with pytest.raises(CollectionQueryError):
-            catalog.set_collection_query(cid, "publisher:Tor")
+            catalog.set_collection_query(cid, "nonsense:Tor")
         assert _query_of(catalog, cid) is None
 
 

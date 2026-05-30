@@ -2,15 +2,17 @@
 # ABOUTME: Quarantines the luqum dependency; has no database import.
 
 from bookery.collections.query import (
-    SLICE3_FIELD_NAMES,
-    CollectionQuery,
+    QUERY_FIELD_NAMES,
     CollectionQueryError,
+    Op,
+    QueryTerm,
     parse_collection_query,
 )
 
 __all__ = [
-    "SLICE3_FIELD_NAMES",
-    "CollectionQuery",
+    "QUERY_FIELD_NAMES",
     "CollectionQueryError",
+    "Op",
+    "QueryTerm",
     "parse_collection_query",
 ]

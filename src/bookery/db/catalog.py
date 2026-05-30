@@ -5,7 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from bookery.collections import CollectionQuery, parse_collection_query
+from bookery.collections import Op, QueryTerm, parse_collection_query
 from bookery.core.dedup import (
     normalize_author_for_dedup,
     normalize_for_dedup,
@@ -78,6 +78,71 @@ def _order_clause_for(sort: str, dir: str) -> str:
     # tiebreakers respect the user's chosen direction.
     parts = [part.strip() for part in columns.split(",")]
     return ", ".join(f"{part} {direction}" for part in parts)
+
+
+# Per-field SQL for a single query term. Every leaf compiles to a
+# ``SELECT id FROM books b WHERE <predicate>`` returning a book-id set, with the
+# value bound as a parameter (never interpolated). Many-to-many fields (genre,
+# tag) use EXISTS so the outer shape stays uniform — later sub-slices compose
+# these sets with INTERSECT/UNION/EXCEPT for boolean queries.
+#
+# ``author``/``subject`` are stored as JSON-array TEXT columns (e.g.
+# ``["J.R.R. Tolkien"]``); contains-match runs LIKE against that JSON text, so a
+# substring like ``Tolkien`` matches regardless of the array wrapping.
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input matches literally (with ESCAPE '\\')."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _compile_term(term: QueryTerm) -> tuple[str, list[object]]:
+    """Compile one validated ``QueryTerm`` to ``(sql, params)`` yielding a book-id set."""
+    field, op, value = term.field, term.op, term.value
+
+    if field == "id":
+        return ("SELECT id FROM books b WHERE b.id = ?", [int(value)])
+    if field == "isbn":
+        return ("SELECT id FROM books b WHERE b.isbn = ?", [value])
+    if field == "language":
+        return ("SELECT id FROM books b WHERE b.language = ? COLLATE NOCASE", [value])
+    if field == "publisher":
+        return ("SELECT id FROM books b WHERE b.publisher = ? COLLATE NOCASE", [value])
+    if field == "series":
+        return ("SELECT id FROM books b WHERE b.series = ? COLLATE NOCASE", [value])
+    if field == "title":
+        if op is Op.PREFIX:
+            return (
+                "SELECT id FROM books b WHERE b.title LIKE ? ESCAPE '\\' COLLATE NOCASE",
+                [f"{_escape_like(value)}%"],
+            )
+        return ("SELECT id FROM books b WHERE b.title = ? COLLATE NOCASE", [value])
+    if field == "author":
+        return (
+            "SELECT id FROM books b WHERE b.authors LIKE ? ESCAPE '\\' COLLATE NOCASE",
+            [f"%{_escape_like(value)}%"],
+        )
+    if field == "subject":
+        return (
+            "SELECT id FROM books b WHERE b.subjects LIKE ? ESCAPE '\\' COLLATE NOCASE",
+            [f"%{_escape_like(value)}%"],
+        )
+    if field == "genre":
+        return (
+            "SELECT id FROM books b WHERE EXISTS ("
+            "SELECT 1 FROM book_genres bg JOIN genres g ON bg.genre_id = g.id "
+            "WHERE bg.book_id = b.id AND g.name = ?)",
+            [value],
+        )
+    if field == "tag":
+        return (
+            "SELECT id FROM books b WHERE EXISTS ("
+            "SELECT 1 FROM book_tags bt JOIN tags t ON bt.tag_id = t.id "
+            "WHERE bt.book_id = b.id AND t.name = ?)",
+            [value],
+        )
+    # Guarded by the query validator; unreachable for whitelisted fields.
+    raise ValueError(f"Unsupported query field: {field}")  # pragma: no cover
 
 
 class LibraryCatalog:
@@ -1581,27 +1646,15 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
-    def _compile_query_member_ids(self, query: CollectionQuery) -> list[int]:
-        """Compile a validated query into the matching book IDs (per-field SQL).
+    def _compile_query_member_ids(self, query: QueryTerm) -> list[int]:
+        """Compile a validated query term into the matching book IDs (per-field SQL).
 
-        The query module guarantees ``field`` is a whitelisted slice-3 field and
-        ``value`` passed its per-field validation, so this only constructs SQL.
+        The query module guarantees ``field`` is whitelisted and ``value`` passed
+        its per-field validation. This only assembles parameter-bound SQL — user
+        input is never interpolated into the statement text.
         """
-        if query.field == "series":
-            cursor = self._conn.execute(
-                "SELECT id FROM books WHERE series = ? COLLATE NOCASE",
-                (query.value,),
-            )
-        elif query.field == "genre":
-            cursor = self._conn.execute(
-                "SELECT b.id FROM books b "
-                "JOIN book_genres bg ON b.id = bg.book_id "
-                "JOIN genres g ON bg.genre_id = g.id "
-                "WHERE g.name = ?",
-                (query.value,),
-            )
-        else:  # pragma: no cover - guarded by the query validator
-            raise ValueError(f"Unsupported query field: {query.field}")
+        sql, params = _compile_term(query)
+        cursor = self._conn.execute(sql, params)
         return [int(row[0]) for row in cursor.fetchall()]
 
     def _fetch_books_ordered(self, book_ids: list[int]) -> list[BookRecord]:
