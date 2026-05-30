@@ -46,6 +46,15 @@ class TestNewForm:
         ).data.decode()
         assert 'genre:"Science Fiction"' in html
 
+    def test_form_has_preview_button_and_live_region(self, mock_catalog, client):
+        html = client.get("/collections/new").data.decode()
+        # Explicit, non-debounced trigger that posts the query to the preview route.
+        assert 'hx-post="/collections/preview"' in html
+        assert "Preview matches" in html
+        # Results land in an aria-live region so screen readers announce them.
+        assert 'id="collection-preview"' in html
+        assert 'aria-live="polite"' in html
+
 
 class TestCreate:
     def test_create_with_valid_query_redirects_to_detail(self, mock_catalog, client):
