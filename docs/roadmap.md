@@ -73,6 +73,7 @@
 - [x] Delete book from detail page
 - [x] Persistent book context subhead on sub-flows
 - [x] Create and edit collections from the UI (incl. raw rule strings) with inline validation
+- [x] Non-persisting "Preview matches" — count + capped sample before saving a rule
 
 ## Phase 8: Vault-Export
 - [x] Obsidian vault → single EPUB pipeline (pandoc)
