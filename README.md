@@ -195,14 +195,46 @@ current automatically as the library changes.
 | `collections edit <id> --query '<rule>'` | Convert a static collection to rule-based |
 | `collections edit <id> --clear-query` | Convert a rule-based collection to static, snapshotting current members |
 | `collections preview --query '<rule>'` | Show which books a rule matches, without saving |
+| `collections query-help` | Print the full query reference (fields, operators, dates, examples) |
 | `collections rename <id> <new_name>` | Rename a collection |
 | `collections rm <id>` | Delete a collection (books are not deleted) |
 
-Rule queries are a deliberately small subset: exactly one `field:value` or
-`field:"phrase"` term over a whitelisted field. Slice 3 supports `series`
-(exact match) and `genre` (canonical genre). `author` is coming in a later
-slice; multi-term, boolean (`AND`/`OR`/`NOT`), wildcards, and ranges are
-rejected with a message naming the valid fields.
+#### Rule query language
+
+A rule query is a [Lucene](https://lucene.apache.org/)-style expression over a
+whitelisted set of fields, parsed permissively and validated restrictively — an
+unknown field, bad value, or unsupported shape is rejected with a message naming
+what's allowed. Run `bookery collections query-help` for the in-terminal
+reference.
+
+| Field | Matches |
+|-------|---------|
+| `id` | exact book id |
+| `title` | exact, phrase, or `prefix*` (left-anchored) |
+| `author` | substring (contains) |
+| `series` | exact |
+| `genre` | exact canonical genre |
+| `tag` | exact |
+| `language` | exact |
+| `publisher` | exact |
+| `subject` | substring (contains) |
+| `isbn` | exact |
+| `year` | publication year — `=`, range, or comparison |
+| `rating` | `=`, range, or comparison |
+| `added` | date added (ISO `YYYY-MM-DD`) — `=`, range, or comparison |
+
+Operators: `AND`, `OR`, `NOT`, grouping with `( )`, and `+`/`-` prefixes
+(require/exclude). The numeric/date fields (`year`, `rating`, `added`) also
+accept ranges `[a TO b]` (inclusive), `{a TO b}` (exclusive), open-ended `*`,
+and comparisons `>=` `<=` `>` `<`. Fuzzy (`~`) and boost (`^`) are not
+supported.
+
+```text
+series:Dune
+genre:"Science Fiction" AND year:[2020 TO *]
+rating:>=4
+author:"Ursula K. Le Guin" NOT tag:reread
+```
 
 ### Web UI
 

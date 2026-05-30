@@ -3,9 +3,18 @@
 
 import json
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
-from bookery.collections import CollectionQuery, parse_collection_query
+from bookery.collections import (
+    Op,
+    QueryAnd,
+    QueryNode,
+    QueryNot,
+    QueryOr,
+    QueryTerm,
+    parse_collection_query,
+)
 from bookery.core.dedup import (
     normalize_author_for_dedup,
     normalize_for_dedup,
@@ -78,6 +87,156 @@ def _order_clause_for(sort: str, dir: str) -> str:
     # tiebreakers respect the user's chosen direction.
     parts = [part.strip() for part in columns.split(",")]
     return ", ".join(f"{part} {direction}" for part in parts)
+
+
+# Per-field SQL for a single query term. Every leaf compiles to a
+# ``SELECT id FROM books b WHERE <predicate>`` returning a book-id set, with the
+# value bound as a parameter (never interpolated). Many-to-many fields (genre,
+# tag) use EXISTS so the outer shape stays uniform — later sub-slices compose
+# these sets with INTERSECT/UNION/EXCEPT for boolean queries.
+#
+# ``author``/``subject`` are stored as JSON-array TEXT columns (e.g.
+# ``["J.R.R. Tolkien"]``); contains-match runs LIKE against that JSON text, so a
+# substring like ``Tolkien`` matches regardless of the array wrapping.
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input matches literally (with ESCAPE '\\')."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _comparable_predicate(
+    operand: str, term: QueryTerm, cast: Callable[[str], object]
+) -> tuple[str, list[object]]:
+    """Build a WHERE predicate for an ordered (numeric/date) operand.
+
+    ``operand`` is a trusted SQL column/expression (never user input); user values
+    flow only through bound ``?`` parameters, cast to the field's type. Handles
+    EQ/GE/GT/LE/LT and RANGE (open bounds skip their clause).
+    """
+    op = term.op
+    if op is Op.EQ:
+        return f"{operand} = ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.GE:
+        return f"{operand} >= ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.GT:
+        return f"{operand} > ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.LE:
+        return f"{operand} <= ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.LT:
+        return f"{operand} < ?", [cast(term.value)]  # type: ignore[arg-type]
+    # Op.RANGE — one clause per present bound; an all-open range matches any non-null.
+    clauses: list[str] = []
+    params: list[object] = []
+    if term.low is not None:
+        clauses.append(f"{operand} {'>=' if term.include_low else '>'} ?")
+        params.append(cast(term.low))
+    if term.high is not None:
+        clauses.append(f"{operand} {'<=' if term.include_high else '<'} ?")
+        params.append(cast(term.high))
+    if not clauses:
+        return f"{operand} IS NOT NULL", []
+    return " AND ".join(clauses), params
+
+
+def _compile_node(node: QueryNode) -> tuple[str, list[object]]:
+    """Compile a query IR node to ``(sql, params)`` yielding a book-id set.
+
+    Booleans compose via ``b.id IN (subquery)`` / ``NOT IN`` rather than raw
+    compound set operators: SQLite won't parenthesise compound SELECTs, but nested
+    ``IN`` subqueries give clean, precedence-safe composition with full parameter
+    binding. AND joins child membership with ``AND``, OR with ``OR``, NOT negates.
+    """
+    if isinstance(node, QueryTerm):
+        return _compile_term(node)
+    if isinstance(node, QueryAnd):
+        return _compile_boolean(node.children, "AND")
+    if isinstance(node, QueryOr):
+        return _compile_boolean(node.children, "OR")
+    if isinstance(node, QueryNot):
+        sql, params = _compile_node(node.child)
+        return f"SELECT id FROM books b WHERE b.id NOT IN ({sql})", params
+    # Exhaustive over QueryNode; unreachable for validated trees.
+    raise ValueError(f"Unsupported query node: {type(node).__name__}")  # pragma: no cover
+
+
+def _compile_boolean(
+    children: tuple[QueryNode, ...], conjunction: str
+) -> tuple[str, list[object]]:
+    """Combine child node membership with AND/OR via nested ``b.id IN (...)`` clauses."""
+    clauses: list[str] = []
+    params: list[object] = []
+    for child in children:
+        sql, child_params = _compile_node(child)
+        clauses.append(f"b.id IN ({sql})")
+        params.extend(child_params)
+    joined = f" {conjunction} ".join(clauses)
+    return f"SELECT id FROM books b WHERE {joined}", params
+
+
+def _compile_term(term: QueryTerm) -> tuple[str, list[object]]:
+    """Compile one validated ``QueryTerm`` to ``(sql, params)`` yielding a book-id set."""
+    field, op, value = term.field, term.op, term.value
+
+    if field == "year":
+        # The 4-char year prefix of the (ISO) edition date, compared numerically.
+        pred, params = _comparable_predicate(
+            "CAST(substr(b.published_date, 1, 4) AS INTEGER)", term, int
+        )
+        return f"SELECT id FROM books b WHERE {pred}", params
+    if field == "rating":
+        pred, params = _comparable_predicate("b.rating", term, float)
+        return f"SELECT id FROM books b WHERE {pred}", params
+    if field == "added":
+        # Compare the date portion of the stored ISO timestamp (day granularity).
+        pred, params = _comparable_predicate("substr(b.date_added, 1, 10)", term, str)
+        return f"SELECT id FROM books b WHERE {pred}", params
+
+    # Remaining fields are scalar-only; the validator guarantees a non-null value.
+    assert value is not None
+    if field == "id":
+        return ("SELECT id FROM books b WHERE b.id = ?", [int(value)])
+    if field == "isbn":
+        return ("SELECT id FROM books b WHERE b.isbn = ?", [value])
+    if field == "language":
+        return ("SELECT id FROM books b WHERE b.language = ? COLLATE NOCASE", [value])
+    if field == "publisher":
+        return ("SELECT id FROM books b WHERE b.publisher = ? COLLATE NOCASE", [value])
+    if field == "series":
+        return ("SELECT id FROM books b WHERE b.series = ? COLLATE NOCASE", [value])
+    if field == "title":
+        if op is Op.PREFIX:
+            return (
+                "SELECT id FROM books b WHERE b.title LIKE ? ESCAPE '\\' COLLATE NOCASE",
+                [f"{_escape_like(value)}%"],
+            )
+        return ("SELECT id FROM books b WHERE b.title = ? COLLATE NOCASE", [value])
+    if field == "author":
+        return (
+            "SELECT id FROM books b WHERE b.authors LIKE ? ESCAPE '\\' COLLATE NOCASE",
+            [f"%{_escape_like(value)}%"],
+        )
+    if field == "subject":
+        return (
+            "SELECT id FROM books b WHERE b.subjects LIKE ? ESCAPE '\\' COLLATE NOCASE",
+            [f"%{_escape_like(value)}%"],
+        )
+    if field == "genre":
+        return (
+            "SELECT id FROM books b WHERE EXISTS ("
+            "SELECT 1 FROM book_genres bg JOIN genres g ON bg.genre_id = g.id "
+            "WHERE bg.book_id = b.id AND g.name = ?)",
+            [value],
+        )
+    if field == "tag":
+        return (
+            "SELECT id FROM books b WHERE EXISTS ("
+            "SELECT 1 FROM book_tags bt JOIN tags t ON bt.tag_id = t.id "
+            "WHERE bt.book_id = b.id AND t.name = ?)",
+            [value],
+        )
+    # Guarded by the query validator; unreachable for whitelisted fields.
+    raise ValueError(f"Unsupported query field: {field}")  # pragma: no cover
 
 
 class LibraryCatalog:
@@ -1581,27 +1740,15 @@ class LibraryCatalog:
         )
         self._conn.commit()
 
-    def _compile_query_member_ids(self, query: CollectionQuery) -> list[int]:
-        """Compile a validated query into the matching book IDs (per-field SQL).
+    def _compile_query_member_ids(self, query: QueryNode) -> list[int]:
+        """Compile a validated query tree into the matching book IDs.
 
-        The query module guarantees ``field`` is a whitelisted slice-3 field and
-        ``value`` passed its per-field validation, so this only constructs SQL.
+        The query module guarantees every leaf field is whitelisted and its value
+        passed per-field validation. This only assembles parameter-bound SQL — user
+        input is never interpolated into the statement text.
         """
-        if query.field == "series":
-            cursor = self._conn.execute(
-                "SELECT id FROM books WHERE series = ? COLLATE NOCASE",
-                (query.value,),
-            )
-        elif query.field == "genre":
-            cursor = self._conn.execute(
-                "SELECT b.id FROM books b "
-                "JOIN book_genres bg ON b.id = bg.book_id "
-                "JOIN genres g ON bg.genre_id = g.id "
-                "WHERE g.name = ?",
-                (query.value,),
-            )
-        else:  # pragma: no cover - guarded by the query validator
-            raise ValueError(f"Unsupported query field: {query.field}")
+        sql, params = _compile_node(query)
+        cursor = self._conn.execute(sql, params)
         return [int(row[0]) for row in cursor.fetchall()]
 
     def _fetch_books_ordered(self, book_ids: list[int]) -> list[BookRecord]:

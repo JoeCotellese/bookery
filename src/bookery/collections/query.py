@@ -1,12 +1,28 @@
-# ABOUTME: Parses and validates rule-based collection queries (slice-3 subset).
+# ABOUTME: Parses and validates rule-based collection queries into a small query IR.
 # ABOUTME: Pure module — owns the luqum dependency, no DB import; SQL lives in the resolver.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
 
 from luqum.exceptions import ParseError
 from luqum.parser import parser
-from luqum.tree import Phrase, SearchField, Word
+from luqum.tree import (
+    AndOperation,
+    From,
+    Group,
+    Not,
+    OrOperation,
+    Phrase,
+    Plus,
+    Prohibit,
+    Range,
+    SearchField,
+    To,
+    UnknownOperation,
+    Word,
+)
 
 from bookery.metadata.genres import CANONICAL_GENRES, is_canonical_genre
 
@@ -20,17 +36,67 @@ class CollectionQueryError(ValueError):
     """
 
 
-@dataclass(frozen=True)
-class CollectionQuery:
-    """A validated single-field equality query.
+class Op(StrEnum):
+    """How a leaf term matches its field.
 
-    ``field`` is a canonical, lower-cased slice-3 field name (``series`` or
-    ``genre``); ``value`` is the raw user-supplied value (quotes stripped). The
-    resolver turns this into per-field SQL — this object holds no SQL itself.
+    The parser resolves each leaf to exactly one ``Op`` from both the field's
+    capabilities and the parsed value shape; the resolver keys its SQL off it.
+    """
+
+    EQ = "eq"  # exact, case-insensitive equality
+    CONTAINS = "contains"  # substring match (free-text people/subject fields)
+    PREFIX = "prefix"  # left-anchored prefix match (``title:dune*``)
+    RANGE = "range"  # bounded interval (``year:[2000 TO 2010]``)
+    GE = "ge"  # >=
+    GT = "gt"  # >
+    LE = "le"  # <=
+    LT = "lt"  # <
+
+
+@dataclass(frozen=True)
+class QueryTerm:
+    """A validated single-field leaf of the query IR.
+
+    ``field`` is a canonical, lower-cased whitelisted field name; ``op`` is the
+    resolved match strategy. For scalar ops (EQ/CONTAINS/PREFIX/GE/GT/LE/LT)
+    ``value`` carries the raw operand (quotes and any trailing prefix ``*`` already
+    stripped). For ``RANGE`` ``value`` is None and ``low``/``high`` carry the bounds
+    (None = open-ended) with their inclusivity flags. This object holds no SQL —
+    the resolver compiles it per field.
     """
 
     field: str
-    value: str
+    op: Op
+    value: str | None = None
+    low: str | None = None
+    high: str | None = None
+    include_low: bool = True
+    include_high: bool = True
+
+
+@dataclass(frozen=True)
+class QueryAnd:
+    """Boolean AND of two or more child nodes (intersection of their members)."""
+
+    children: tuple["QueryNode", ...]
+
+
+@dataclass(frozen=True)
+class QueryOr:
+    """Boolean OR of two or more child nodes (union of their members)."""
+
+    children: tuple["QueryNode", ...]
+
+
+@dataclass(frozen=True)
+class QueryNot:
+    """Boolean NOT of a child node (every book not matched by the child)."""
+
+    child: "QueryNode"
+
+
+# A node in the validated query IR: either a leaf term or a boolean combinator.
+QueryNode = QueryTerm | QueryAnd | QueryOr | QueryNot
 
 
 def _validate_genre_value(value: str) -> None:
@@ -40,49 +106,112 @@ def _validate_genre_value(value: str) -> None:
         raise CollectionQueryError(f"'{value}' is not a canonical genre. Valid genres: {valid}.")
 
 
-# The slice-3 field whitelist. Maps each supported field to an optional value
-# validator. This registry drives both the compiler (in the db resolver, which
-# keys off these names) and the error messages below. Slice 4 (#236) grows this
-# map and relaxes the validator; the parse entry point does not change.
-SLICE3_FIELDS: dict[str, Callable[[str], None] | None] = {
-    "series": None,
-    "genre": _validate_genre_value,
-}
-SLICE3_FIELD_NAMES: tuple[str, ...] = tuple(SLICE3_FIELDS)
+def _validate_int_value(value: str) -> None:
+    """Reject non-integer ``id`` operands."""
+    try:
+        int(value)
+    except ValueError as exc:
+        raise CollectionQueryError(f"'{value}' is not a valid integer id.") from exc
 
-# Fields deliberately deferred to a later slice, mapped to where they land. These
-# get a specific "coming later" message rather than the generic unknown-field error.
-_DEFERRED_FIELDS: dict[str, str] = {
-    "author": "slice 4 (#236)",
-}
 
-_FIELD_LIST = ", ".join(SLICE3_FIELD_NAMES)
+def _validate_year_value(value: str) -> None:
+    """Reject non-integer ``year`` operands."""
+    try:
+        int(value)
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid year (use a 4-digit year like 2020)."
+        ) from exc
+
+
+def _validate_rating_value(value: str) -> None:
+    """Reject non-numeric ``rating`` operands."""
+    try:
+        float(value)
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid rating (use a number like 4 or 4.5)."
+        ) from exc
+
+
+def _validate_iso_date_value(value: str) -> None:
+    """Reject ``added`` operands that are not ISO 8601 calendar dates."""
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid ISO date (use YYYY-MM-DD, e.g. 2024-01-31)."
+        ) from exc
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    """Capabilities of a whitelisted query field.
+
+    ``match`` is the default op for a word/phrase value (``EQ`` for single-valued
+    columns, ``CONTAINS`` for free-text people/subject columns). ``allow_prefix``
+    permits the left-anchored ``value*`` form. ``allow_range`` permits ranges
+    (``[a TO b]``) and comparisons (``>=``/``<=``/``>``/``<``) — numeric/date fields
+    only. ``validate`` runs against the raw value (and each range bound) at parse
+    time so an invalid query never reaches the resolver.
+    """
+
+    match: Op
+    allow_prefix: bool = False
+    allow_range: bool = False
+    validate: Callable[[str], None] | None = None
+
+
+# The query field whitelist. This registry drives both the parser (validation and
+# op resolution) and the resolver's per-field SQL compiler, which keys off these
+# names. Later sub-slices grow this map (ranges/comparisons, booleans) without
+# changing the ``parse_collection_query`` entry point.
+QUERY_FIELDS: dict[str, FieldSpec] = {
+    "id": FieldSpec(match=Op.EQ, validate=_validate_int_value),
+    "title": FieldSpec(match=Op.EQ, allow_prefix=True),
+    "author": FieldSpec(match=Op.CONTAINS),
+    "series": FieldSpec(match=Op.EQ),
+    "genre": FieldSpec(match=Op.EQ, validate=_validate_genre_value),
+    "tag": FieldSpec(match=Op.EQ),
+    "language": FieldSpec(match=Op.EQ),
+    "publisher": FieldSpec(match=Op.EQ),
+    "subject": FieldSpec(match=Op.CONTAINS),
+    "isbn": FieldSpec(match=Op.EQ),
+    "year": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_year_value),
+    "rating": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_rating_value),
+    "added": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_iso_date_value),
+}
+QUERY_FIELD_NAMES: tuple[str, ...] = tuple(QUERY_FIELDS)
+_RANGE_FIELD_NAMES: tuple[str, ...] = tuple(f for f, s in QUERY_FIELDS.items() if s.allow_range)
+
+_FIELD_LIST = ", ".join(QUERY_FIELD_NAMES)
 _SYNTAX_MSG = (
-    f"Invalid query syntax. Use a single term like 'genre:\"Science Fiction\"' "
-    f"or 'series:Dune' (valid fields: {_FIELD_LIST})."
-)
-_SINGLE_TERM_MSG = (
-    f"Only a single field:value term is supported in this release "
-    f"(e.g. 'genre:\"Science Fiction\"'). Valid fields: {_FIELD_LIST}."
+    f"Invalid query syntax. Use a single term like 'genre:\"Science Fiction\"', "
+    f"'series:Dune', or 'author:Tolkien' (valid fields: {_FIELD_LIST})."
 )
 _UNSUPPORTED_VALUE_MSG = (
-    "Wildcards, ranges, and comparisons are not supported in this release — "
-    "use an exact field:value, e.g. 'series:Dune'."
+    "Unsupported value. Use an exact field:value (e.g. 'series:Dune'), a trailing "
+    "'*' prefix on title, or a range/comparison on a numeric/date field."
+)
+_RANGE_FIELD_MSG = (
+    f"Ranges ([a TO b]) and comparisons (>=, <=, >, <) are only supported on the "
+    f"numeric/date fields: {', '.join(_RANGE_FIELD_NAMES)}."
 )
 
 
-def parse_collection_query(raw: str) -> CollectionQuery:
-    """Parse and validate a rule-based collection query.
+def parse_collection_query(raw: str) -> QueryNode:
+    """Parse and validate a rule-based collection query into the query IR.
 
     Parse-permissive, validate-restrictive: luqum parses the full Lucene grammar,
-    then the AST is walked and anything outside the slice-3 subset is rejected. A
-    valid query is exactly one ``field:value`` or ``field:"phrase"`` term over a
-    whitelisted field.
+    then the AST is walked and anything outside the supported subset is rejected.
+    A valid query is one or more whitelisted ``field:value`` terms combined with
+    AND/OR/NOT, ``+``/``-`` prefixes, and parentheses; each leaf is an exact,
+    contains, prefix, range, or comparison match per its field.
 
     Raises:
-        CollectionQueryError: on syntax errors, multi-term/boolean queries,
-            unknown/deferred fields, unsupported value shapes (wildcards/ranges),
-            or non-canonical genre values.
+        CollectionQueryError: on syntax errors, unknown fields, unsupported value
+            shapes (interior wildcards, ranges/comparisons on non-numeric fields),
+            non-integer ids, bad dates, or non-canonical genre values.
     """
     text = raw.strip()
     if not text:
@@ -93,37 +222,106 @@ def parse_collection_query(raw: str) -> CollectionQuery:
     except ParseError as exc:
         raise CollectionQueryError(_SYNTAX_MSG) from exc
 
-    # A single field:value term parses to a SearchField at the top level. Anything
-    # else — implicit multi-term (UnknownOperation), explicit AND/OR (And/OrOperation),
-    # NOT, a parenthesised Group, or a bare Word/Phrase with no field — is rejected.
-    if not isinstance(tree, SearchField):
-        raise CollectionQueryError(_SINGLE_TERM_MSG)
+    return _build_node(tree)
 
-    expr = tree.expr
+
+def _build_node(node: object) -> QueryNode:
+    """Recursively validate a luqum AST node into the query IR.
+
+    AND/implicit-juxtaposition map to ``QueryAnd``, OR to ``QueryOr``, NOT/``-`` to
+    ``QueryNot``; ``+`` and parentheses are structural and unwrap to their child.
+    Leaf ``field:value`` terms are validated against the whitelist.
+    """
+    if isinstance(node, SearchField):
+        return _validate_term(node)
+    if isinstance(node, AndOperation | UnknownOperation):
+        return QueryAnd(tuple(_build_node(child) for child in node.children))
+    if isinstance(node, OrOperation):
+        return QueryOr(tuple(_build_node(child) for child in node.children))
+    if isinstance(node, Not | Prohibit):
+        return QueryNot(_build_node(node.children[0]))
+    if isinstance(node, Plus | Group):
+        return _build_node(node.children[0])
+    # A bare Word/Phrase with no field, or any other unsupported shape.
+    raise CollectionQueryError(_SYNTAX_MSG)
+
+
+def _validate_term(node: SearchField) -> QueryTerm:
+    """Validate one ``field:value`` SearchField against the whitelist into a QueryTerm."""
+    field = node.name.lower()
+    if field not in QUERY_FIELDS:
+        raise CollectionQueryError(f"Unknown field '{node.name}'. Valid fields: {_FIELD_LIST}.")
+    spec = QUERY_FIELDS[field]
+
+    expr = node.expr
     if isinstance(expr, Phrase):
         value = _strip_quotes(expr.value)
-    elif isinstance(expr, Word):
-        value = expr.value
-        if "*" in value or "?" in value:
+        _apply_validator(spec, value)
+        return QueryTerm(field=field, op=spec.match, value=value)
+    if isinstance(expr, Word):
+        value, op = _resolve_word(expr.value, spec)
+        _apply_validator(spec, value)
+        return QueryTerm(field=field, op=op, value=value)
+    if isinstance(expr, Range):
+        return _build_range_term(field, spec, expr)
+    if isinstance(expr, From | To):
+        return _build_comparison_term(field, spec, expr)
+    # Fuzzy, Proximity, etc. — not in the supported subset.
+    raise CollectionQueryError(_UNSUPPORTED_VALUE_MSG)
+
+
+def _apply_validator(spec: FieldSpec, value: str) -> None:
+    """Run the field's value validator (if any) against a raw operand."""
+    if spec.validate is not None:
+        spec.validate(value)
+
+
+def _build_range_term(field: str, spec: FieldSpec, expr: Range) -> QueryTerm:
+    """Validate a ``[a TO b]`` / ``{a TO b}`` range into a RANGE QueryTerm."""
+    if not spec.allow_range:
+        raise CollectionQueryError(_RANGE_FIELD_MSG)
+    low = _range_bound(expr.low.value)
+    high = _range_bound(expr.high.value)
+    for bound in (low, high):
+        if bound is not None:
+            _apply_validator(spec, bound)
+    return QueryTerm(
+        field=field,
+        op=Op.RANGE,
+        low=low,
+        high=high,
+        include_low=expr.include_low,
+        include_high=expr.include_high,
+    )
+
+
+def _range_bound(raw: str) -> str | None:
+    """A luqum range bound; ``*`` means open-ended (None)."""
+    return None if raw == "*" else raw
+
+
+def _build_comparison_term(field: str, spec: FieldSpec, expr: From | To) -> QueryTerm:
+    """Validate a ``>=``/``>``/``<=``/``<`` comparison into a GE/GT/LE/LT QueryTerm."""
+    if not spec.allow_range:
+        raise CollectionQueryError(_RANGE_FIELD_MSG)
+    value = expr.a.value
+    _apply_validator(spec, value)
+    if isinstance(expr, From):
+        op = Op.GE if expr.include else Op.GT
+    else:  # To
+        op = Op.LE if expr.include else Op.LT
+    return QueryTerm(field=field, op=op, value=value)
+
+
+def _resolve_word(raw_value: str, spec: FieldSpec) -> tuple[str, Op]:
+    """Resolve a bare Word value to (value, op), handling the trailing-``*`` prefix form."""
+    if raw_value.endswith("*") and "*" not in raw_value[:-1] and "?" not in raw_value:
+        if not spec.allow_prefix:
             raise CollectionQueryError(_UNSUPPORTED_VALUE_MSG)
-    else:
-        # Range, Fuzzy, Proximity, etc. — not part of the slice-3 subset.
+        return raw_value[:-1], Op.PREFIX
+    if "*" in raw_value or "?" in raw_value:
         raise CollectionQueryError(_UNSUPPORTED_VALUE_MSG)
-
-    field = tree.name.lower()
-
-    if field in _DEFERRED_FIELDS:
-        raise CollectionQueryError(
-            f"Field '{field}' is not yet supported — coming in {_DEFERRED_FIELDS[field]}."
-        )
-    if field not in SLICE3_FIELDS:
-        raise CollectionQueryError(f"Unknown field '{tree.name}'. Valid fields: {_FIELD_LIST}.")
-
-    validate_value = SLICE3_FIELDS[field]
-    if validate_value is not None:
-        validate_value(value)
-
-    return CollectionQuery(field=field, value=value)
+    return raw_value, spec.match
 
 
 def _strip_quotes(phrase_value: str) -> str:
