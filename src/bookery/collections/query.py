@@ -3,11 +3,12 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 from luqum.exceptions import ParseError
 from luqum.parser import parser
-from luqum.tree import Phrase, SearchField, Word
+from luqum.tree import From, Phrase, Range, SearchField, To, Word
 
 from bookery.metadata.genres import CANONICAL_GENRES, is_canonical_genre
 
@@ -31,6 +32,11 @@ class Op(StrEnum):
     EQ = "eq"  # exact, case-insensitive equality
     CONTAINS = "contains"  # substring match (free-text people/subject fields)
     PREFIX = "prefix"  # left-anchored prefix match (``title:dune*``)
+    RANGE = "range"  # bounded interval (``year:[2000 TO 2010]``)
+    GE = "ge"  # >=
+    GT = "gt"  # >
+    LE = "le"  # <=
+    LT = "lt"  # <
 
 
 @dataclass(frozen=True)
@@ -38,14 +44,20 @@ class QueryTerm:
     """A validated single-field leaf of the query IR.
 
     ``field`` is a canonical, lower-cased whitelisted field name; ``op`` is the
-    resolved match strategy; ``value`` is the raw user operand (quotes and any
-    trailing prefix ``*`` already stripped). This object holds no SQL — the
-    resolver compiles it per field.
+    resolved match strategy. For scalar ops (EQ/CONTAINS/PREFIX/GE/GT/LE/LT)
+    ``value`` carries the raw operand (quotes and any trailing prefix ``*`` already
+    stripped). For ``RANGE`` ``value`` is None and ``low``/``high`` carry the bounds
+    (None = open-ended) with their inclusivity flags. This object holds no SQL —
+    the resolver compiles it per field.
     """
 
     field: str
     op: Op
-    value: str
+    value: str | None = None
+    low: str | None = None
+    high: str | None = None
+    include_low: bool = True
+    include_high: bool = True
 
 
 def _validate_genre_value(value: str) -> None:
@@ -63,18 +75,51 @@ def _validate_int_value(value: str) -> None:
         raise CollectionQueryError(f"'{value}' is not a valid integer id.") from exc
 
 
+def _validate_year_value(value: str) -> None:
+    """Reject non-integer ``year`` operands."""
+    try:
+        int(value)
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid year (use a 4-digit year like 2020)."
+        ) from exc
+
+
+def _validate_rating_value(value: str) -> None:
+    """Reject non-numeric ``rating`` operands."""
+    try:
+        float(value)
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid rating (use a number like 4 or 4.5)."
+        ) from exc
+
+
+def _validate_iso_date_value(value: str) -> None:
+    """Reject ``added`` operands that are not ISO 8601 calendar dates."""
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise CollectionQueryError(
+            f"'{value}' is not a valid ISO date (use YYYY-MM-DD, e.g. 2024-01-31)."
+        ) from exc
+
+
 @dataclass(frozen=True)
 class FieldSpec:
     """Capabilities of a whitelisted query field.
 
     ``match`` is the default op for a word/phrase value (``EQ`` for single-valued
     columns, ``CONTAINS`` for free-text people/subject columns). ``allow_prefix``
-    permits the left-anchored ``value*`` form. ``validate`` runs against the raw
-    value at parse time so an invalid query never reaches the resolver.
+    permits the left-anchored ``value*`` form. ``allow_range`` permits ranges
+    (``[a TO b]``) and comparisons (``>=``/``<=``/``>``/``<``) — numeric/date fields
+    only. ``validate`` runs against the raw value (and each range bound) at parse
+    time so an invalid query never reaches the resolver.
     """
 
     match: Op
     allow_prefix: bool = False
+    allow_range: bool = False
     validate: Callable[[str], None] | None = None
 
 
@@ -93,8 +138,12 @@ QUERY_FIELDS: dict[str, FieldSpec] = {
     "publisher": FieldSpec(match=Op.EQ),
     "subject": FieldSpec(match=Op.CONTAINS),
     "isbn": FieldSpec(match=Op.EQ),
+    "year": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_year_value),
+    "rating": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_rating_value),
+    "added": FieldSpec(match=Op.EQ, allow_range=True, validate=_validate_iso_date_value),
 }
 QUERY_FIELD_NAMES: tuple[str, ...] = tuple(QUERY_FIELDS)
+_RANGE_FIELD_NAMES: tuple[str, ...] = tuple(f for f, s in QUERY_FIELDS.items() if s.allow_range)
 
 _FIELD_LIST = ", ".join(QUERY_FIELD_NAMES)
 _SYNTAX_MSG = (
@@ -107,8 +156,12 @@ _SINGLE_TERM_MSG = (
     f"Valid fields: {_FIELD_LIST}."
 )
 _UNSUPPORTED_VALUE_MSG = (
-    "Wildcards (except a trailing '*' on title), ranges, and comparisons are not "
-    "supported in this release — use an exact field:value, e.g. 'series:Dune'."
+    "Unsupported value. Use an exact field:value (e.g. 'series:Dune'), a trailing "
+    "'*' prefix on title, or a range/comparison on a numeric/date field."
+)
+_RANGE_FIELD_MSG = (
+    f"Ranges ([a TO b]) and comparisons (>=, <=, >, <) are only supported on the "
+    f"numeric/date fields: {', '.join(_RANGE_FIELD_NAMES)}."
 )
 
 
@@ -152,16 +205,61 @@ def _validate_term(node: SearchField) -> QueryTerm:
 
     expr = node.expr
     if isinstance(expr, Phrase):
-        value, op = _strip_quotes(expr.value), spec.match
-    elif isinstance(expr, Word):
+        value = _strip_quotes(expr.value)
+        _apply_validator(spec, value)
+        return QueryTerm(field=field, op=spec.match, value=value)
+    if isinstance(expr, Word):
         value, op = _resolve_word(expr.value, spec)
-    else:
-        # Range, Fuzzy, Proximity, comparison, etc. — not in the current subset.
-        raise CollectionQueryError(_UNSUPPORTED_VALUE_MSG)
+        _apply_validator(spec, value)
+        return QueryTerm(field=field, op=op, value=value)
+    if isinstance(expr, Range):
+        return _build_range_term(field, spec, expr)
+    if isinstance(expr, From | To):
+        return _build_comparison_term(field, spec, expr)
+    # Fuzzy, Proximity, etc. — not in the supported subset.
+    raise CollectionQueryError(_UNSUPPORTED_VALUE_MSG)
 
+
+def _apply_validator(spec: FieldSpec, value: str) -> None:
+    """Run the field's value validator (if any) against a raw operand."""
     if spec.validate is not None:
         spec.validate(value)
 
+
+def _build_range_term(field: str, spec: FieldSpec, expr: Range) -> QueryTerm:
+    """Validate a ``[a TO b]`` / ``{a TO b}`` range into a RANGE QueryTerm."""
+    if not spec.allow_range:
+        raise CollectionQueryError(_RANGE_FIELD_MSG)
+    low = _range_bound(expr.low.value)
+    high = _range_bound(expr.high.value)
+    for bound in (low, high):
+        if bound is not None:
+            _apply_validator(spec, bound)
+    return QueryTerm(
+        field=field,
+        op=Op.RANGE,
+        low=low,
+        high=high,
+        include_low=expr.include_low,
+        include_high=expr.include_high,
+    )
+
+
+def _range_bound(raw: str) -> str | None:
+    """A luqum range bound; ``*`` means open-ended (None)."""
+    return None if raw == "*" else raw
+
+
+def _build_comparison_term(field: str, spec: FieldSpec, expr: From | To) -> QueryTerm:
+    """Validate a ``>=``/``>``/``<=``/``<`` comparison into a GE/GT/LE/LT QueryTerm."""
+    if not spec.allow_range:
+        raise CollectionQueryError(_RANGE_FIELD_MSG)
+    value = expr.a.value
+    _apply_validator(spec, value)
+    if isinstance(expr, From):
+        op = Op.GE if expr.include else Op.GT
+    else:  # To
+        op = Op.LE if expr.include else Op.LT
     return QueryTerm(field=field, op=op, value=value)
 
 

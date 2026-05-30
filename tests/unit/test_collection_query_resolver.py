@@ -29,6 +29,9 @@ def _add(
     isbn: str | None = None,
     subjects: list[str] | None = None,
     tag: str | None = None,
+    published_date: str | None = None,
+    rating: float | None = None,
+    date_added: str | None = None,
 ) -> int:
     book_id = catalog.add_book(
         BookMetadata(
@@ -39,6 +42,8 @@ def _add(
             publisher=publisher,
             isbn=isbn,
             subjects=subjects or [],
+            published_date=published_date,
+            rating=rating,
             source_path=Path(f"/books/{title}.epub"),
         ),
         file_hash=f"hash_{title}",
@@ -47,6 +52,12 @@ def _add(
         catalog.add_genre(book_id, genre, is_primary=True)
     if tag is not None:
         catalog.add_tag(book_id, tag)
+    if date_added is not None:
+        # date_added is DB-managed (defaults to now); override it for added: tests.
+        catalog._conn.execute(
+            "UPDATE books SET date_added = ? WHERE id = ?", (date_added, book_id)
+        )
+        catalog._conn.commit()
     return book_id
 
 
@@ -176,6 +187,62 @@ class TestScalarFieldRules:
         assert catalog.resolve_collection_member_ids(cid) == [match]
 
 
+class TestRangeAndComparisonRules:
+    def test_year_inclusive_range(self, catalog: LibraryCatalog) -> None:
+        old = _add(catalog, "Old", published_date="1999-06-01")
+        lo = _add(catalog, "Lo", published_date="2000-01-01")
+        mid = _add(catalog, "Mid", published_date="2005-03-03")
+        hi = _add(catalog, "Hi", published_date="2010-12-31")
+        _add(catalog, "Future", published_date="2011-01-01")
+        cid = catalog.create_collection("00s", query="year:[2000 TO 2010]")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([lo, mid, hi])
+        assert old not in catalog.resolve_collection_member_ids(cid)
+
+    def test_year_exclusive_range_drops_endpoints(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "Lo", published_date="2000-01-01")
+        mid = _add(catalog, "Mid", published_date="2005-03-03")
+        _add(catalog, "Hi", published_date="2010-12-31")
+        cid = catalog.create_collection("strict", query="year:{2000 TO 2010}")
+        assert catalog.resolve_collection_member_ids(cid) == [mid]
+
+    def test_year_open_upper_bound(self, catalog: LibraryCatalog) -> None:
+        _add(catalog, "Old", published_date="2019-01-01")
+        new1 = _add(catalog, "New1", published_date="2020-01-01")
+        new2 = _add(catalog, "New2", published_date="2024-06-01")
+        cid = catalog.create_collection("2020+", query="year:[2020 TO *]")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([new1, new2])
+
+    def test_year_equality(self, catalog: LibraryCatalog) -> None:
+        match = _add(catalog, "Y2020", published_date="2020-07-07")
+        _add(catalog, "Y2019", published_date="2019-07-07")
+        cid = catalog.create_collection("Just2020", query="year:2020")
+        assert catalog.resolve_collection_member_ids(cid) == [match]
+
+    def test_rating_ge_comparison(self, catalog: LibraryCatalog) -> None:
+        good = _add(catalog, "Good", rating=4.5)
+        edge = _add(catalog, "Edge", rating=4.0)
+        _add(catalog, "Meh", rating=3.0)
+        cid = catalog.create_collection("Top", query="rating:>=4")
+        assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([good, edge])
+
+    def test_rating_gt_excludes_boundary(self, catalog: LibraryCatalog) -> None:
+        good = _add(catalog, "Good", rating=4.5)
+        _add(catalog, "Edge", rating=4.0)
+        cid = catalog.create_collection("AboveFour", query="rating:>4")
+        assert catalog.resolve_collection_member_ids(cid) == [good]
+
+    def test_added_date_range(self, catalog: LibraryCatalog) -> None:
+        before = _add(catalog, "Before", date_added="2023-12-31T10:00:00")
+        within = _add(catalog, "Within", date_added="2024-06-15T08:30:00")
+        on_end = _add(catalog, "OnEnd", date_added="2024-12-31T23:59:59")
+        _add(catalog, "After", date_added="2025-01-02T00:00:00")
+        cid = catalog.create_collection("2024", query="added:[2024-01-01 TO 2024-12-31]")
+        members = sorted(catalog.resolve_collection_member_ids(cid))
+        # Day-granularity: a timestamp late on the end date is still included.
+        assert members == sorted([within, on_end])
+        assert before not in members
+
+
 class TestPreviewQuery:
     def test_preview_returns_records_without_saving(self, catalog: LibraryCatalog) -> None:
         _add(catalog, "SF One", genre="Science Fiction")
@@ -225,9 +292,7 @@ class TestConversion:
         assert snapshot == {sf1, sf2}
         assert sorted(catalog.resolve_collection_member_ids(cid)) == sorted([sf1, sf2])
 
-    def test_set_invalid_query_raises_and_does_not_persist(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_set_invalid_query_raises_and_does_not_persist(self, catalog: LibraryCatalog) -> None:
         cid = catalog.create_collection("X")
         with pytest.raises(CollectionQueryError):
             catalog.set_collection_query(cid, "nonsense:Tor")

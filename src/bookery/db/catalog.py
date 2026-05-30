@@ -3,6 +3,7 @@
 
 import json
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 from bookery.collections import Op, QueryTerm, parse_collection_query
@@ -96,10 +97,60 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _comparable_predicate(
+    operand: str, term: QueryTerm, cast: Callable[[str], object]
+) -> tuple[str, list[object]]:
+    """Build a WHERE predicate for an ordered (numeric/date) operand.
+
+    ``operand`` is a trusted SQL column/expression (never user input); user values
+    flow only through bound ``?`` parameters, cast to the field's type. Handles
+    EQ/GE/GT/LE/LT and RANGE (open bounds skip their clause).
+    """
+    op = term.op
+    if op is Op.EQ:
+        return f"{operand} = ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.GE:
+        return f"{operand} >= ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.GT:
+        return f"{operand} > ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.LE:
+        return f"{operand} <= ?", [cast(term.value)]  # type: ignore[arg-type]
+    if op is Op.LT:
+        return f"{operand} < ?", [cast(term.value)]  # type: ignore[arg-type]
+    # Op.RANGE — one clause per present bound; an all-open range matches any non-null.
+    clauses: list[str] = []
+    params: list[object] = []
+    if term.low is not None:
+        clauses.append(f"{operand} {'>=' if term.include_low else '>'} ?")
+        params.append(cast(term.low))
+    if term.high is not None:
+        clauses.append(f"{operand} {'<=' if term.include_high else '<'} ?")
+        params.append(cast(term.high))
+    if not clauses:
+        return f"{operand} IS NOT NULL", []
+    return " AND ".join(clauses), params
+
+
 def _compile_term(term: QueryTerm) -> tuple[str, list[object]]:
     """Compile one validated ``QueryTerm`` to ``(sql, params)`` yielding a book-id set."""
     field, op, value = term.field, term.op, term.value
 
+    if field == "year":
+        # The 4-char year prefix of the (ISO) edition date, compared numerically.
+        pred, params = _comparable_predicate(
+            "CAST(substr(b.published_date, 1, 4) AS INTEGER)", term, int
+        )
+        return f"SELECT id FROM books b WHERE {pred}", params
+    if field == "rating":
+        pred, params = _comparable_predicate("b.rating", term, float)
+        return f"SELECT id FROM books b WHERE {pred}", params
+    if field == "added":
+        # Compare the date portion of the stored ISO timestamp (day granularity).
+        pred, params = _comparable_predicate("substr(b.date_added, 1, 10)", term, str)
+        return f"SELECT id FROM books b WHERE {pred}", params
+
+    # Remaining fields are scalar-only; the validator guarantees a non-null value.
+    assert value is not None
     if field == "id":
         return ("SELECT id FROM books b WHERE b.id = ?", [int(value)])
     if field == "isbn":

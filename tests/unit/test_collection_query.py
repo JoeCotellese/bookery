@@ -120,6 +120,100 @@ class TestFieldValidation:
             parse_collection_query("id:abc")
 
 
+class TestRangesAndComparisons:
+    def test_inclusive_range(self) -> None:
+        cq = parse_collection_query("year:[2000 TO 2010]")
+        assert cq == QueryTerm(
+            field="year",
+            op=Op.RANGE,
+            low="2000",
+            high="2010",
+            include_low=True,
+            include_high=True,
+        )
+
+    def test_exclusive_range(self) -> None:
+        cq = parse_collection_query("year:{2000 TO 2010}")
+        assert cq == QueryTerm(
+            field="year",
+            op=Op.RANGE,
+            low="2000",
+            high="2010",
+            include_low=False,
+            include_high=False,
+        )
+
+    def test_open_upper_range(self) -> None:
+        cq = parse_collection_query("year:[2020 TO *]")
+        assert cq == QueryTerm(field="year", op=Op.RANGE, low="2020", high=None)
+
+    def test_open_lower_range(self) -> None:
+        cq = parse_collection_query("year:[* TO 2010]")
+        assert cq == QueryTerm(field="year", op=Op.RANGE, low=None, high="2010")
+
+    def test_ge_comparison(self) -> None:
+        assert parse_collection_query("rating:>=4") == QueryTerm(
+            field="rating", op=Op.GE, value="4"
+        )
+
+    def test_gt_comparison(self) -> None:
+        assert parse_collection_query("rating:>4") == QueryTerm(
+            field="rating", op=Op.GT, value="4"
+        )
+
+    def test_le_comparison(self) -> None:
+        assert parse_collection_query("rating:<=5") == QueryTerm(
+            field="rating", op=Op.LE, value="5"
+        )
+
+    def test_lt_comparison(self) -> None:
+        assert parse_collection_query("rating:<2") == QueryTerm(
+            field="rating", op=Op.LT, value="2"
+        )
+
+    def test_fractional_rating(self) -> None:
+        assert parse_collection_query("rating:>=4.5") == QueryTerm(
+            field="rating", op=Op.GE, value="4.5"
+        )
+
+    def test_year_equality_still_works(self) -> None:
+        assert parse_collection_query("year:2020") == QueryTerm(
+            field="year", op=Op.EQ, value="2020"
+        )
+
+    def test_added_iso_date_range(self) -> None:
+        cq = parse_collection_query("added:[2024-01-01 TO 2024-12-31]")
+        assert cq == QueryTerm(field="added", op=Op.RANGE, low="2024-01-01", high="2024-12-31")
+
+
+class TestRangeValidation:
+    def test_range_on_non_comparable_field_is_rejected(self) -> None:
+        with pytest.raises(CollectionQueryError) as exc:
+            parse_collection_query("series:[a TO b]")
+        # The message should name the comparable fields.
+        assert "year" in str(exc.value) and "rating" in str(exc.value)
+
+    def test_comparison_on_non_comparable_field_is_rejected(self) -> None:
+        with pytest.raises(CollectionQueryError):
+            parse_collection_query("title:>=4")
+
+    def test_non_integer_year_is_rejected(self) -> None:
+        with pytest.raises(CollectionQueryError):
+            parse_collection_query("year:twenty")
+
+    def test_non_numeric_rating_is_rejected(self) -> None:
+        with pytest.raises(CollectionQueryError):
+            parse_collection_query("rating:>=high")
+
+    def test_bad_added_date_is_rejected(self) -> None:
+        with pytest.raises(CollectionQueryError):
+            parse_collection_query("added:2024-13-99")
+
+    def test_range_bound_is_validated(self) -> None:
+        with pytest.raises(CollectionQueryError):
+            parse_collection_query("year:[abc TO 2010]")
+
+
 class TestStillRejected:
     """Shapes that land in later sub-slices remain rejected for now."""
 
@@ -138,14 +232,6 @@ class TestStillRejected:
     def test_implicit_multi_term_is_rejected(self) -> None:
         with pytest.raises(CollectionQueryError):
             parse_collection_query("genre:SF series:Y")
-
-    def test_range_is_rejected(self) -> None:
-        with pytest.raises(CollectionQueryError):
-            parse_collection_query("year:[2000 TO 2010]")
-
-    def test_comparison_is_rejected(self) -> None:
-        with pytest.raises(CollectionQueryError):
-            parse_collection_query("rating:>=4")
 
     def test_bare_term_without_field_is_rejected(self) -> None:
         with pytest.raises(CollectionQueryError):
