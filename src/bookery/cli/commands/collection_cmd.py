@@ -29,7 +29,7 @@ def collections() -> None:
     "-q",
     "query",
     default=None,
-    help='Rule for a rule-based collection, e.g. \'genre:"Science Fiction"\' or series:Dune.',
+    help="Rule for a rule-based collection, e.g. 'genre:\"Science Fiction\"' or series:Dune.",
 )
 @db_option
 def collections_create(
@@ -61,9 +61,7 @@ def collections_create(
         raise SystemExit(1) from exc
 
     if query:
-        console.print(
-            f"Created rule-based collection [bold]{name}[/bold] (ID: {collection_id})."
-        )
+        console.print(f"Created rule-based collection [bold]{name}[/bold] (ID: {collection_id}).")
     else:
         console.print(f"Created collection [bold]{name}[/bold] (ID: {collection_id}).")
     conn.close()
@@ -331,7 +329,7 @@ def collections_edit(
     "--query",
     "query",
     required=True,
-    help='Rule to preview, e.g. \'genre:"Science Fiction"\' or series:Dune.',
+    help="Rule to preview, e.g. 'genre:\"Science Fiction\"' or series:Dune.",
 )
 @db_option
 def collections_preview(query: str, db_path: Path | None) -> None:

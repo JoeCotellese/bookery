@@ -1610,8 +1610,7 @@ class LibraryCatalog:
             return []
         placeholders = ",".join("?" * len(book_ids))
         cursor = self._conn.execute(
-            f"SELECT * FROM books WHERE id IN ({placeholders}) "
-            "ORDER BY title_sort COLLATE NOCASE",
+            f"SELECT * FROM books WHERE id IN ({placeholders}) ORDER BY title_sort COLLATE NOCASE",
             book_ids,
         )
         return [row_to_record(row) for row in cursor.fetchall()]

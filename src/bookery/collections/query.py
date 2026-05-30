@@ -37,9 +37,7 @@ def _validate_genre_value(value: str) -> None:
     """Reject non-canonical genres at parse time (mirrors ``get_books_by_genre``)."""
     if not is_canonical_genre(value):
         valid = ", ".join(CANONICAL_GENRES)
-        raise CollectionQueryError(
-            f"'{value}' is not a canonical genre. Valid genres: {valid}."
-        )
+        raise CollectionQueryError(f"'{value}' is not a canonical genre. Valid genres: {valid}.")
 
 
 # The slice-3 field whitelist. Maps each supported field to an optional value
@@ -119,9 +117,7 @@ def parse_collection_query(raw: str) -> CollectionQuery:
             f"Field '{field}' is not yet supported — coming in {_DEFERRED_FIELDS[field]}."
         )
     if field not in SLICE3_FIELDS:
-        raise CollectionQueryError(
-            f"Unknown field '{tree.name}'. Valid fields: {_FIELD_LIST}."
-        )
+        raise CollectionQueryError(f"Unknown field '{tree.name}'. Valid fields: {_FIELD_LIST}.")
 
     validate_value = SLICE3_FIELDS[field]
     if validate_value is not None:
