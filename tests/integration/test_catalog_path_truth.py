@@ -15,6 +15,7 @@ from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import _get_schema_version, open_library
 from bookery.db.hashing import compute_file_hash
 from bookery.db.schema import (
+    LATEST_SCHEMA_VERSION,
     SCHEMA_V1,
     SCHEMA_V2,
     SCHEMA_V3,
@@ -170,7 +171,7 @@ class TestMatchedSignal:
         db_path = tmp_path / "fresh.db"
         conn = open_library(db_path)
         try:
-            assert _get_schema_version(conn) == 10
+            assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
             cursor = conn.execute("PRAGMA table_info(books)")
             cols = {row["name"] for row in cursor.fetchall()}
             assert "metadata_matched_at" in cols
@@ -284,7 +285,7 @@ class TestMatchedSignal:
         # Reopen to trigger V7 migration
         conn = open_library(db_path)
         try:
-            assert _get_schema_version(conn) == 10
+            assert _get_schema_version(conn) == LATEST_SCHEMA_VERSION
             rows = conn.execute(
                 "SELECT title, metadata_matched_at FROM books ORDER BY title"
             ).fetchall()

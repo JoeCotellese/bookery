@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from bookery.db.connection import DEFAULT_DB_PATH, open_library
+from bookery.db.schema import LATEST_SCHEMA_VERSION
 
 
 @pytest.fixture()
@@ -86,7 +87,7 @@ class TestOpenLibrary:
         row = cursor.fetchone()
         conn.close()
         assert row is not None
-        assert row[0] == 10
+        assert row[0] == LATEST_SCHEMA_VERSION
 
     def test_creates_indexes(self, db_path: Path) -> None:
         """Expected indexes exist on the books table."""
