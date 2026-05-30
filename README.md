@@ -16,6 +16,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
 - **PDF-to-EPUB conversion** — `bookery add` detects text-based PDFs, extracts their structure with pdfplumber + a local LLM (LM Studio), and produces a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
 - **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
+- **Collections** — group books into named lists, either static (hand-picked) or rule-based (membership derived live from a query like `genre:"Science Fiction"` or `series:Dune`, so it stays current as the library grows). See `bookery collections`.
 - **Collection shelves on device** — the same `bookery sync kobo` mirrors each collection to a Kobo shelf (`Shelf`/`ShelfContent`). Bookery owns only shelves whose `InternalName` is `bookery-<collection_id>`; a user-created shelf that shares a name is skipped, never overwritten. Unchanged shelves are skipped on re-sync (membership hash), and a shelf is removed once its collection is deleted. `bookery collections show <id> --sync-status` reports per-device shelf state.
 - **Multi-provider metadata matching** — Open Library and Google Books in a consensus merger that prefers values agreed on by ≥2 providers and falls back to a priority order otherwise. ISBN-10/13 lookups are normalized and provider responses are cached.
 - **Per-field provenance & locking** — every cataloged field records which provider supplied it and when. User edits are stamped as `user` and locked against `rematch`; individual fields can be locked/unlocked explicitly with `bookery info --lock` / `--unlock`.
@@ -174,6 +175,34 @@ bookery info 42
 | `genre unmatched` | Show books with subjects but no genre assigned |
 | `mark finished <id>` | Mark a book as finished (also `mark reading <id>`, `mark unread <id>`; supports `--bulk-from FILE`) |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
+
+### Collections
+
+Collections group books into named lists. A collection is either **static**
+(hand-picked membership) or **rule-based** (membership derived live from a
+query). The two are mutually exclusive — a rule-based collection holds no
+hand-picked rows, and its members are recomputed on every read, so it stays
+current automatically as the library changes.
+
+| Command | Description |
+|---------|-------------|
+| `collections create <name>` | Create a static collection (`-d/--description` optional) |
+| `collections create <name> --query '<rule>'` | Create a rule-based collection, e.g. `--query 'genre:"Science Fiction"'` |
+| `collections ls` | List collections with live book counts |
+| `collections show <id>` | Show a collection's books; rule-based collections also show the rule and live match count (`--sync-status` for per-device shelf state) |
+| `collections add-books <id> <book_id>...` | Add books to a static collection |
+| `collections remove-books <id> <book_id>...` | Remove books from a static collection |
+| `collections edit <id> --query '<rule>'` | Convert a static collection to rule-based |
+| `collections edit <id> --clear-query` | Convert a rule-based collection to static, snapshotting current members |
+| `collections preview --query '<rule>'` | Show which books a rule matches, without saving |
+| `collections rename <id> <new_name>` | Rename a collection |
+| `collections rm <id>` | Delete a collection (books are not deleted) |
+
+Rule queries are a deliberately small subset: exactly one `field:value` or
+`field:"phrase"` term over a whitelisted field. Slice 3 supports `series`
+(exact match) and `genre` (canonical genre). `author` is coming in a later
+slice; multi-term, boolean (`AND`/`OR`/`NOT`), wildcards, and ranges are
+rejected with a message naming the valid fields.
 
 ### Web UI
 
