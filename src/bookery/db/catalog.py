@@ -1687,6 +1687,25 @@ class LibraryCatalog:
         member_ids = self._compile_query_member_ids(compiled)
         return self._fetch_books_ordered(member_ids)
 
+    def resolve_query_preview(
+        self, query: str, limit: int
+    ) -> tuple[int, list[BookRecord]]:
+        """Resolve an ad-hoc query WITHOUT persisting; return (total, sample).
+
+        Reuses the stored-query engine path (parse + compile to parameterized
+        SQL) so preview matching can never diverge from saved-collection
+        matching. ``total`` is the full match count; ``sample`` is the first
+        ``limit`` matches ordered by title_sort.
+
+        Raises:
+            CollectionQueryError: If the query is invalid or unsupported.
+        """
+        compiled = parse_collection_query(query)
+        member_ids = self._compile_query_member_ids(compiled)
+        total = len(member_ids)
+        sample = self._fetch_books_ordered(member_ids, limit=limit)
+        return total, sample
+
     def set_collection_query(self, collection_id: int, query: str) -> None:
         """Convert a collection to rule-based with the given query.
 
@@ -1751,15 +1770,27 @@ class LibraryCatalog:
         cursor = self._conn.execute(sql, params)
         return [int(row[0]) for row in cursor.fetchall()]
 
-    def _fetch_books_ordered(self, book_ids: list[int]) -> list[BookRecord]:
-        """Fetch the given books as records, ordered by title_sort."""
+    def _fetch_books_ordered(
+        self, book_ids: list[int], *, limit: int | None = None
+    ) -> list[BookRecord]:
+        """Fetch the given books as records, ordered by title_sort.
+
+        When ``limit`` is set, only the first ``limit`` records (after ordering)
+        are returned — the cap is applied in SQL so a broad match never
+        materializes every record.
+        """
         if not book_ids:
             return []
         placeholders = ",".join("?" * len(book_ids))
-        cursor = self._conn.execute(
-            f"SELECT * FROM books WHERE id IN ({placeholders}) ORDER BY title_sort COLLATE NOCASE",
-            book_ids,
+        sql = (
+            f"SELECT * FROM books WHERE id IN ({placeholders}) "
+            "ORDER BY title_sort COLLATE NOCASE"
         )
+        params: list[object] = list(book_ids)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        cursor = self._conn.execute(sql, params)
         return [row_to_record(row) for row in cursor.fetchall()]
 
     def delete_collection(self, collection_id: int) -> None:
