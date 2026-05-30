@@ -2,6 +2,7 @@
 # ABOUTME: Provides create, add-books, remove-books, ls, show, rm, rename subcommands.
 
 from pathlib import Path
+from typing import cast
 
 import click
 from rich.console import Console
@@ -142,8 +143,14 @@ def collections_ls(db_path: Path | None) -> None:
 
 @collections.command("show")
 @click.argument("collection_id", type=int)
+@click.option(
+    "--sync-status",
+    "show_sync_status",
+    is_flag=True,
+    help="Show shelf sync status per device.",
+)
 @db_option
-def collections_show(collection_id: int, db_path: Path | None) -> None:
+def collections_show(collection_id: int, show_sync_status: bool, db_path: Path | None) -> None:
     """Show collection details and list books in it."""
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
@@ -177,7 +184,52 @@ def collections_show(collection_id: int, db_path: Path | None) -> None:
 
     console.print(f"[bold]{len(books)} book(s):[/bold]")
     console.print(table)
+
+    # Show sync status if requested
+    if show_sync_status:
+        console.print()
+        _show_collection_sync_status(conn, catalog, collection_id)
+
     conn.close()
+
+
+def _show_collection_sync_status(conn, catalog: LibraryCatalog, collection_id: int) -> None:
+    """Display shelf sync status for a collection across devices."""
+    # Get all devices
+    devices = catalog.list_devices()
+    if not devices:
+        console.print("[dim]No devices configured.[/dim]")
+        return
+
+    table = Table(title="Shelf Sync Status")
+    table.add_column("Device", style="cyan")
+    table.add_column("Serial")
+    table.add_column("Last Pushed", style="dim")
+    table.add_column("Books on Device")
+    table.add_column("Status", style="green")
+
+    for device in devices:
+        device_id = cast(int, device["id"])
+        shelf_state = catalog.get_collection_shelf_state(device_id, collection_id)
+
+        if shelf_state:
+            table.add_row(
+                str(device["label"] or device["kind"]),
+                str(device["serial"]),
+                str(shelf_state["last_pushed_at"]),
+                str(shelf_state["book_count_on_device"] or "0"),
+                "[green]Synced[/green]",
+            )
+        else:
+            table.add_row(
+                str(device["label"] or device["kind"]),
+                str(device["serial"]),
+                "Never",
+                "—",
+                "[dim]Not synced[/dim]",
+            )
+
+    console.print(table)
 
 
 @collections.command("rm")

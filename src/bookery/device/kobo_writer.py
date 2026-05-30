@@ -53,6 +53,40 @@ class PushReport:
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class CollectionShelfUpdate:
+    """One collection shelf to sync to the device.
+
+    ``shelf_id`` is a UUID-style string stored as ``Shelf.Id`` (stable across
+    syncs). ``internal_name`` is the ownership marker ``bookery-<collection_id>``
+    written to ``Shelf.InternalName`` and referenced by ``ShelfContent.ShelfName``
+    (nickel links membership on the InternalName). ``shelf_name`` is the
+    human-readable display name (``Shelf.Name``). ``content_ids`` are the Kobo
+    ContentIDs of the books on this shelf (``file://`` + remote path).
+    """
+
+    shelf_id: str
+    internal_name: str
+    shelf_name: str
+    content_ids: list[str]
+
+
+@dataclass
+class ShelfPushReport:
+    """Outcome of a ``write_collection_shelves`` batch.
+
+    ``pushed_count`` is shelves written. ``skipped`` is ``(name, reason)`` pairs
+    for shelves left alone (e.g. a name collision with a user-created shelf).
+    ``failed`` is ``(name, error)`` pairs from a rollback. ``deleted`` is the
+    names of orphaned shelves removed by ``delete_orphan_shelves``.
+    """
+
+    pushed_count: int = 0
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
+
+
 def open_kobo_db_rw(kobo_sqlite_path: Path) -> sqlite3.Connection:
     """Open KoboReader.sqlite in read-write mode.
 
@@ -158,3 +192,157 @@ def push_read_status(
     finally:
         conn.close()
     return report
+
+
+def write_collection_shelves(
+    *,
+    db_path: Path,
+    updates: list[CollectionShelfUpdate],
+    now: Callable[[], str],
+) -> ShelfPushReport:
+    """Write collection shelves to the Kobo ``Shelf`` / ``ShelfContent`` tables.
+
+    Kobo stores shelves as a row in ``Shelf`` (``Type='UserTag'``, BOOL columns
+    held as the text ``'true'``/``'false'``) plus one ``ShelfContent`` row per
+    book. nickel joins a shelf to its books on ``InternalName`` (not the display
+    ``Name``), so ``ShelfContent.ShelfName`` holds the ``bookery-<id>`` internal
+    name while ``Shelf.Name`` carries the human-readable collection name. This
+    function owns only shelves whose ``InternalName`` is ``bookery-<id>``:
+
+    - **Collision guard:** if a shelf with the target ``Name`` already exists but
+      is not ours (a user-created shelf), it is left untouched and reported in
+      ``skipped`` — never overwritten.
+    - **Upsert:** our shelf row is replaced by ``InternalName`` (keeping ``Id``
+      stable), and membership is rewritten by deleting and re-inserting
+      ``ShelfContent`` so both additions and removals propagate. Because content
+      is keyed on the stable ``InternalName``, renaming a collection doesn't
+      strand its books.
+
+    The whole batch is one transaction: any SQLite error rolls everything back.
+    """
+    report = ShelfPushReport()
+    if not updates:
+        return report
+
+    timestamp = now()
+    conn = open_kobo_db_rw(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("BEGIN")
+        try:
+            for upd in updates:
+                # Collision guard: a shelf with this Name that we don't own.
+                foreign = conn.execute(
+                    "SELECT 1 FROM Shelf WHERE Name = ? AND InternalName != ? LIMIT 1",
+                    (upd.shelf_name, upd.internal_name),
+                ).fetchone()
+                if foreign is not None:
+                    report.skipped.append((upd.shelf_name, "name belongs to a non-bookery shelf"))
+                    continue
+
+                # nickel joins a collection to its books on the shelf's
+                # InternalName, NOT its display Name — so ShelfContent.ShelfName
+                # must hold the InternalName ('bookery-<id>'). The display Name
+                # ('Favorites') lives only on the Shelf row. Clear our rows by
+                # InternalName, plus any stragglers an older format wrote under
+                # the display name, then re-insert (additions/removals propagate).
+                conn.execute("DELETE FROM Shelf WHERE InternalName = ?", (upd.internal_name,))
+                conn.executemany(
+                    "DELETE FROM ShelfContent WHERE ShelfName = ?",
+                    [(upd.internal_name,), (upd.shelf_name,)],
+                )
+
+                conn.execute(
+                    """
+                    INSERT INTO Shelf (
+                        CreationDate, Id, InternalName, LastModified, Name, Type,
+                        _IsDeleted, _IsVisible, _IsSynced, _SyncTime, LastAccessed
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'UserTag',
+                            'false', 'true', 'true', ?, ?)
+                    """,
+                    (
+                        timestamp,
+                        upd.shelf_id,
+                        upd.internal_name,
+                        timestamp,
+                        upd.shelf_name,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO ShelfContent (
+                        ShelfName, ContentId, DateModified, _IsDeleted, _IsSynced
+                    )
+                    VALUES (?, ?, ?, 'false', 'true')
+                    """,
+                    [
+                        (upd.internal_name, content_id, timestamp)
+                        for content_id in upd.content_ids
+                    ],
+                )
+                report.pushed_count += 1
+
+        except sqlite3.Error as exc:
+            conn.execute("ROLLBACK")
+            logger.warning(
+                "Collection shelf push failed; rolling back batch of %d shelf(s): %s",
+                len(updates),
+                exc,
+            )
+            report.pushed_count = 0
+            report.skipped = []
+            report.failed = [(upd.shelf_name, str(exc)) for upd in updates]
+            return report
+
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    return report
+
+
+def delete_orphan_shelves(
+    *,
+    db_path: Path,
+    valid_internal_names: set[str],
+) -> list[str]:
+    """Remove bookery-owned shelves that no longer map to a live collection.
+
+    Ownership is reconstructed purely from the device: every ``Shelf`` whose
+    ``InternalName`` starts with ``bookery-`` is ours. Any such shelf not in
+    ``valid_internal_names`` (its collection was deleted, or no longer has books
+    on this device) is hard-deleted along with its ``ShelfContent`` rows.
+    ``ShelfContent`` is keyed on the InternalName; the display Name is also
+    cleared to sweep up rows left by an older format. User-created shelves are
+    never touched. Returns the display names removed.
+    """
+    deleted: list[str] = []
+    conn = open_kobo_db_rw(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("BEGIN")
+        try:
+            rows = conn.execute(
+                "SELECT InternalName, Name FROM Shelf WHERE InternalName LIKE 'bookery-%'"
+            ).fetchall()
+            for row in rows:
+                internal_name = str(row["InternalName"])
+                if internal_name in valid_internal_names:
+                    continue
+                name = str(row["Name"])
+                conn.execute("DELETE FROM Shelf WHERE InternalName = ?", (internal_name,))
+                conn.executemany(
+                    "DELETE FROM ShelfContent WHERE ShelfName = ?",
+                    [(internal_name,), (name,)],
+                )
+                deleted.append(name)
+        except sqlite3.Error as exc:
+            conn.execute("ROLLBACK")
+            logger.warning("Orphan shelf cleanup failed; rolling back: %s", exc)
+            return []
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    return deleted

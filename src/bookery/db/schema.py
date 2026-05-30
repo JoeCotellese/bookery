@@ -297,6 +297,33 @@ CREATE INDEX idx_collection_books_book_id ON collection_books(book_id);
 INSERT INTO schema_version (version) VALUES (11);
 """
 
+# V12: Device shelf state for collections sync to Kobo ContentList table
+# Mirrors what we last pushed for each collection->shelf mapping.
+SCHEMA_V12 = """
+CREATE TABLE device_shelf_state (
+    device_id          INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    collection_id      INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    shelf_id           TEXT NOT NULL,
+    shelf_name         TEXT NOT NULL,
+    last_pushed_at     TEXT NOT NULL,
+    book_count_on_device INTEGER,
+    PRIMARY KEY (device_id, collection_id)
+);
+CREATE INDEX idx_device_shelf_state_device_id ON device_shelf_state(device_id);
+CREATE INDEX idx_device_shelf_state_shelf_id ON device_shelf_state(device_id, shelf_id);
+
+INSERT INTO schema_version (version) VALUES (12);
+"""
+
+# V13: member_hash on device_shelf_state. Records a digest of the shelf's pushed
+# membership so a re-sync with no changes can skip the device write entirely
+# (idempotent no-op). Forward-only ALTER on the V12 table.
+SCHEMA_V13 = """
+ALTER TABLE device_shelf_state ADD COLUMN member_hash TEXT;
+
+INSERT INTO schema_version (version) VALUES (13);
+"""
+
 MIGRATIONS = [
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
@@ -308,4 +335,6 @@ MIGRATIONS = [
     (9, SCHEMA_V9),
     (10, SCHEMA_V10),
     (11, SCHEMA_V11),
+    (12, SCHEMA_V12),
+    (13, SCHEMA_V13),
 ]

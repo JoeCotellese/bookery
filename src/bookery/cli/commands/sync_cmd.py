@@ -37,8 +37,7 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
     """
     if report.device_files_discovered:
         console.print(
-            f"[dim]Discovered {report.device_files_discovered} existing "
-            f"book(s) on device[/dim]"
+            f"[dim]Discovered {report.device_files_discovered} existing book(s) on device[/dim]"
         )
     if report.read_states_pulled or report.read_states_skipped:
         console.print(
@@ -55,6 +54,15 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
                 else ""
             )
         )
+    if report.shelves_pushed:
+        console.print(
+            f"[green]Pushed {report.shelves_pushed} collection shelf(s) to device[/green]"
+        )
+    if report.shelves_deleted:
+        console.print(
+            f"[dim]Removed {len(report.shelves_deleted)} orphaned shelf(s): "
+            f"{', '.join(report.shelves_deleted)}[/dim]"
+        )
     if report.backup_path is not None:
         console.print(f"[dim]Backup: {report.backup_path}[/dim]")
     if report.read_status_push_failed:
@@ -64,6 +72,13 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
         )
         for content_id, reason in report.read_status_push_failed:
             console.print(f"  [yellow]- {content_id}: {reason}[/yellow]")
+    if report.shelves_skipped:
+        console.print(
+            f"[yellow]Skipped {len(report.shelves_skipped)} shelf(s) "
+            f"(name conflicts with existing shelves):[/yellow]"
+        )
+        for name, reason in report.shelves_skipped:
+            console.print(f"  [yellow]- {name}: {reason}[/yellow]")
 
 
 @click.group("sync")
@@ -112,9 +127,7 @@ def sync_kobo(
     resolved_target = target
     if resolved_target is None:
         if not sync_cfg.kobo.auto_detect:
-            console.print(
-                "[red]No --target given and auto_detect is disabled.[/red]"
-            )
+            console.print("[red]No --target given and auto_detect is disabled.[/red]")
             raise SystemExit(1)
         detected = detect_mounted_kobo()
         if detected is None:
@@ -125,9 +138,7 @@ def sync_kobo(
         console.print(f"[dim]Detected Kobo at {resolved_target}[/dim]")
 
     if not (resolved_target / ".kobo").exists() and not dry_run:
-        console.print(
-            f"[yellow]Warning:[/yellow] {resolved_target} has no .kobo/ marker."
-        )
+        console.print(f"[yellow]Warning:[/yellow] {resolved_target} has no .kobo/ marker.")
 
     data_dir = data_dir_override or get_data_dir()
     cache = KepubCache(data_dir / "kepub_cache.db")

@@ -24,7 +24,7 @@ class TestMigrations:
         conn = open_library(db_path)
         version = _get_schema_version(conn)
         conn.close()
-        assert version == 11
+        assert version == 13
 
     def test_migrations_list_is_ordered(self) -> None:
         """MIGRATIONS list has strictly increasing version numbers."""
@@ -126,7 +126,7 @@ class TestMigrations:
         # Now open with bookery — should auto-migrate
         conn = open_library(db_path)
         version = _get_schema_version(conn)
-        assert version == 11
+        assert version == 13
 
         # Tags table should exist
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")
@@ -205,6 +205,14 @@ class TestMigrations:
         cursor = conn.execute("SELECT COUNT(*) FROM collection_books")
         assert cursor.fetchone()[0] == 0
         conn.close()
+
+    def test_v13_adds_member_hash_column(self, db_path: Path) -> None:
+        """V13 migration adds the member_hash column to device_shelf_state."""
+        conn = open_library(db_path)
+        cursor = conn.execute("PRAGMA table_info(device_shelf_state)")
+        columns = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert "member_hash" in columns
 
     def test_collection_books_cascade_on_book_delete(self, db_path: Path) -> None:
         """Deleting a book cascades to remove collection_books associations."""

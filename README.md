@@ -16,6 +16,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
 - **PDF-to-EPUB conversion** — `bookery add` detects text-based PDFs, extracts their structure with pdfplumber + a local LLM (LM Studio), and produces a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
 - **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
+- **Collection shelves on device** — the same `bookery sync kobo` mirrors each collection to a Kobo shelf (`Shelf`/`ShelfContent`). Bookery owns only shelves whose `InternalName` is `bookery-<collection_id>`; a user-created shelf that shares a name is skipped, never overwritten. Unchanged shelves are skipped on re-sync (membership hash), and a shelf is removed once its collection is deleted. `bookery collections show <id> --sync-status` reports per-device shelf state.
 - **Multi-provider metadata matching** — Open Library and Google Books in a consensus merger that prefers values agreed on by ≥2 providers and falls back to a priority order otherwise. ISBN-10/13 lookups are normalized and provider responses are cached.
 - **Per-field provenance & locking** — every cataloged field records which provider supplied it and when. User edits are stamped as `user` and locked against `rematch`; individual fields can be locked/unlocked explicitly with `bookery info --lock` / `--unlock`.
 - **Interactive review** — presents candidates in a Rich table, lets you accept, compare details, look up by URL, or skip
@@ -186,9 +187,10 @@ The web UI provides paginated and sortable browsing, filter chips, cover thumbna
 
 | Command | Description |
 |---------|-------------|
-| `sync kobo` | Convert library EPUBs to `.kepub.epub` and copy to a mounted Kobo |
+| `sync kobo` | Convert library EPUBs to `.kepub.epub`, copy to a mounted Kobo, and mirror collections to device shelves |
 | `sync kobo --target <path>` | Override auto-detection with an explicit mount point |
 | `sync kobo --dry-run` | Show what would be copied without touching the device |
+| `collections show <id> --sync-status` | Show per-device shelf sync state for a collection |
 
 Requires the [`kepubify`](https://pgaskin.net/kepubify/) binary on `PATH`
 (`brew install kepubify` on macOS). Files are written to

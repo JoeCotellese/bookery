@@ -903,6 +903,26 @@ class LibraryCatalog:
         ).fetchone()
         return int(row["book_id"]) if row is not None else None
 
+    def list_devices(self) -> list[dict[str, object]]:
+        """Return all registered devices ordered by last seen."""
+        cursor = self._conn.execute(
+            """
+            SELECT id, kind, serial, label, last_seen_at
+            FROM devices
+            ORDER BY last_seen_at DESC
+            """
+        )
+        return [
+            {
+                "id": int(row["id"]),
+                "kind": str(row["kind"]),
+                "serial": str(row["serial"]),
+                "label": row["label"],
+                "last_seen_at": str(row["last_seen_at"]),
+            }
+            for row in cursor.fetchall()
+        ]
+
     def upsert_device_read_state(
         self,
         *,
@@ -1171,8 +1191,7 @@ class LibraryCatalog:
             return False
         catalog_ts = str(catalog_row["updated_at"])
         device_row = self._conn.execute(
-            "SELECT MAX(status_updated_at) AS latest "
-            "FROM device_read_state WHERE book_id = ?",
+            "SELECT MAX(status_updated_at) AS latest FROM device_read_state WHERE book_id = ?",
             (book_id,),
         ).fetchone()
         if device_row is None or device_row["latest"] is None:
@@ -1509,3 +1528,144 @@ class LibraryCatalog:
             }
             for row in cursor.fetchall()
         ]
+
+    # --- Device shelf state (SCHEMA_V12) -------------------------------
+
+    def upsert_device_shelf_state(
+        self,
+        *,
+        device_id: int,
+        collection_id: int,
+        shelf_id: str,
+        shelf_name: str,
+        last_pushed_at: str,
+        book_count_on_device: int | None = None,
+        member_hash: str | None = None,
+    ) -> None:
+        """Persist what we last pushed for a collection shelf.
+
+        Mirrors device_read_state but for collection→shelf mappings.
+        ``member_hash`` is a digest of the pushed membership so a later sync
+        with no changes can skip the device write entirely.
+        """
+        self._conn.execute(
+            """
+            INSERT INTO device_shelf_state (
+                device_id, collection_id, shelf_id, shelf_name,
+                last_pushed_at, book_count_on_device, member_hash
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id, collection_id) DO UPDATE SET
+                shelf_id = excluded.shelf_id,
+                shelf_name = excluded.shelf_name,
+                last_pushed_at = excluded.last_pushed_at,
+                book_count_on_device = excluded.book_count_on_device,
+                member_hash = excluded.member_hash
+            """,
+            (
+                device_id,
+                collection_id,
+                shelf_id,
+                shelf_name,
+                last_pushed_at,
+                book_count_on_device,
+                member_hash,
+            ),
+        )
+        self._conn.commit()
+
+    def get_collection_shelf_state(
+        self, device_id: int, collection_id: int
+    ) -> dict[str, object] | None:
+        """Return the last-pushed shelf state for a collection on a device."""
+        row = self._conn.execute(
+            """
+            SELECT device_id, collection_id, shelf_id, shelf_name,
+                   last_pushed_at, book_count_on_device, member_hash
+            FROM device_shelf_state
+            WHERE device_id = ? AND collection_id = ?
+            """,
+            (device_id, collection_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "device_id": int(row["device_id"]),
+            "collection_id": int(row["collection_id"]),
+            "shelf_id": str(row["shelf_id"]),
+            "shelf_name": str(row["shelf_name"]),
+            "last_pushed_at": str(row["last_pushed_at"]),
+            "book_count_on_device": row["book_count_on_device"],
+            "member_hash": row["member_hash"],
+        }
+
+    def delete_collection_shelf_state(self, device_id: int, collection_id: int) -> None:
+        """Remove the shelf state record for a collection on a device."""
+        self._conn.execute(
+            "DELETE FROM device_shelf_state WHERE device_id = ? AND collection_id = ?",
+            (device_id, collection_id),
+        )
+        self._conn.commit()
+
+    def list_collection_shelf_candidates(self, *, device_id: int) -> list[dict[str, object]]:
+        """Return collections that can be pushed as shelves to a device.
+
+        Returns collections that:
+        - Have at least one book synced to this device
+        - Have a shelf state record (were previously synced)
+        - Or are new collections that need initial sync
+
+        Each candidate includes collection info plus current book count on device.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT
+                c.id AS collection_id,
+                c.name,
+                c.updated_at,
+                COALESCE(dss.shelf_id, NULL) AS shelf_id,
+                COALESCE(dss.last_pushed_at, NULL) AS last_pushed_at,
+                COUNT(DISTINCT df.book_id) AS books_on_device,
+                COUNT(DISTINCT cb.book_id) AS books_in_collection
+            FROM collections c
+            JOIN collection_books cb ON c.id = cb.collection_id
+            JOIN device_files df ON cb.book_id = df.book_id AND df.device_id = ?
+            LEFT JOIN device_shelf_state dss
+                ON dss.collection_id = c.id AND dss.device_id = ?
+            GROUP BY c.id
+            ORDER BY c.name COLLATE NOCASE
+            """,
+            (device_id, device_id),
+        )
+        return [
+            {
+                "collection_id": int(row["collection_id"]),
+                "name": str(row["name"]),
+                "updated_at": str(row["updated_at"]),
+                "shelf_id": row["shelf_id"],
+                "last_pushed_at": row["last_pushed_at"],
+                "books_on_device": int(row["books_on_device"]),
+                "books_in_collection": int(row["books_in_collection"]),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def list_collection_device_paths(self, *, collection_id: int, device_id: int) -> list[str]:
+        """Return device remote paths for books in a collection that are on a device.
+
+        Only books that are both members of the collection and present on the
+        device (via device_files) are returned, ordered deterministically. The
+        caller turns these into Kobo ContentIDs by prefixing ``file://``.
+        """
+        cursor = self._conn.execute(
+            """
+            SELECT df.remote_path
+            FROM collection_books cb
+            JOIN device_files df
+                ON cb.book_id = df.book_id AND df.device_id = ?
+            WHERE cb.collection_id = ?
+            ORDER BY df.remote_path
+            """,
+            (device_id, collection_id),
+        )
+        return [str(row["remote_path"]) for row in cursor.fetchall()]

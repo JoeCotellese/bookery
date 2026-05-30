@@ -4,9 +4,11 @@
 import contextlib
 import datetime as _dt
 import getpass
+import hashlib
 import logging
 import platform
 import shutil
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,7 +20,13 @@ from bookery.db.mapping import BookRecord
 from bookery.db.status import PushCandidate
 from bookery.device.kobo_backup import backup_kobo_db
 from bookery.device.kobo_reader import pull_read_state, read_kobo_serial
-from bookery.device.kobo_writer import ReadStatusUpdate, push_read_status
+from bookery.device.kobo_writer import (
+    CollectionShelfUpdate,
+    ReadStatusUpdate,
+    delete_orphan_shelves,
+    push_read_status,
+    write_collection_shelves,
+)
 
 KOBO_MARKER = ".kobo"
 
@@ -29,6 +37,13 @@ def _now_iso() -> str:
     # UTC to match SQLite's `strftime('%Y-%m-%dT%H:%M:%S', 'now')` used
     # elsewhere in the catalog — keeps merge timestamps comparable.
     return _dt.datetime.now(_dt.UTC).replace(microsecond=0, tzinfo=None).isoformat()
+
+
+def _now_kobo() -> str:
+    # Kobo's own Shelf/ShelfContent rows use ISO-8601 UTC with a trailing 'Z'
+    # (e.g. 2024-08-11T06:37:35Z). nickel expects that exact shape, so shelf
+    # writes use this rather than the bare-naive form `_now_iso` produces.
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
 
 
 # The Kobo mounts its internal storage at `/mnt/onboard` from its own
@@ -108,6 +123,15 @@ class SyncReport:
     read_statuses_pushed: int = 0
     read_status_pull_only: int = 0
     read_status_push_failed: list[tuple[str, str]] = field(default_factory=list)
+    # P2a: Collection shelf push stats (Slice 2). ``shelves_pushed`` is shelves
+    # written this sync; unchanged shelves are skipped via member_hash and not
+    # counted. ``shelves_skipped`` is (name, reason) pairs for shelves left alone
+    # (e.g. a name collision with a user-created shelf). ``shelves_deleted`` is
+    # the names of bookery-owned shelves removed because their collection is gone.
+    shelves_pushed: int = 0
+    shelf_push_failed: list[tuple[str, str]] = field(default_factory=list)
+    shelves_skipped: list[tuple[str, str]] = field(default_factory=list)
+    shelves_deleted: list[str] = field(default_factory=list)
     backup_path: Path | None = None
 
 
@@ -142,6 +166,27 @@ class _CatalogProto(Protocol):
     ) -> None: ...
 
     def list_push_candidates(self, *, device_id: int) -> list[PushCandidate]: ...
+
+    # Collection shelf methods (Slice 2)
+    def upsert_device_shelf_state(
+        self,
+        *,
+        device_id: int,
+        collection_id: int,
+        shelf_id: str,
+        shelf_name: str,
+        last_pushed_at: str,
+        book_count_on_device: int | None = None,
+        member_hash: str | None = None,
+    ) -> None: ...
+
+    def get_collection_shelf_state(
+        self, device_id: int, collection_id: int
+    ) -> dict[str, object] | None: ...
+
+    def list_collection_shelf_candidates(self, *, device_id: int) -> list[dict[str, object]]: ...
+
+    def list_collection_device_paths(self, *, collection_id: int, device_id: int) -> list[str]: ...
 
 
 class _CacheProto(Protocol):
@@ -338,9 +383,7 @@ def _build_push_updates(candidates: list[PushCandidate]) -> list[ReadStatusUpdat
         ):
             continue
         content_id = f"file://{cand.remote_path}"
-        updates.append(
-            ReadStatusUpdate(content_id=content_id, status=cand.catalog_status)
-        )
+        updates.append(ReadStatusUpdate(content_id=content_id, status=cand.catalog_status))
     return updates
 
 
@@ -373,9 +416,7 @@ def _push_read_state(
 
     db_path = target / ".kobo" / "KoboReader.sqlite"
     if not db_path.exists():
-        logger.warning(
-            "KoboReader.sqlite not found at %s; skipping read-status push", db_path
-        )
+        logger.warning("KoboReader.sqlite not found at %s; skipping read-status push", db_path)
         return
 
     if backup_root is not None:
@@ -394,9 +435,7 @@ def _push_read_state(
         )
     except Exception as exc:
         logger.warning("Read-status push failed: %s", exc)
-        report.read_status_push_failed = [
-            (upd.content_id, str(exc)) for upd in updates
-        ]
+        report.read_status_push_failed = [(upd.content_id, str(exc)) for upd in updates]
         return
     report.read_statuses_pushed = push.pushed_count
     report.read_status_pull_only = push.pull_only_count
@@ -441,8 +480,11 @@ def sync_library_to_kobo(
             source = record.output_path
             if source is None:
                 report.skipped.append(
-            (record.source_path or Path(f"book#{record.id}"), "no canonical EPUB in library")
-        )
+                    (
+                        record.source_path or Path(f"book#{record.id}"),
+                        "no canonical EPUB in library",
+                    )
+                )
                 continue
             if source.suffix.lower() != ".epub":
                 report.skipped.append((source, "output is not an EPUB"))
@@ -485,9 +527,7 @@ def sync_library_to_kobo(
                 now=now,
             )
         except Exception as exc:
-            logger.warning(
-                "device_files discovery failed; continuing with pull: %s", exc
-            )
+            logger.warning("device_files discovery failed; continuing with pull: %s", exc)
         try:
             pulled, skipped = pull_read_state(
                 catalog, device_id=device_id, mount_path=target, now=now
@@ -529,5 +569,154 @@ def sync_library_to_kobo(
             backup_root=backup_root,
             report=report,
         )
+        _push_collection_shelves(
+            catalog=catalog,
+            device_id=device_id,
+            target=target,
+            report=report,
+        )
 
     return report
+
+
+# Bump when the on-device shelf write format changes, to force a re-push that
+# overwrites shelves left by an older format. v1 = phantom ContentList table
+# (never rendered); v2 = real Shelf/ShelfContent, _IsSynced='true'; v3 =
+# ShelfContent keyed on InternalName so nickel actually renders membership.
+_SHELF_WRITE_FORMAT = "v3"
+
+
+def _shelf_member_hash(shelf_name: str, content_ids: list[str]) -> str:
+    """Digest of a shelf's pushed membership, for idempotent no-op detection.
+
+    Order-independent over content (sorted) and sensitive to the shelf name so a
+    rename also triggers a re-push. ``_SHELF_WRITE_FORMAT`` is mixed in so that
+    changing how shelves are written to the device (e.g. the v1 phantom
+    ``ContentList`` layout → v2 real ``Shelf``/``ShelfContent`` with
+    ``_IsSynced='true'``) invalidates every stored hash and forces a one-time
+    re-push that heals shelves written by an older, broken format.
+    """
+    payload = (
+        _SHELF_WRITE_FORMAT + "\x00" + "\n".join(sorted(content_ids)) + "\x00" + shelf_name
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _push_collection_shelves(
+    *,
+    catalog: _CatalogProto,
+    device_id: int,
+    target: Path,
+    report: SyncReport,
+) -> None:
+    """Push collection shelves to the device's Shelf/ShelfContent tables.
+
+    For each collection with books on this device, builds the shelf membership
+    from the catalog, skips the device write when the membership is unchanged
+    (member_hash match), and writes the rest. Afterwards, bookery-owned shelves
+    whose collection no longer maps here are removed. Persists shelf state
+    (including the member_hash) back to the catalog.
+    """
+    try:
+        candidates = catalog.list_collection_shelf_candidates(device_id=device_id)
+    except Exception as exc:
+        logger.warning("Could not list collection shelf candidates: %s", exc)
+        return
+
+    db_path = target / ".kobo" / "KoboReader.sqlite"
+    if not db_path.exists():
+        logger.warning(
+            "KoboReader.sqlite not found at %s; skipping collection shelf push", db_path
+        )
+        return
+
+    now = _now_iso()
+    valid_internal_names: set[str] = set()
+    updates: list[CollectionShelfUpdate] = []
+    # Carry (collection_id, internal_name, member_hash, count) for shelves we write.
+    pending_state: list[tuple[int, str, str, int]] = []
+
+    for cand in candidates:
+        collection_id: int = cand["collection_id"]  # type: ignore[assignment]
+        name: str = cand["name"]  # type: ignore[assignment]
+        internal_name = f"bookery-{collection_id}"
+        valid_internal_names.add(internal_name)
+
+        content_ids = _get_collection_content_ids(catalog, device_id, collection_id)
+        member_hash = _shelf_member_hash(name, content_ids)
+
+        existing_state = catalog.get_collection_shelf_state(device_id, collection_id)
+        if existing_state is not None and existing_state.get("member_hash") == member_hash:
+            # Unchanged since last push — skip the device write (idempotent no-op).
+            continue
+
+        shelf_id: str = (
+            existing_state["shelf_id"]  # type: ignore[assignment]
+            if existing_state is not None
+            else str(uuid.uuid4())
+        )
+        updates.append(
+            CollectionShelfUpdate(
+                shelf_id=shelf_id,
+                internal_name=internal_name,
+                shelf_name=name,
+                content_ids=content_ids,
+            )
+        )
+        pending_state.append((collection_id, internal_name, member_hash, len(content_ids)))
+
+    if updates:
+        try:
+            push_result = write_collection_shelves(
+                db_path=db_path,
+                updates=updates,
+                now=_now_kobo,
+            )
+        except Exception as exc:
+            logger.warning("Collection shelf push failed: %s", exc)
+            report.shelf_push_failed = [(upd.shelf_name, str(exc)) for upd in updates]
+            return
+
+        report.shelves_pushed = push_result.pushed_count
+        report.shelf_push_failed = list(push_result.failed)
+        report.shelves_skipped = list(push_result.skipped)
+
+        skipped_names = {name for name, _ in push_result.skipped}
+        for upd, (collection_id, _internal, member_hash, count) in zip(
+            updates, pending_state, strict=True
+        ):
+            if upd.shelf_name in skipped_names:
+                continue
+            catalog.upsert_device_shelf_state(
+                device_id=device_id,
+                collection_id=collection_id,
+                shelf_id=upd.shelf_id,
+                shelf_name=upd.shelf_name,
+                last_pushed_at=now,
+                book_count_on_device=count,
+                member_hash=member_hash,
+            )
+
+    # Remove shelves we own whose collection no longer maps to this device.
+    try:
+        report.shelves_deleted = delete_orphan_shelves(
+            db_path=db_path, valid_internal_names=valid_internal_names
+        )
+    except Exception as exc:
+        logger.warning("Orphan shelf cleanup failed: %s", exc)
+
+
+def _get_collection_content_ids(
+    catalog: _CatalogProto,
+    device_id: int,
+    collection_id: int,
+) -> list[str]:
+    """Return Kobo ContentIDs for books in a collection that are on this device.
+
+    Membership comes from the catalog (collection_books ∩ device_files), not the
+    device DB. Each on-device remote path is turned into the ``file://`` ContentID
+    the Kobo ``ShelfContent`` table uses, e.g.
+    ``file:///mnt/onboard/Bookery/Author/Title/Title.kepub.epub``.
+    """
+    paths = catalog.list_collection_device_paths(collection_id=collection_id, device_id=device_id)
+    return [f"file://{path}" for path in paths]
