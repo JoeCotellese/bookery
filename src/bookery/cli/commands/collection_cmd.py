@@ -1,5 +1,5 @@
 # ABOUTME: The `bookery collections` command group for managing book collections.
-# ABOUTME: Provides create, add-books, remove-books, ls, show, rm, rename subcommands.
+# ABOUTME: Static (create/add-books/remove-books) and rule-based (--query/edit/preview) curation.
 
 from pathlib import Path
 from typing import cast
@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from bookery.cli.options import db_option, resolve_db_path
+from bookery.collections import CollectionQueryError, parse_collection_query
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 
@@ -17,26 +18,52 @@ console = Console()
 
 @click.group("collections")
 def collections() -> None:
-    """Manage book collections (manual curation)."""
+    """Manage book collections (static curation or rule-based queries)."""
 
 
 @collections.command("create")
 @click.argument("name")
 @click.option("--description", "-d", help="Optional description for the collection.")
+@click.option(
+    "--query",
+    "-q",
+    "query",
+    default=None,
+    help="Rule for a rule-based collection, e.g. 'genre:\"Science Fiction\"' or series:Dune.",
+)
 @db_option
-def collections_create(name: str, description: str | None, db_path: Path | None) -> None:
-    """Create a new collection."""
+def collections_create(
+    name: str, description: str | None, query: str | None, db_path: Path | None
+) -> None:
+    """Create a new collection.
+
+    Pass --query to create a rule-based collection whose membership is derived
+    live from the rule (e.g. --query 'genre:"Science Fiction"'); omit it for a
+    static, hand-curated collection.
+    """
+    # Validate the rule before touching the database so a bad query never
+    # creates an empty collection.
+    if query is not None:
+        try:
+            parse_collection_query(query)
+        except CollectionQueryError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise SystemExit(1) from exc
+
     conn = open_library(resolve_db_path(db_path))
     catalog = LibraryCatalog(conn)
 
     try:
-        collection_id = catalog.create_collection(name, description)
+        collection_id = catalog.create_collection(name, description, query)
     except Exception as exc:
         console.print(f"[red]Failed to create collection: {exc}[/red]")
         conn.close()
         raise SystemExit(1) from exc
 
-    console.print(f"Created collection [bold]{name}[/bold] (ID: {collection_id}).")
+    if query:
+        console.print(f"Created rule-based collection [bold]{name}[/bold] (ID: {collection_id}).")
+    else:
+        console.print(f"Created collection [bold]{name}[/bold] (ID: {collection_id}).")
     conn.close()
 
 
@@ -164,6 +191,8 @@ def collections_show(collection_id: int, show_sync_status: bool, db_path: Path |
     console.print(f"[bold]{collection['name']}[/bold] (ID: {collection_id})")
     if collection.get("description"):
         console.print(f"[dim]{collection['description']}[/dim]")
+    if collection.get("query"):
+        console.print(f"[dim]Query:[/dim] {collection['query']} [dim](rule-based)[/dim]")
     console.print()
 
     books = catalog.get_collection_books(collection_id)
@@ -230,6 +259,107 @@ def _show_collection_sync_status(conn, catalog: LibraryCatalog, collection_id: i
             )
 
     console.print(table)
+
+
+@collections.command("edit")
+@click.argument("collection_id", type=int)
+@click.option(
+    "--query",
+    "query",
+    default=None,
+    help="Convert to a rule-based collection with this rule.",
+)
+@click.option(
+    "--clear-query",
+    "clear_query",
+    is_flag=True,
+    help="Convert a rule-based collection to static, snapshotting current members.",
+)
+@db_option
+def collections_edit(
+    collection_id: int, query: str | None, clear_query: bool, db_path: Path | None
+) -> None:
+    """Change a collection's rule (convert static <-> rule-based).
+
+    Pass exactly one of --query (static -> rule-based) or --clear-query
+    (rule-based -> static, snapshotting the current members).
+    """
+    if query is not None and clear_query:
+        console.print("[red]Use either --query or --clear-query, not both.[/red]")
+        raise SystemExit(1)
+    if query is None and not clear_query:
+        console.print("[red]Specify --query '<rule>' or --clear-query.[/red]")
+        raise SystemExit(1)
+
+    if query is not None:
+        try:
+            parse_collection_query(query)
+        except CollectionQueryError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise SystemExit(1) from exc
+
+    conn = open_library(resolve_db_path(db_path))
+    catalog = LibraryCatalog(conn)
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        console.print(f"[red]Collection {collection_id} not found.[/red]")
+        conn.close()
+        raise SystemExit(1)
+
+    if clear_query:
+        if collection.get("query") is None:
+            console.print(f"[red]Collection {collection_id} is already static.[/red]")
+            conn.close()
+            raise SystemExit(1)
+        catalog.clear_collection_query(collection_id)
+        console.print(
+            f"Converted [bold]{collection['name']}[/bold] to a static collection "
+            "(members snapshotted)."
+        )
+    else:
+        catalog.set_collection_query(collection_id, query)  # type: ignore[arg-type]
+        console.print(f"Set rule for [bold]{collection['name']}[/bold]: {query}")
+
+    conn.close()
+
+
+@collections.command("preview")
+@click.option(
+    "--query",
+    "query",
+    required=True,
+    help="Rule to preview, e.g. 'genre:\"Science Fiction\"' or series:Dune.",
+)
+@db_option
+def collections_preview(query: str, db_path: Path | None) -> None:
+    """Preview which books a rule matches, without saving a collection."""
+    conn = open_library(resolve_db_path(db_path))
+    catalog = LibraryCatalog(conn)
+
+    try:
+        books = catalog.preview_query(query)
+    except CollectionQueryError as exc:
+        console.print(f"[red]{exc}[/red]")
+        conn.close()
+        raise SystemExit(1) from exc
+
+    console.print(f"[bold]{len(books)} book(s) match[/bold] [cyan]{query}[/cyan]:")
+    if not books:
+        conn.close()
+        return
+
+    table = Table()
+    table.add_column("ID", style="dim", width=6)
+    table.add_column("Title", style="bold")
+    table.add_column("Author(s)")
+
+    for book in books:
+        authors = ", ".join(book.metadata.authors) if book.metadata.authors else "Unknown"
+        table.add_row(str(book.id), book.metadata.title, authors)
+
+    console.print(table)
+    conn.close()
 
 
 @collections.command("rm")

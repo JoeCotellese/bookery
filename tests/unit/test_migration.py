@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from bookery.db.connection import _apply_migrations, _get_schema_version, open_library
-from bookery.db.schema import MIGRATIONS
+from bookery.db.schema import LATEST_SCHEMA_VERSION, MIGRATIONS
 
 
 @pytest.fixture()
@@ -24,7 +24,7 @@ class TestMigrations:
         conn = open_library(db_path)
         version = _get_schema_version(conn)
         conn.close()
-        assert version == 13
+        assert version == LATEST_SCHEMA_VERSION
 
     def test_migrations_list_is_ordered(self) -> None:
         """MIGRATIONS list has strictly increasing version numbers."""
@@ -126,7 +126,7 @@ class TestMigrations:
         # Now open with bookery — should auto-migrate
         conn = open_library(db_path)
         version = _get_schema_version(conn)
-        assert version == 13
+        assert version == LATEST_SCHEMA_VERSION
 
         # Tags table should exist
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")

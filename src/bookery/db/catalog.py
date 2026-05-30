@@ -5,6 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from bookery.collections import CollectionQuery, parse_collection_query
 from bookery.core.dedup import (
     normalize_author_for_dedup,
     normalize_for_dedup,
@@ -1282,12 +1283,18 @@ class LibraryCatalog:
 
     # --- Collection operations (SCHEMA_V11) ----------------------------
 
-    def create_collection(self, name: str, description: str | None = None) -> int:
+    def create_collection(
+        self, name: str, description: str | None = None, query: str | None = None
+    ) -> int:
         """Create a new collection.
 
         Args:
             name: The collection name (unique, case-insensitive).
             description: Optional description of the collection.
+            query: Optional rule query. When non-None the collection is
+                rule-based (membership derived live from the query); when None
+                it is static (explicit membership via ``collection_books``). The
+                two kinds are mutually exclusive.
 
         Returns:
             The row ID of the inserted collection.
@@ -1296,8 +1303,8 @@ class LibraryCatalog:
             sqlite3.IntegrityError: If a collection with this name already exists.
         """
         cursor = self._conn.execute(
-            "INSERT INTO collections (name, description) VALUES (?, ?)",
-            (name, description),
+            "INSERT INTO collections (name, description, query) VALUES (?, ?, ?)",
+            (name, description, query),
         )
         self._conn.commit()
         assert cursor.lastrowid is not None
@@ -1307,10 +1314,12 @@ class LibraryCatalog:
         """Retrieve a collection by its ID.
 
         Returns:
-            Dict with collection fields, or None if not found.
+            Dict with collection fields (including ``query``), or None if not found.
+            ``query`` is None for static collections, the rule string otherwise.
         """
         row = self._conn.execute(
-            "SELECT id, name, description, created_at, updated_at FROM collections WHERE id = ?",
+            "SELECT id, name, description, query, created_at, updated_at "
+            "FROM collections WHERE id = ?",
             (collection_id,),
         ).fetchone()
         if row is None:
@@ -1319,6 +1328,7 @@ class LibraryCatalog:
             "id": row["id"],
             "name": row["name"],
             "description": row["description"],
+            "query": row["query"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -1327,10 +1337,10 @@ class LibraryCatalog:
         """Retrieve a collection by its name (case-insensitive).
 
         Returns:
-            Dict with collection fields, or None if not found.
+            Dict with collection fields (including ``query``), or None if not found.
         """
         row = self._conn.execute(
-            "SELECT id, name, description, created_at, updated_at "
+            "SELECT id, name, description, query, created_at, updated_at "
             "FROM collections WHERE name = ? COLLATE NOCASE",
             (name,),
         ).fetchone()
@@ -1340,6 +1350,7 @@ class LibraryCatalog:
             "id": row["id"],
             "name": row["name"],
             "description": row["description"],
+            "query": row["query"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -1407,14 +1418,17 @@ class LibraryCatalog:
         self._conn.commit()
 
     def list_collections(self) -> list[dict[str, object]]:
-        """List all collections with their book counts.
+        """List all collections with their (live) book counts.
 
         Returns:
-            List of dicts with collection fields plus 'book_count'.
+            List of dicts with collection fields plus 'book_count'. For static
+            collections the count is the number of ``collection_books`` rows; for
+            rule-based collections (``query`` set) it is the live-resolved member
+            count, since those hold no ``collection_books`` rows.
         """
         cursor = self._conn.execute(
             """
-            SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
+            SELECT c.id, c.name, c.description, c.query, c.created_at, c.updated_at,
                    COUNT(cb.book_id) AS book_count
             FROM collections c
             LEFT JOIN collection_books cb ON c.id = cb.collection_id
@@ -1422,20 +1436,36 @@ class LibraryCatalog:
             ORDER BY c.name COLLATE NOCASE
             """
         )
-        return [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "description": row["description"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "book_count": row["book_count"],
-            }
-            for row in cursor.fetchall()
-        ]
+        collections: list[dict[str, object]] = []
+        for row in cursor.fetchall():
+            query = row["query"]
+            # Rule-based collections keep zero collection_books rows, so the JOIN
+            # count is always 0 — resolve their membership live instead.
+            book_count = (
+                len(self.resolve_collection_member_ids(int(row["id"])))
+                if query is not None
+                else row["book_count"]
+            )
+            collections.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "query": query,
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "book_count": book_count,
+                }
+            )
+        return collections
 
     def get_collection_books(self, collection_id: int) -> list[BookRecord]:
         """Get all books in a collection, ordered by title_sort.
+
+        Works for both kinds: static collections read ``collection_books``,
+        rule-based collections resolve their membership live from the query. This
+        is a thin alias for :meth:`resolve_collection_members`, kept for existing
+        callers (web detail, CLI ``show``).
 
         Args:
             collection_id: The ID of the collection.
@@ -1446,17 +1476,142 @@ class LibraryCatalog:
         Raises:
             ValueError: If the collection doesn't exist.
         """
+        return self.resolve_collection_members(collection_id)
+
+    # --- Rule-based collection resolution (SCHEMA_V14, issue #240) -----
+
+    def resolve_collection_member_ids(self, collection_id: int) -> list[int]:
+        """Return the book IDs that belong to a collection.
+
+        The sole membership entry point for both kinds. Static collections
+        (``query IS NULL``) read explicit ``collection_books`` rows; rule-based
+        collections (``query`` set) derive membership live by parsing and
+        compiling the query. No caching — rule-based membership is recomputed on
+        each call so it is never stale.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+            CollectionQueryError: If a stored rule query is invalid.
+        """
+        collection = self.get_collection_by_id(collection_id)
+        if collection is None:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        query = collection["query"]
+        if query is None:
+            cursor = self._conn.execute(
+                "SELECT book_id FROM collection_books WHERE collection_id = ?",
+                (collection_id,),
+            )
+            return [int(row["book_id"]) for row in cursor.fetchall()]
+
+        compiled = parse_collection_query(str(query))
+        return self._compile_query_member_ids(compiled)
+
+    def resolve_collection_members(self, collection_id: int) -> list[BookRecord]:
+        """Return the books in a collection as records, ordered by title_sort.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+            CollectionQueryError: If a stored rule query is invalid.
+        """
+        member_ids = self.resolve_collection_member_ids(collection_id)
+        return self._fetch_books_ordered(member_ids)
+
+    def preview_query(self, query: str) -> list[BookRecord]:
+        """Resolve a one-shot rule query to its matching books without saving.
+
+        Raises:
+            CollectionQueryError: If the query is invalid or unsupported.
+        """
+        compiled = parse_collection_query(query)
+        member_ids = self._compile_query_member_ids(compiled)
+        return self._fetch_books_ordered(member_ids)
+
+    def set_collection_query(self, collection_id: int, query: str) -> None:
+        """Convert a collection to rule-based with the given query.
+
+        Validates the query first (so an invalid query never mutates state), then
+        drops any existing ``collection_books`` rows — a rule-based collection is
+        mutually exclusive with static membership and holds none.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+            CollectionQueryError: If the query is invalid or unsupported.
+        """
+        parse_collection_query(query)  # validate before any write
         if self.get_collection_by_id(collection_id) is None:
             raise ValueError(f"Collection {collection_id} not found")
 
-        cursor = self._conn.execute(
-            """
-            SELECT b.* FROM books b
-            JOIN collection_books cb ON b.id = cb.book_id
-            WHERE cb.collection_id = ?
-            ORDER BY b.title_sort COLLATE NOCASE
-            """,
+        self._conn.execute(
+            "DELETE FROM collection_books WHERE collection_id = ?",
             (collection_id,),
+        )
+        self._conn.execute(
+            "UPDATE collections SET query = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            (query, collection_id),
+        )
+        self._conn.commit()
+
+    def clear_collection_query(self, collection_id: int) -> None:
+        """Convert a rule-based collection to static, snapshotting current members.
+
+        The live-resolved members are written into ``collection_books`` before the
+        query is cleared, so the collection keeps exactly the books it matched at
+        conversion time.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+        """
+        collection = self.get_collection_by_id(collection_id)
+        if collection is None:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        # Resolve while still rule-based, then snapshot before clearing the query.
+        member_ids = self.resolve_collection_member_ids(collection_id)
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO collection_books (collection_id, book_id) VALUES (?, ?)",
+            [(collection_id, book_id) for book_id in member_ids],
+        )
+        self._conn.execute(
+            "UPDATE collections SET query = NULL, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            (collection_id,),
+        )
+        self._conn.commit()
+
+    def _compile_query_member_ids(self, query: CollectionQuery) -> list[int]:
+        """Compile a validated query into the matching book IDs (per-field SQL).
+
+        The query module guarantees ``field`` is a whitelisted slice-3 field and
+        ``value`` passed its per-field validation, so this only constructs SQL.
+        """
+        if query.field == "series":
+            cursor = self._conn.execute(
+                "SELECT id FROM books WHERE series = ? COLLATE NOCASE",
+                (query.value,),
+            )
+        elif query.field == "genre":
+            cursor = self._conn.execute(
+                "SELECT b.id FROM books b "
+                "JOIN book_genres bg ON b.id = bg.book_id "
+                "JOIN genres g ON bg.genre_id = g.id "
+                "WHERE g.name = ?",
+                (query.value,),
+            )
+        else:  # pragma: no cover - guarded by the query validator
+            raise ValueError(f"Unsupported query field: {query.field}")
+        return [int(row[0]) for row in cursor.fetchall()]
+
+    def _fetch_books_ordered(self, book_ids: list[int]) -> list[BookRecord]:
+        """Fetch the given books as records, ordered by title_sort."""
+        if not book_ids:
+            return []
+        placeholders = ",".join("?" * len(book_ids))
+        cursor = self._conn.execute(
+            f"SELECT * FROM books WHERE id IN ({placeholders}) ORDER BY title_sort COLLATE NOCASE",
+            book_ids,
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
@@ -1610,62 +1765,67 @@ class LibraryCatalog:
     def list_collection_shelf_candidates(self, *, device_id: int) -> list[dict[str, object]]:
         """Return collections that can be pushed as shelves to a device.
 
-        Returns collections that:
-        - Have at least one book synced to this device
-        - Have a shelf state record (were previously synced)
-        - Or are new collections that need initial sync
-
-        Each candidate includes collection info plus current book count on device.
+        A collection is a candidate when at least one of its members (resolved via
+        the single membership resolver, so rule-based collections are included even
+        though they hold no ``collection_books`` rows) is present on the device.
+        Each candidate carries its current on-device count, total member count, and
+        any existing shelf state.
         """
-        cursor = self._conn.execute(
-            """
-            SELECT
-                c.id AS collection_id,
-                c.name,
-                c.updated_at,
-                COALESCE(dss.shelf_id, NULL) AS shelf_id,
-                COALESCE(dss.last_pushed_at, NULL) AS last_pushed_at,
-                COUNT(DISTINCT df.book_id) AS books_on_device,
-                COUNT(DISTINCT cb.book_id) AS books_in_collection
-            FROM collections c
-            JOIN collection_books cb ON c.id = cb.collection_id
-            JOIN device_files df ON cb.book_id = df.book_id AND df.device_id = ?
-            LEFT JOIN device_shelf_state dss
-                ON dss.collection_id = c.id AND dss.device_id = ?
-            GROUP BY c.id
-            ORDER BY c.name COLLATE NOCASE
-            """,
-            (device_id, device_id),
-        )
-        return [
-            {
-                "collection_id": int(row["collection_id"]),
-                "name": str(row["name"]),
-                "updated_at": str(row["updated_at"]),
-                "shelf_id": row["shelf_id"],
-                "last_pushed_at": row["last_pushed_at"],
-                "books_on_device": int(row["books_on_device"]),
-                "books_in_collection": int(row["books_in_collection"]),
-            }
-            for row in cursor.fetchall()
-        ]
+        device_book_ids = {
+            int(row["book_id"])
+            for row in self._conn.execute(
+                "SELECT book_id FROM device_files WHERE device_id = ?",
+                (device_id,),
+            )
+        }
+        if not device_book_ids:
+            return []
+
+        candidates: list[dict[str, object]] = []
+        collection_rows = self._conn.execute(
+            "SELECT id, name, updated_at FROM collections ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        for coll in collection_rows:
+            collection_id = int(coll["id"])
+            member_ids = self.resolve_collection_member_ids(collection_id)
+            books_on_device = sum(1 for book_id in member_ids if book_id in device_book_ids)
+            if books_on_device == 0:
+                continue
+
+            state = self._conn.execute(
+                "SELECT shelf_id, last_pushed_at FROM device_shelf_state "
+                "WHERE collection_id = ? AND device_id = ?",
+                (collection_id, device_id),
+            ).fetchone()
+            candidates.append(
+                {
+                    "collection_id": collection_id,
+                    "name": str(coll["name"]),
+                    "updated_at": str(coll["updated_at"]),
+                    "shelf_id": state["shelf_id"] if state is not None else None,
+                    "last_pushed_at": state["last_pushed_at"] if state is not None else None,
+                    "books_on_device": books_on_device,
+                    "books_in_collection": len(member_ids),
+                }
+            )
+        return candidates
 
     def list_collection_device_paths(self, *, collection_id: int, device_id: int) -> list[str]:
         """Return device remote paths for books in a collection that are on a device.
 
-        Only books that are both members of the collection and present on the
-        device (via device_files) are returned, ordered deterministically. The
-        caller turns these into Kobo ContentIDs by prefixing ``file://``.
+        Membership comes from the resolver (so it is correct for both static and
+        rule-based collections); only members also present on the device (via
+        ``device_files``) are returned, ordered deterministically. The caller
+        turns these into Kobo ContentIDs by prefixing ``file://``.
         """
+        member_ids = self.resolve_collection_member_ids(collection_id)
+        if not member_ids:
+            return []
+        placeholders = ",".join("?" * len(member_ids))
         cursor = self._conn.execute(
-            """
-            SELECT df.remote_path
-            FROM collection_books cb
-            JOIN device_files df
-                ON cb.book_id = df.book_id AND df.device_id = ?
-            WHERE cb.collection_id = ?
-            ORDER BY df.remote_path
-            """,
-            (device_id, collection_id),
+            f"SELECT df.remote_path FROM device_files df "
+            f"WHERE df.device_id = ? AND df.book_id IN ({placeholders}) "
+            f"ORDER BY df.remote_path",
+            [device_id, *member_ids],
         )
         return [str(row["remote_path"]) for row in cursor.fetchall()]

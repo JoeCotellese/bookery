@@ -13,6 +13,7 @@ dependencies = [
     "ebooklib>=0.18",
     "flask>=3.0",
     "httpx>=0.27",
+    "luqum>=0.13",
     "mobi>=0.4",
     "openai>=1.0",
     "pdfplumber>=0.11",

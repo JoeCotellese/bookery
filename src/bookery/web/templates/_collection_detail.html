@@ -4,11 +4,18 @@
     {% if collection.description %}
     <p class="description">{{ collection.description }}</p>
     {% endif %}
+    {% if collection.query %}
+    <p class="collection-query">
+        <span class="query-label">Rule:</span> <code>{{ collection.query }}</code>
+    </p>
+    {% endif %}
 </header>
 
 {% if books %}
 <section class="books-in-collection" aria-labelledby="books-heading">
-    <h2 id="books-heading">{{ books|length }} book{% if books|length != 1 %}s{% endif %}</h2>
+    <h2 id="books-heading">
+        {% if collection.query %}Matches: {% endif %}{{ books|length }} book{% if books|length != 1 %}s{% endif %}
+    </h2>
     <ul class="book-list">
         {% for book in books %}
         <li>
@@ -18,13 +25,18 @@
             {% if book.metadata.authors %}
             <span class="authors">by {{ book.metadata.authors|join(", ") }}</span>
             {% endif %}
+            {# Manual removal only applies to static collections; rule-based membership is derived. #}
+            {% if not collection.query %}
             <form method="POST" action="{{ url_for('web.collection_remove_book', collection_id=collection.id, book_id=book.id) }}" class="inline-form">
                 <button type="submit" class="btn-small">Remove</button>
             </form>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>
 </section>
 {% else %}
-<p class="empty">No books in this collection yet.</p>
+<p class="empty">
+    {% if collection.query %}No books match this rule yet.{% else %}No books in this collection yet.{% endif %}
+</p>
 {% endif %}

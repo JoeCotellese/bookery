@@ -182,3 +182,142 @@ class TestCollectionsWorkflow:
         assert "Book 1" not in result.output
         assert "Book 2" in result.output
         assert "1 book(s)" in result.output
+
+
+def _seed_sci_fi(db_path: Path) -> int:
+    """Add a Science Fiction book to the library and return its ID."""
+    conn = open_library(db_path)
+    catalog = LibraryCatalog(conn)
+    book_id = catalog.add_book(
+        BookMetadata(title="Foundation", series="Foundation", source_path=Path("/books/f.epub")),
+        file_hash="sf_hash",
+    )
+    catalog.add_genre(book_id, "Science Fiction", is_primary=True)
+    conn.close()
+    return book_id
+
+
+class TestQueryBasedCollectionsCLI:
+    """E2E tests for slice-3 rule-based collection commands."""
+
+    def test_create_with_query_is_rule_based(self, runner: CliRunner, db_path: Path) -> None:
+        _seed_sci_fi(db_path)
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Sci-Fi",
+             "--query", 'genre:"Science Fiction"'],
+        )
+        assert result.exit_code == 0
+
+        show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        assert 'genre:"Science Fiction"' in show.output
+        assert "Foundation" in show.output
+
+    def test_create_with_invalid_query_fails(self, runner: CliRunner, db_path: Path) -> None:
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Bad", "--query", "publisher:Tor"],
+        )
+        assert result.exit_code != 0
+        assert "series" in result.output and "genre" in result.output
+
+    def test_preview_counts_without_saving(self, runner: CliRunner, db_path: Path) -> None:
+        _seed_sci_fi(db_path)
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "preview", "--query",
+             'genre:"Science Fiction"'],
+        )
+        assert result.exit_code == 0
+        assert "Foundation" in result.output
+
+        # Nothing persisted.
+        ls = runner.invoke(cli, ["--db", str(db_path), "collections", "ls"])
+        assert "No collections" in ls.output
+
+    def test_show_displays_query_and_live_count(self, runner: CliRunner, db_path: Path) -> None:
+        _seed_sci_fi(db_path)
+        runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Sci-Fi",
+             "--query", 'genre:"Science Fiction"'],
+        )
+        result = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        assert 'genre:"Science Fiction"' in result.output
+        assert "1 book(s)" in result.output
+
+    def test_edit_query_converts_static_to_rule(self, runner: CliRunner, db_path: Path) -> None:
+        _seed_sci_fi(db_path)
+        runner.invoke(cli, ["--db", str(db_path), "collections", "create", "Sci-Fi"])
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "edit", "1", "--query",
+             'genre:"Science Fiction"'],
+        )
+        assert result.exit_code == 0
+
+        show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        assert 'genre:"Science Fiction"' in show.output
+        assert "Foundation" in show.output
+
+    def test_edit_clear_query_snapshots_to_static(
+        self, runner: CliRunner, db_path: Path
+    ) -> None:
+        _seed_sci_fi(db_path)
+        runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Sci-Fi",
+             "--query", 'genre:"Science Fiction"'],
+        )
+        result = runner.invoke(
+            cli, ["--db", str(db_path), "collections", "edit", "1", "--clear-query"]
+        )
+        assert result.exit_code == 0
+
+        show = runner.invoke(cli, ["--db", str(db_path), "collections", "show", "1"])
+        # Query no longer shown; the snapshotted member remains.
+        assert 'genre:"Science Fiction"' not in show.output
+        assert "Foundation" in show.output
+
+    def test_edit_requires_exactly_one_flag(self, runner: CliRunner, db_path: Path) -> None:
+        runner.invoke(cli, ["--db", str(db_path), "collections", "create", "Sci-Fi"])
+
+        neither = runner.invoke(cli, ["--db", str(db_path), "collections", "edit", "1"])
+        assert neither.exit_code != 0
+
+        both = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "edit", "1", "--query", "series:X",
+             "--clear-query"],
+        )
+        assert both.exit_code != 0
+
+    def test_author_query_returns_slice4_deferral(self, runner: CliRunner, db_path: Path) -> None:
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Auth", "--query",
+             'author:"Frank Herbert"'],
+        )
+        assert result.exit_code != 0
+        assert "#236" in result.output
+
+    def test_multi_term_query_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Multi", "--query",
+             "genre:SF series:Dune"],
+        )
+        assert result.exit_code != 0
+        assert "single" in result.output.lower()
+
+    def test_non_canonical_genre_is_rejected(self, runner: CliRunner, db_path: Path) -> None:
+        result = runner.invoke(
+            cli,
+            ["--db", str(db_path), "collections", "create", "Borg", "--query",
+             'genre:"Borg Romance"'],
+        )
+        assert result.exit_code != 0
+        # Rich may wrap the long genre list across lines, so assert on stable
+        # fragments rather than a single (potentially wrapped) genre name.
+        assert "canonical genre" in result.output
+        assert "Valid genres" in result.output
