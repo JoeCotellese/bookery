@@ -1145,6 +1145,17 @@ def collection_create():
         "query": request.form.get("query", ""),
     }
 
+    def render_errors(errors: dict[str, str]) -> tuple[str, int]:
+        return _render_collection_form(
+            mode="create",
+            action_url=url_for("web.collection_create"),
+            target="#collections-content",
+            container_id="collections-content",
+            cancel_url=url_for("web.collections_list"),
+            form=form,
+            errors=errors,
+        )
+
     errors: dict[str, str] = {}
     if not name:
         errors["name"] = "Collection name is required."
@@ -1158,28 +1169,12 @@ def collection_create():
             errors["query"] = str(exc)
 
     if errors:
-        return _render_collection_form(
-            mode="create",
-            action_url=url_for("web.collection_create"),
-            target="#collections-content",
-            container_id="collections-content",
-            cancel_url=url_for("web.collections_list"),
-            form=form,
-            errors=errors,
-        )
+        return render_errors(errors)
 
     try:
         collection_id = catalog.create_collection(name, description, query=query)
     except sqlite3.IntegrityError:
-        return _render_collection_form(
-            mode="create",
-            action_url=url_for("web.collection_create"),
-            target="#collections-content",
-            container_id="collections-content",
-            cancel_url=url_for("web.collections_list"),
-            form=form,
-            errors={"name": f"A collection named '{name}' already exists."},
-        )
+        return render_errors({"name": f"A collection named '{name}' already exists."})
 
     flash(f'Created collection "{name}".', "success")
     return _redirect_after_save(
