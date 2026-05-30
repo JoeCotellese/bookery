@@ -10,6 +10,13 @@
 
     <h1>Collections</h1>
 
+    <p class="toolbar">
+        <a href="{{ url_for('web.collection_new_form') }}"
+           hx-get="{{ url_for('web.collection_new_form') }}"
+           hx-target="#collections-content"
+           class="btn-primary">New collection</a>
+    </p>
+
     <div id="collections-content" aria-live="polite">
         {% include "_collections_list.html" %}
     </div>

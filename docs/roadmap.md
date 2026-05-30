@@ -72,6 +72,7 @@
 - [x] Apply candidate metadata with side-by-side diff
 - [x] Delete book from detail page
 - [x] Persistent book context subhead on sub-flows
+- [x] Create and edit collections from the UI (incl. raw rule strings) with inline validation
 
 ## Phase 8: Vault-Export
 - [x] Obsidian vault → single EPUB pipeline (pandoc)

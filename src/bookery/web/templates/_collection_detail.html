@@ -9,6 +9,12 @@
         <span class="query-label">Rule:</span> <code>{{ collection.query }}</code>
     </p>
     {% endif %}
+    <p class="collection-actions">
+        <a href="{{ url_for('web.collection_edit_form', collection_id=collection.id) }}"
+           hx-get="{{ url_for('web.collection_edit_form', collection_id=collection.id) }}"
+           hx-target="#collection-content"
+           class="btn-secondary">Edit</a>
+    </p>
 </header>
 
 {% if books %}

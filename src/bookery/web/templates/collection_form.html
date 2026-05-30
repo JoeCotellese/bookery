@@ -1,0 +1,19 @@
+{# ABOUTME: Full-page shell for the collection create/edit form. #}
+{# ABOUTME: Title switches on `mode`; wraps the shared _collection_form.html partial. #}
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "edit" %}Edit collection{% else %}New collection{% endif %} - Bookery{% endblock %}
+
+{% block content %}
+<div class="collection-form-page">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ cancel_url }}">&larr; Back</a>
+    </nav>
+
+    <h1>{% if mode == "edit" %}Edit collection{% else %}New collection{% endif %}</h1>
+
+    <div id="{{ container_id }}" aria-live="polite">
+        {% include "_collection_form.html" %}
+    </div>
+</div>
+{% endblock %}

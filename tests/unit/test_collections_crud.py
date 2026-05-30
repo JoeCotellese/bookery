@@ -446,6 +446,59 @@ class TestRenameCollection:
             catalog.rename_collection(9999, "New Name")
 
 
+class TestSetCollectionDescription:
+    """Tests for LibraryCatalog.set_collection_description()."""
+
+    def test_set_description(self, catalog: LibraryCatalog) -> None:
+        """Setting a description updates the stored value."""
+        collection_id = catalog.create_collection("My Collection")
+
+        catalog.set_collection_description(collection_id, "A fresh description")
+
+        collection = catalog.get_collection_by_id(collection_id)
+        assert collection is not None
+        assert collection["description"] == "A fresh description"
+
+    def test_overwrite_description(self, catalog: LibraryCatalog) -> None:
+        """Setting a description overwrites an existing one."""
+        collection_id = catalog.create_collection("My Collection", "Original")
+
+        catalog.set_collection_description(collection_id, "Updated")
+
+        collection = catalog.get_collection_by_id(collection_id)
+        assert collection is not None
+        assert collection["description"] == "Updated"
+
+    def test_clear_description_with_none(self, catalog: LibraryCatalog) -> None:
+        """Passing None clears the description."""
+        collection_id = catalog.create_collection("My Collection", "Original")
+
+        catalog.set_collection_description(collection_id, None)
+
+        collection = catalog.get_collection_by_id(collection_id)
+        assert collection is not None
+        assert collection["description"] is None
+
+    def test_set_description_preserves_name_and_query(self, catalog: LibraryCatalog) -> None:
+        """Setting a description leaves name and query untouched."""
+        collection_id = catalog.create_collection(
+            "Sci-Fi", "Old", query='genre:"Science Fiction"'
+        )
+
+        catalog.set_collection_description(collection_id, "New")
+
+        collection = catalog.get_collection_by_id(collection_id)
+        assert collection is not None
+        assert collection["name"] == "Sci-Fi"
+        assert collection["query"] == 'genre:"Science Fiction"'
+        assert collection["description"] == "New"
+
+    def test_set_description_nonexistent_raises(self, catalog: LibraryCatalog) -> None:
+        """Setting a description on a non-existent collection raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
+            catalog.set_collection_description(9999, "Nope")
+
+
 class TestGetCollectionsForBook:
     """Tests for LibraryCatalog.get_collections_for_book()."""
 

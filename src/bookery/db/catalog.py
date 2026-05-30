@@ -1801,6 +1801,28 @@ class LibraryCatalog:
         if cursor.rowcount == 0:
             raise ValueError(f"Collection {collection_id} not found")
 
+    def set_collection_description(
+        self, collection_id: int, description: str | None
+    ) -> None:
+        """Set (or clear) a collection's description.
+
+        Args:
+            collection_id: The ID of the collection to update.
+            description: The new description, or None to clear it.
+
+        Raises:
+            ValueError: If the collection doesn't exist.
+        """
+        cursor = self._conn.execute(
+            "UPDATE collections SET description = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            (description, collection_id),
+        )
+        self._conn.commit()
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Collection {collection_id} not found")
+
     def get_collections_for_book(self, book_id: int) -> list[dict[str, object]]:
         """Get all collections that a book belongs to.
 
