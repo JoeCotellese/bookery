@@ -37,6 +37,9 @@ uv.lock
 # Serena (per-user tooling)
 .serena/
 
+# OpenCode (per-user tooling)
+.opencode/
+
 # Bookery runtime
 *.db
 bookery-output/
