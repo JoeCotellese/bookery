@@ -1,4 +1,4 @@
-# ABOUTME: E2E tests for the web collection create flow against a real catalog (#252).
+# ABOUTME: E2E tests for the web collection create + query-preview flow on a real catalog.
 # ABOUTME: Drives create_app over a temp SQLite DB through the Flask test client.
 
 from pathlib import Path
@@ -88,3 +88,35 @@ class TestCreateRuleCollectionEndToEnd:
         names = [c["name"] for c in catalog.list_collections()]
         assert names.count("Favorites") == 1
         assert len(names) == 1
+
+
+class TestQueryPreviewEndToEnd:
+    def test_empty_result_preview_then_save_lands_on_empty_detail(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """A valid rule matching nothing previews "0 books", saves, and the
+        detail page shows the rule-based empty state."""
+        # Preview a valid query that matches no book in the seeded catalog.
+        preview = client.post(
+            "/collections/preview",
+            data={"query": "series:Nonexistent"},
+            headers={"HX-Request": "true"},
+        )
+        assert preview.status_code == 200
+        preview_html = preview.data.decode()
+        assert "0 books match" in preview_html
+        assert 'role="alert"' not in preview_html  # zero matches is not an error
+        # Preview must not have persisted anything.
+        assert catalog.list_collections() == []
+
+        # Saving the same query succeeds and redirects to the detail page.
+        created = client.post(
+            "/collections/create",
+            data={"name": "Empty Rule", "query": "series:Nonexistent"},
+            headers={"HX-Request": "true"},
+        )
+        target = created.headers["HX-Redirect"]
+
+        detail = client.get(target).data.decode()
+        assert "Empty Rule" in detail
+        assert "No books match this rule yet." in detail
