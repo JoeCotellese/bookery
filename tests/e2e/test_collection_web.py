@@ -183,3 +183,87 @@ class TestQueryBuilderEndToEnd:
             headers={"HX-Request": "true"},
         )
         assert resp.status_code == 400
+
+
+class TestConversionGateEndToEnd:
+    """Full edit-form conversions on a real catalog: warn, confirm, mutate."""
+
+    def test_static_to_rule_warns_then_confirm_drops_handpicked(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """Hand-picked books trigger a discard warning; confirming converts the
+        collection to rule-based and drops the manual membership."""
+        # A static collection holding the seeded Dune book (id 1) by hand.
+        cid = catalog.create_collection("Favorites")
+        catalog.add_books_to_collection(cid, [1])
+
+        # First edit: set a rule. The hand-picked book is at stake, so the form
+        # comes back with the discard warning and persists nothing.
+        warn = client.post(
+            f"/collections/{cid}/edit",
+            data={"name": "Favorites", "query": "series:Dune"},
+            headers={"HX-Request": "true"},
+        )
+        assert warn.status_code == 200
+        assert "HX-Redirect" not in warn.headers
+        assert "discards the 1 hand-picked book" in warn.data.decode()
+        # Still static, still holding the manual member.
+        before = catalog.get_collection_by_id(cid)
+        assert before is not None and before["query"] is None
+        assert catalog.resolve_collection_member_ids(cid) == [1]
+
+        # Second edit with confirm=1 executes the conversion.
+        done = client.post(
+            f"/collections/{cid}/edit",
+            data={"name": "Favorites", "query": "series:Dune", "confirm": "1"},
+            headers={"HX-Request": "true"},
+        )
+        assert done.headers["HX-Redirect"] == f"/collections/{cid}"
+
+        collection = catalog.get_collection_by_id(cid)
+        assert collection is not None and collection["query"] == "series:Dune"
+        # Membership is now rule-derived (still matches Dune), and the detail page
+        # shows the rule with no manual "Remove" affordance.
+        detail = client.get(f"/collections/{cid}").data.decode()
+        assert "series:Dune" in detail
+        assert "Dune" in detail
+        assert "Remove" not in detail
+
+    def test_rule_to_static_warns_then_confirm_snapshots_members(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """Clearing a rule snapshots live matches as a static list; confirming
+        makes manual removal available again."""
+        cid = catalog.create_collection("Sci-Fi", query="series:Dune")
+
+        # First edit: clear the rule. Always warns, since the kind change is
+        # meaningful, and persists nothing yet.
+        warn = client.post(
+            f"/collections/{cid}/edit",
+            data={"name": "Sci-Fi", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+        assert warn.status_code == 200
+        assert "HX-Redirect" not in warn.headers
+        assert "snapshots the 1 currently-matching book" in warn.data.decode()
+        before = catalog.get_collection_by_id(cid)
+        assert before is not None and before["query"] == "series:Dune"
+
+        # Confirm: the rule is cleared and the matched book is snapshotted static.
+        done = client.post(
+            f"/collections/{cid}/edit",
+            data={"name": "Sci-Fi", "query": "", "confirm": "1"},
+            headers={"HX-Request": "true"},
+        )
+        assert done.headers["HX-Redirect"] == f"/collections/{cid}"
+
+        collection = catalog.get_collection_by_id(cid)
+        assert collection is not None and collection["query"] is None
+        assert catalog.resolve_collection_member_ids(cid) == [1]
+        # Manual removal is available again on a static collection's detail page.
+        detail = client.get(f"/collections/{cid}").data.decode()
+        assert "Remove" in detail
+
+        # And the snapshot is genuinely static: removing the book sticks.
+        catalog.remove_books_from_collection(cid, [1])
+        assert catalog.resolve_collection_member_ids(cid) == []
