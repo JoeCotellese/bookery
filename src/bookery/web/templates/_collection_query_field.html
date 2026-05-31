@@ -1,0 +1,5 @@
+{# ABOUTME: The raw rule-query textarea alone — stable id, target of the builder's append (#254). #}
+{# ABOUTME: Re-rendered by /collections/query/append (outerHTML swap) and included by the form. #}
+<textarea id="collection-query" name="query" rows="3"
+          placeholder='e.g. genre:"Science Fiction" AND year:[2000 TO 2010]'
+          {% if errors and errors.query %}aria-invalid="true" aria-describedby="query-error"{% endif %}>{{ form.query or '' }}</textarea>

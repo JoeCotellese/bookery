@@ -23,7 +23,12 @@ from flask import (
 )
 from werkzeug.wrappers import Response as WerkzeugResponse
 
-from bookery.collections import CollectionQueryError, parse_collection_query
+from bookery.collections import (
+    QUERY_FIELD_NAMES,
+    CollectionQueryError,
+    append_clause,
+    parse_collection_query,
+)
 from bookery.core.config import get_library_root
 from bookery.core.coverfetch import fetch_cover_image
 from bookery.core.enrichment import dispatch_from_form, multi_provider_search
@@ -1216,6 +1221,29 @@ def collection_preview():
         sample=sample,
         limit=PREVIEW_SAMPLE_LIMIT,
     ), 200
+
+
+@bp.route("/collections/query/append", methods=["POST"])
+def collection_query_append():
+    """Append a builder-composed ``field:value`` clause to the raw rule query.
+
+    Pure plumbing for the append-only query builder: it validates ``field`` against
+    the whitelist, quotes ``value`` server-side via ``append_clause`` so the result
+    is always engine-valid, and re-renders the textarea (swapped ``outerHTML``). The
+    raw textarea stays authoritative — this never parses it back. Validity of the
+    composed query is surfaced later at preview/create, not here.
+    """
+    field = request.form.get("field", "").strip()
+    value = request.form.get("value", "").strip()
+    query = request.form.get("query", "")
+
+    if field not in QUERY_FIELD_NAMES or not value:
+        abort(400)
+
+    new_query = append_clause(query, field, value)
+    return render_template(
+        "_collection_query_field.html", form={"query": new_query}, errors={}
+    )
 
 
 def _render_collection_form(

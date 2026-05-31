@@ -1,6 +1,7 @@
 # ABOUTME: Integration tests for the web collection create/edit form flow (#252, #253).
 # ABOUTME: Covers GET new, POST create/edit, and the non-persisting query preview route.
 
+import html
 import sqlite3
 
 from bookery.collections import CollectionQueryError
@@ -319,3 +320,68 @@ class TestPreview:
         html = resp.data.decode()
         assert "Static collection" in html
         mock_catalog.resolve_query_preview.assert_not_called()
+
+
+class TestQueryAppend:
+    """POST /collections/query/append — append-only query builder (#254)."""
+
+    @staticmethod
+    def _textarea_body(response) -> str:
+        """The textarea's text content, HTML-unescaped.
+
+        Assert against this rather than the raw response so the static
+        ``placeholder`` example (which contains its own ``field:"value"``
+        sample) can't produce a false-positive substring match.
+        """
+        raw = response.data.decode()
+        body = raw.split(">", 1)[1].rsplit("</textarea>", 1)[0]
+        return html.unescape(body)
+
+    def test_first_clause_has_no_leading_operator(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "series", "value": "Dune", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        # Response is the re-rendered textarea (the swap target).
+        assert 'name="query"' in resp.data.decode()
+        assert self._textarea_body(resp) == "series:Dune"
+
+    def test_appends_onto_existing_query_with_and(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "author", "value": "Frank Herbert", "query": "series:Dune"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        assert self._textarea_body(resp) == 'series:Dune AND author:"Frank Herbert"'
+
+    def test_value_with_spaces_is_quoted(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "publisher", "value": "Tor Books", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert self._textarea_body(resp) == 'publisher:"Tor Books"'
+
+    def test_unknown_field_is_rejected(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "notafield", "value": "x", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 400
+
+    def test_blank_value_is_rejected(self, mock_catalog, client):
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "series", "value": "   ", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 400
