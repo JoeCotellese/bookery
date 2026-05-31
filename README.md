@@ -192,12 +192,19 @@ current automatically as the library changes.
 | `collections show <id>` | Show a collection's books; rule-based collections also show the rule and live match count (`--sync-status` for per-device shelf state) |
 | `collections add-books <id> <book_id>...` | Add books to a static collection |
 | `collections remove-books <id> <book_id>...` | Remove books from a static collection |
-| `collections edit <id> --query '<rule>'` | Convert a static collection to rule-based |
+| `collections edit <id> --query '<rule>'` | Convert a static collection to rule-based (discards hand-picked books) |
 | `collections edit <id> --clear-query` | Convert a rule-based collection to static, snapshotting current members |
 | `collections preview --query '<rule>'` | Show which books a rule matches, without saving |
 | `collections query-help` | Print the full query reference (fields, operators, dates, examples) |
 | `collections rename <id> <new_name>` | Rename a collection |
 | `collections rm <id>` | Delete a collection (books are not deleted) |
+
+Converting between the two kinds is one-way destructive in one direction:
+setting a rule on a static collection **discards** its hand-picked books, while
+clearing a rule **snapshots** the currently-matching books into a static list.
+In the web edit form these conversions are gated — when a static collection with
+hand-picked books gains a rule, or any rule is cleared, the form warns with the
+exact count of books affected and requires a second confirm before writing.
 
 #### Rule query language
 
