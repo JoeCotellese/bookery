@@ -59,11 +59,12 @@
         </details>
         <script>
             // Show the hint for the selected field. Progressive enhancement only —
-            // the append itself is server-rendered and works without this.
+            // the append itself is server-rendered and works without this. Uses
+            // document-level lookups (not currentScript) so it also runs when htmx
+            // swaps this form in, where currentScript would be null.
             (function () {
-                var form = document.currentScript.closest("form");
-                var sel = form.querySelector('.query-builder select[name="field"]');
-                var hint = form.querySelector("#builder-hint");
+                var sel = document.querySelector('.query-builder select[name="field"]');
+                var hint = document.getElementById("builder-hint");
                 if (!sel || !hint) { return; }
                 function sync() {
                     var opt = sel.options[sel.selectedIndex];
