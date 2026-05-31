@@ -23,12 +23,57 @@
 
     <div class="form-field">
         <label for="collection-query">Rule query <span class="optional">(optional — leave blank for a hand-picked collection)</span></label>
-        <textarea id="collection-query" name="query" rows="3"
-                  placeholder='e.g. genre:"Science Fiction" AND year:[2000 TO 2010]'
-                  {% if errors.query %}aria-invalid="true" aria-describedby="query-error"{% endif %}>{{ form.query or '' }}</textarea>
+        {# Raw textarea is the single source of truth; the builder below only appends to it. #}
+        {% include "_collection_query_field.html" %}
         {% if errors.query %}
         <span id="query-error">{% include "_collection_query_error.html" %}</span>
         {% endif %}
+
+        {# Append-only query builder: a beginner on-ramp that composes one valid clause #}
+        {# at a time into the textarea. Collapsed by default; advanced users hand-edit raw. #}
+        <details class="query-builder">
+            <summary>Query builder — add a condition</summary>
+            <div class="query-builder-body">
+                <label>Field
+                    {# id omitted on purpose: the partial textarea swap must not collide with ids. #}
+                    <select name="field" aria-describedby="builder-hint">
+                        {% for f in query_fields %}
+                        <option value="{{ f.name }}" data-hint="{{ f.hint }}">{{ f.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label for="builder-value">Value
+                    <input type="text" id="builder-value" name="value" aria-describedby="builder-hint">
+                </label>
+                <span id="builder-hint" class="field-hint">{{ query_fields[0].hint }}</span>
+                {# formaction degrades gracefully without JS by posting to the append route. #}
+                <button type="submit" class="btn-secondary"
+                        formaction="{{ url_for('web.collection_query_append') }}" formmethod="post"
+                        hx-post="{{ url_for('web.collection_query_append') }}"
+                        hx-include="[name='field'],[name='value'],#collection-query"
+                        hx-target="#collection-query"
+                        hx-swap="outerHTML">
+                    Add condition (AND)
+                </button>
+            </div>
+        </details>
+        <script>
+            // Show the hint for the selected field. Progressive enhancement only —
+            // the append itself is server-rendered and works without this.
+            (function () {
+                var form = document.currentScript.closest("form");
+                var sel = form.querySelector('.query-builder select[name="field"]');
+                var hint = form.querySelector("#builder-hint");
+                if (!sel || !hint) { return; }
+                function sync() {
+                    var opt = sel.options[sel.selectedIndex];
+                    if (opt) { hint.textContent = opt.getAttribute("data-hint") || ""; }
+                }
+                sel.addEventListener("change", sync);
+                sync();
+            })();
+        </script>
+
         {# Explicit (non-debounced) preview: mid-typing Lucene is constantly invalid. #}
         {# formaction degrades gracefully without JS by posting to the same route. #}
         <button type="submit" class="btn-secondary preview-btn"

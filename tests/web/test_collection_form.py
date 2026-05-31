@@ -56,6 +56,27 @@ class TestNewForm:
         assert 'id="collection-preview"' in html
         assert 'aria-live="polite"' in html
 
+    def test_form_has_query_builder_composer(self, mock_catalog, client):
+        html_doc = client.get("/collections/new").data.decode()
+        # A field selector limited to the whitelist, plus a value input.
+        assert 'name="field"' in html_doc
+        assert 'name="value"' in html_doc
+        for field in ("title", "genre", "year", "rating"):
+            assert f'value="{field}"' in html_doc
+        # The "Add condition" button posts to the server-side append endpoint and
+        # swaps just the textarea.
+        assert 'hx-post="/collections/query/append"' in html_doc
+        assert 'hx-target="#collection-query"' in html_doc
+        assert "Add condition" in html_doc
+        # Per-field value hints are present (carried as data-hint on options).
+        assert "data-hint" in html_doc
+
+    def test_query_builder_is_collapsed_by_default(self, mock_catalog, client):
+        html_doc = client.get("/collections/new").data.decode()
+        # Native disclosure, closed on load (no `open` attribute on the details).
+        assert "<details" in html_doc
+        assert "<details open" not in html_doc
+
 
 class TestCreate:
     def test_create_with_valid_query_redirects_to_detail(self, mock_catalog, client):

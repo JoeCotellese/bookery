@@ -1191,6 +1191,27 @@ def collection_create():
 # alongside, so a broad rule (e.g. ``year:>0``) stays fast and bounded.
 PREVIEW_SAMPLE_LIMIT = 50
 
+# Per-field value hints for the query-builder composer. Presentation-only guidance
+# shown next to the value input; the builder always composes an exact ``field:value``
+# clause, so range/comparison examples (year, rating, added) are reminders that those
+# advanced forms are hand-edited in the raw textarea, not produced by the composer.
+# Any whitelisted field without an entry falls back to a generic exact-match hint.
+_QUERY_FIELD_HINTS: dict[str, str] = {
+    "id": "exact book id, e.g. 42",
+    "title": "e.g. Dune (prefix with * for starts-with)",
+    "author": "e.g. Ursula K. Le Guin",
+    "series": "e.g. Foundation",
+    "genre": "a canonical genre, e.g. Science Fiction",
+    "tag": "e.g. favorite",
+    "language": "e.g. en",
+    "publisher": "e.g. Tor Books",
+    "subject": "e.g. Space opera",
+    "isbn": "e.g. 9780441013593",
+    "year": "e.g. 2020 (ranges like [2000 TO 2010] go in the raw box)",
+    "rating": "e.g. 4 or 4.5 (>=4 goes in the raw box)",
+    "added": "an ISO date, e.g. 2026-05-31",
+}
+
 
 @bp.route("/collections/preview", methods=["POST"])
 def collection_preview():
@@ -1266,6 +1287,13 @@ def _render_collection_form(
         if request.headers.get("HX-Request")
         else "collection_form.html"
     )
+    # The query-builder composer offers exactly the whitelisted fields, each with a
+    # value hint. A single source for both create and edit keeps the dropdown and
+    # the parser's whitelist from drifting.
+    query_fields = [
+        {"name": name, "hint": _QUERY_FIELD_HINTS.get(name, "exact value")}
+        for name in QUERY_FIELD_NAMES
+    ]
     html = render_template(
         template,
         mode=mode,
@@ -1275,6 +1303,7 @@ def _render_collection_form(
         cancel_url=cancel_url,
         form=form,
         errors=errors,
+        query_fields=query_fields,
     )
     return html, 200
 
