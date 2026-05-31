@@ -217,22 +217,8 @@ class TestEditForm:
             4, 'genre:"Science Fiction"'
         )
 
-    def test_post_edit_static_query_change_is_deferred(self, mock_catalog, client):
-        # Static -> rule is a destructive transition handled in PR 4; this PR
-        # must not silently convert it.
-        mock_catalog.get_collection_by_id.return_value = _collection(
-            collection_id=4, name="Favorites", query=None
-        )
-        mock_catalog.get_collection_by_name.return_value = None
-
-        resp = client.post(
-            "/collections/4/edit",
-            data={"name": "Favorites", "query": 'genre:"Science Fiction"'},
-            headers={"HX-Request": "true"},
-        )
-
-        assert resp.headers.get("HX-Redirect") == "/collections/4"
-        mock_catalog.set_collection_query.assert_not_called()
+    # static -> rule and rule -> static are destructive conversions gated behind
+    # a one-time confirm; see TestConversionGate for that behavior.
 
     def test_post_edit_invalid_query_inline_alert(self, mock_catalog, client):
         mock_catalog.get_collection_by_id.return_value = _collection(
@@ -248,6 +234,166 @@ class TestEditForm:
 
         assert resp.status_code == 200
         assert 'role="alert"' in resp.data.decode()
+        mock_catalog.set_collection_query.assert_not_called()
+
+
+class TestConversionGate:
+    """static<->rule conversions are destructive in one direction, so the edit
+    form gates them behind a one-time confirm (mirrors the delete-confirm flow).
+    """
+
+    def test_static_to_rule_with_members_warns_before_mutation(
+        self, mock_catalog, client
+    ):
+        # A static collection that holds hand-picked books. Setting a rule would
+        # drop them, so the first POST must warn and persist nothing.
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Favorites", query=None
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2, 3]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Favorites", "query": "series:Dune"},
+            headers={"HX-Request": "true"},
+        )
+
+        body = resp.data.decode()
+        assert resp.status_code == 200
+        assert resp.headers.get("HX-Redirect") is None
+        assert "discards the 3 hand-picked books" in body
+        assert 'name="confirm"' in body
+        mock_catalog.set_collection_query.assert_not_called()
+        mock_catalog.clear_collection_query.assert_not_called()
+
+    def test_static_to_rule_no_members_skips_gate(self, mock_catalog, client):
+        # Nothing to lose: an empty static collection converts straight to a rule
+        # without a confirm step.
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Empty", query=None
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = []
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Empty", "query": "series:Dune"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.headers.get("HX-Redirect") == "/collections/4"
+        mock_catalog.set_collection_query.assert_called_once_with(4, "series:Dune")
+
+    def test_static_to_rule_confirmed_mutates(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Favorites", query=None
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2, 3]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Favorites", "query": "series:Dune", "confirm": "1"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.headers.get("HX-Redirect") == "/collections/4"
+        mock_catalog.set_collection_query.assert_called_once_with(4, "series:Dune")
+
+    def test_rule_to_static_warns_before_mutation(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Sci-Fi", query="series:Dune"
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Sci-Fi", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        body = resp.data.decode()
+        assert resp.status_code == 200
+        assert resp.headers.get("HX-Redirect") is None
+        assert "snapshots the 2 currently-matching books" in body
+        assert 'name="confirm"' in body
+        mock_catalog.clear_collection_query.assert_not_called()
+
+    def test_rule_to_static_confirmed_mutates(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Sci-Fi", query="series:Dune"
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Sci-Fi", "query": "", "confirm": "1"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.headers.get("HX-Redirect") == "/collections/4"
+        mock_catalog.clear_collection_query.assert_called_once_with(4)
+
+    def test_rule_reset_is_not_a_conversion(self, mock_catalog, client):
+        # rule -> rule (same kind) keeps the existing in-place reset path: no gate.
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Sci-Fi", query="series:Dune"
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Sci-Fi", "query": 'genre:"Science Fiction"'},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.headers.get("HX-Redirect") == "/collections/4"
+        mock_catalog.set_collection_query.assert_called_once_with(
+            4, 'genre:"Science Fiction"'
+        )
+        mock_catalog.clear_collection_query.assert_not_called()
+
+    def test_name_only_edit_on_static_skips_gate(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Old", description="d", query=None
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2, 3]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "New", "description": "d", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.headers.get("HX-Redirect") == "/collections/4"
+        mock_catalog.rename_collection.assert_called_once_with(4, "New")
+        mock_catalog.set_collection_query.assert_not_called()
+        mock_catalog.clear_collection_query.assert_not_called()
+
+    def test_static_to_rule_invalid_query_rejects_without_warning(
+        self, mock_catalog, client
+    ):
+        # Invalid rule on a conversion: inline alert, no mutation, no confirm gate.
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            collection_id=4, name="Favorites", query=None
+        )
+        mock_catalog.get_collection_by_name.return_value = None
+        mock_catalog.resolve_collection_member_ids.return_value = [1, 2, 3]
+
+        resp = client.post(
+            "/collections/4/edit",
+            data={"name": "Favorites", "query": "notafield:value"},
+            headers={"HX-Request": "true"},
+        )
+
+        body = resp.data.decode()
+        assert resp.status_code == 200
+        assert 'role="alert"' in body
+        assert "discards" not in body
         mock_catalog.set_collection_query.assert_not_called()
 
 

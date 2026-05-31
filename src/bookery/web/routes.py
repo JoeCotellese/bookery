@@ -1267,6 +1267,11 @@ def collection_query_append():
     )
 
 
+def _books(n: int) -> str:
+    """Pluralize "book" for warning copy: 1 book, 0/2/... books."""
+    return "book" if n == 1 else "books"
+
+
 def _render_collection_form(
     *,
     mode: str,
@@ -1276,11 +1281,14 @@ def _render_collection_form(
     cancel_url: str,
     form: Mapping[str, str],
     errors: Mapping[str, str],
+    convert_warning: str | None = None,
 ) -> tuple[str, int]:
     """Render the collection form, full-page on plain GET and partial under htmx.
 
     Always returns HTTP 200: validation failures re-render the partial inline so
-    the htmx swap lands rather than surfacing a browser error page.
+    the htmx swap lands rather than surfacing a browser error page. When
+    ``convert_warning`` is set, the form shows the destructive-conversion banner
+    and a hidden ``confirm`` field so the next submit executes the conversion.
     """
     template = (
         "_collection_form.html"
@@ -1304,6 +1312,7 @@ def _render_collection_form(
         form=form,
         errors=errors,
         query_fields=query_fields,
+        convert_warning=convert_warning,
     )
     return html, 200
 
@@ -1388,7 +1397,11 @@ def collection_update(collection_id):
         "query": request.form.get("query", ""),
     }
 
-    def render_errors(errors: dict[str, str]) -> tuple[str, int]:
+    confirmed = request.form.get("confirm") == "1"
+
+    def render_errors(
+        errors: dict[str, str], *, convert_warning: str | None = None
+    ) -> tuple[str, int]:
         return _render_collection_form(
             mode="edit",
             action_url=url_for("web.collection_update", collection_id=collection_id),
@@ -1397,22 +1410,26 @@ def collection_update(collection_id):
             cancel_url=url_for("web.collection_detail", collection_id=collection_id),
             form=form,
             errors=errors,
+            convert_warning=convert_warning,
         )
 
     errors: dict[str, str] = {}
     if not name:
         errors["name"] = "Collection name is required."
 
-    # Only a rule-based collection accepts an in-place rule re-set in this PR;
-    # validate it before any write so an invalid rule never mutates state.
-    # ``rule_query`` stays None for every other case (static collection, blank
-    # query), leaving the collection's kind untouched — the destructive
-    # static<->rule transitions are PR 4.
-    rule_query: str | None = None
-    if collection["query"] is not None and query is not None:
+    # Classify the query change against the collection's current kind. A
+    # rule-based collection (``query`` set) accepts an in-place rule re-set; a
+    # static collection (``query`` None) keeps explicit ``collection_books``.
+    # Crossing between the two is destructive and gated below.
+    old_query = collection["query"]
+    is_static_to_rule = old_query is None and query is not None
+    is_rule_to_static = old_query is not None and query is None
+
+    # Validate any non-blank query before any write, so an invalid rule never
+    # mutates state (applies to both an in-place reset and a static->rule set).
+    if query is not None:
         try:
             parse_collection_query(query)
-            rule_query = query
         except CollectionQueryError as exc:
             errors["query"] = str(exc)
 
@@ -1427,6 +1444,32 @@ def collection_update(collection_id):
     if errors:
         return render_errors(errors)
 
+    # Confirm gate for destructive conversions. The first POST that detects a
+    # conversion with data at stake re-renders the form with a warning banner and
+    # a hidden ``confirm`` field; the second POST (``confirm=1``) executes it.
+    # static->rule only warns when there are hand-picked books to discard; an
+    # empty static collection has nothing to lose, so it converts straight away.
+    if not confirmed:
+        if is_static_to_rule:
+            member_count = len(catalog.resolve_collection_member_ids(collection_id))
+            if member_count > 0:
+                return render_errors(
+                    {},
+                    convert_warning=(
+                        f"Setting a rule discards the {member_count} hand-picked "
+                        f"{_books(member_count)} in this collection."
+                    ),
+                )
+        elif is_rule_to_static:
+            member_count = len(catalog.resolve_collection_member_ids(collection_id))
+            return render_errors(
+                {},
+                convert_warning=(
+                    f"Removing the rule snapshots the {member_count} currently-matching "
+                    f"{_books(member_count)} as a static list."
+                ),
+            )
+
     if name != collection["name"]:
         try:
             catalog.rename_collection(collection_id, name)
@@ -1438,8 +1481,12 @@ def collection_update(collection_id):
     if description != collection["description"]:
         catalog.set_collection_description(collection_id, description)
 
-    if rule_query is not None:
-        catalog.set_collection_query(collection_id, rule_query)
+    # Apply the query change: a set (in-place reset or static->rule conversion)
+    # drops any hand-picked rows; a clear (rule->static) snapshots live matches.
+    if query is not None:
+        catalog.set_collection_query(collection_id, query)
+    elif is_rule_to_static:
+        catalog.clear_collection_query(collection_id)
 
     flash(f'Updated collection "{name}".', "success")
     return _redirect_after_save(
