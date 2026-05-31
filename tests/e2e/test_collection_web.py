@@ -1,6 +1,7 @@
 # ABOUTME: E2E tests for the web collection create + query-preview flow on a real catalog.
 # ABOUTME: Drives create_app over a temp SQLite DB through the Flask test client.
 
+import html
 from pathlib import Path
 
 import pytest
@@ -120,3 +121,65 @@ class TestQueryPreviewEndToEnd:
         detail = client.get(target).data.decode()
         assert "Empty Rule" in detail
         assert "No books match this rule yet." in detail
+
+
+class TestQueryBuilderEndToEnd:
+    def test_compose_two_clauses_preview_save_lands_on_detail(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """Build a rule via the append composer, preview it, save, and land on a
+        detail page showing the rule and the matched book."""
+        # First condition: series:Dune (no leading operator).
+        first = client.post(
+            "/collections/query/append",
+            data={"field": "series", "value": "Dune", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+        assert first.status_code == 200
+        assert "series:Dune" in html.unescape(first.data.decode())
+
+        # Second condition appends with AND and quotes the multi-word value.
+        second = client.post(
+            "/collections/query/append",
+            data={"field": "author", "value": "Frank Herbert", "query": "series:Dune"},
+            headers={"HX-Request": "true"},
+        )
+        composed = html.unescape(
+            second.data.decode().split(">", 1)[1].rsplit("</textarea>", 1)[0]
+        )
+        assert composed == 'series:Dune AND author:"Frank Herbert"'
+
+        # Preview the composed query — it matches the seeded Dune book.
+        preview = client.post(
+            "/collections/preview",
+            data={"query": composed},
+            headers={"HX-Request": "true"},
+        )
+        assert preview.status_code == 200
+        preview_html = preview.data.decode()
+        assert "Matches: 1" in preview_html
+        assert "Dune" in preview_html
+
+        # Saving the composed query creates a rule-based collection.
+        created = client.post(
+            "/collections/create",
+            data={"name": "Herbert's Dune", "query": composed},
+            headers={"HX-Request": "true"},
+        )
+        target = created.headers["HX-Redirect"]
+
+        detail = html.unescape(client.get(target).data.decode())
+        assert "Herbert's Dune" in detail
+        assert 'series:Dune AND author:"Frank Herbert"' in detail
+        assert "Dune" in detail  # the matched book title
+
+    def test_append_rejects_unknown_field(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """The composer never emits an off-whitelist field — the route 400s."""
+        resp = client.post(
+            "/collections/query/append",
+            data={"field": "evil", "value": "x", "query": ""},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 400

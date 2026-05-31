@@ -74,6 +74,7 @@
 - [x] Persistent book context subhead on sub-flows
 - [x] Create and edit collections from the UI (incl. raw rule strings) with inline validation
 - [x] Non-persisting "Preview matches" — count + capped sample before saving a rule
+- [x] Append-only query builder — pick a field, type a value, append a server-quoted clause
 
 ## Phase 8: Vault-Export
 - [x] Obsidian vault → single EPUB pipeline (pandoc)
