@@ -174,6 +174,7 @@ bookery info 42
 | `genre stats` | Show the most common subjects that don't map to a canonical genre |
 | `genre unmatched` | Show books with subjects but no genre assigned |
 | `mark finished <id>` | Mark a book as finished (also `mark reading <id>`, `mark unread <id>`; supports `--bulk-from FILE`) |
+| `authors fix-sort` | Backfill `opf:file-as` so devices sort authors by surname (dry-run by default; `--apply` to write) |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
 
 ### Collections
@@ -273,6 +274,11 @@ sideloads, Kobo store purchases, and library borrows. Sync is currently
 cache at `{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus
 the `kepubify` version makes re-syncs effectively free when nothing has
 changed.
+
+Readers sort authors by the EPUB's `opf:file-as` key. If a device files
+an author under their given name (e.g. "Brandon" instead of "Sanderson"),
+the library copies are missing that key — run `bookery authors fix-sort`
+to backfill a surname-first `file-as`, then re-sync.
 
 ### The `vault-export` workflow
 
