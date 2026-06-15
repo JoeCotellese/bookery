@@ -97,6 +97,41 @@ class TestAuthorsFixSort:
             ("Eisenberg, Bryan", "Eisenberg, Bryan")
         ]
 
+    def test_one_failed_book_does_not_abort_the_batch(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A single book raising during apply is reported; others still process."""
+        from bookery.cli.commands import authors_cmd
+        from bookery.formats.epub import EpubReadError
+
+        good = tmp_path / "good.epub"
+        bad = tmp_path / "bad.epub"
+        _make_epub(good, "Good Book", ["Brandon Sanderson"])
+        _make_epub(bad, "Bad Book", ["Bryan Burrough"])
+        db_path = tmp_path / "lib.db"
+        _seed(db_path, "Bad Book", ["Bryan Burrough"], bad)
+        _seed(db_path, "Good Book", ["Brandon Sanderson"], good)
+
+        real_apply = authors_cmd._apply_fix
+
+        def flaky(catalog, candidate):
+            if candidate.record.metadata.title == "Bad Book":
+                raise EpubReadError("boom")
+            return real_apply(catalog, candidate)
+
+        monkeypatch.setattr(authors_cmd, "_apply_fix", flaky)
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "failed:" in result.output and "Bad Book" in result.output
+        # The healthy book was still fixed despite the other's failure.
+        assert read_creator_file_as(good) == [
+            ("Brandon Sanderson", "Sanderson, Brandon")
+        ]
+
     def test_coauthors_left_intact(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "barbarians.epub"
         _make_epub(epub_path, "Barbarians", ["Bryan Burrough", "John Helyar"])

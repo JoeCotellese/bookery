@@ -143,7 +143,16 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
 
         fixed = 0
         for cand in candidates:
-            if _apply_fix(catalog, cand):
+            try:
+                applied = _apply_fix(catalog, cand)
+            except (OSError, EpubReadError) as exc:
+                # One unreadable file shouldn't abort the whole backfill; each
+                # fix is atomic, so already-processed books stay valid.
+                console.print(
+                    f"[red]failed:[/red] {cand.record.metadata.title}: {exc}"
+                )
+                continue
+            if applied:
                 fixed += 1
             else:
                 console.print(
