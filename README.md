@@ -174,7 +174,7 @@ bookery info 42
 | `genre stats` | Show the most common subjects that don't map to a canonical genre |
 | `genre unmatched` | Show books with subjects but no genre assigned |
 | `mark finished <id>` | Mark a book as finished (also `mark reading <id>`, `mark unread <id>`; supports `--bulk-from FILE`) |
-| `authors list` | List authors with book counts (`--duplicates` shows only multi-spelling clusters) |
+| `authors list` | List authors with book counts (`--duplicates` shows only multi-spelling clusters; `--needs-review` lists malformed names for manual merge) |
 | `authors normalize` | Reorder `Surname, Given` → `Given Surname` (dry-run by default; `--apply` to write; `--include-reversed` for names with no twin) |
 | `authors merge <forms…> --into <canonical>` | Merge arbitrary spellings into one canonical name (dry-run by default; `--apply` to write) |
 | `authors fix-sort` | Backfill `opf:file-as` so devices sort authors by surname (dry-run by default; `--apply` to write) |

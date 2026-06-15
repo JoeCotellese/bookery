@@ -26,6 +26,10 @@ class TestClassify:
             # Credential tails never auto-reorder.
             ("Patricia McConnell, Ph.D.,", "credential"),
             ("Martin Luther King, Jr.", "credential"),
+            # Suffix buried mid-segment must still disqualify the flip — else
+            # "Brooks, Jr. Frederick P." wrongly becomes "Jr. Frederick P. Brooks".
+            ("Brooks, Jr. Frederick P.", "credential"),
+            ("Frederick P. Brooks, Jr.", "credential"),
             # Compound surname is ambiguous -> route to manual merge, don't guess.
             ("García Márquez, Gabriel", "blob"),
             # Two commas -> blob.

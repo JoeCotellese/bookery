@@ -186,6 +186,27 @@ class TestAuthorsList:
         # A distinct author with one spelling is not a duplicate.
         assert "Dirk Cussler" not in result.output
 
+    def test_needs_review_groups_unfixable_names(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "MMM", ["Brooks, Jr. Frederick P."])  # credential
+        _seed_db_only(db_path, "React Q", ["Mikhail Sakhniuk, Adam Boduch"])  # blob
+        _seed_db_only(db_path, "Republic", ["Plato"])  # mononym
+        _seed_db_only(db_path, "Elantris", ["Brandon Sanderson"])  # ok
+        _seed_db_only(db_path, "Sahara", ["Cussler, Clive"])  # reorderable
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "list", "--needs-review"]
+        )
+
+        assert result.exit_code == 0, result.output
+        # The three manual-merge buckets are surfaced...
+        assert "Brooks, Jr. Frederick P." in result.output
+        assert "Mikhail Sakhniuk, Adam Boduch" in result.output
+        assert "Plato" in result.output
+        # ...while clean names and auto-normalizable ones are not listed here.
+        assert "Brandon Sanderson" not in result.output
+        assert "Cussler, Clive" not in result.output
+
 
 class TestAuthorsNormalize:
     def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:

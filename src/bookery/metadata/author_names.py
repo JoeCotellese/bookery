@@ -57,8 +57,11 @@ def classify(name: str) -> str:
     segments = [seg.strip() for seg in name.split(",")]
     nonempty = [seg for seg in segments if seg]
 
-    # Any credential/suffix token after the first segment disqualifies a flip.
-    if any(_norm_token(seg) in _CREDENTIAL_TOKENS for seg in segments[1:]):
+    # Any credential/suffix token after the first segment disqualifies a flip —
+    # checked per word, so a suffix buried mid-segment ("Brooks, Jr. Frederick
+    # P.") is caught, not just a lone "King, Jr." segment.
+    tail_tokens = (_norm_token(tok) for seg in segments[1:] for tok in seg.split())
+    if any(tok in _CREDENTIAL_TOKENS for tok in tail_tokens):
         return "credential"
 
     if len(nonempty) != 2:

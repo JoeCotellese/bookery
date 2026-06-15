@@ -176,6 +176,38 @@ def _backup_db(db_path: Path) -> Path:
     return backup
 
 
+# Ordered review buckets: (classify result, section title). Excludes "ok"
+# (already correct) and "reorderable" (handled by `normalize`).
+_REVIEW_GROUPS = [
+    ("credential", "Credential / suffix (manual merge)"),
+    ("blob", "Multi-author blobs (split or merge)"),
+    ("mononym", "Single-token names (report only)"),
+]
+
+
+def _render_needs_review(forms: dict[str, list[int]]) -> None:
+    """Print the manual-merge worklist: names ``normalize`` won't auto-fix."""
+    by_bucket: dict[str, list[str]] = {}
+    for name in forms:
+        by_bucket.setdefault(classify(name), []).append(name)
+
+    printed = False
+    for bucket, title in _REVIEW_GROUPS:
+        names = sorted(by_bucket.get(bucket, []))
+        if not names:
+            continue
+        printed = True
+        table = Table(title=title)
+        table.add_column("Spelling")
+        table.add_column("Books", justify="right")
+        for name in names:
+            table.add_row(name, str(len(forms[name])))
+        console.print(table)
+
+    if not printed:
+        console.print("[green]No author names need manual review.[/green]")
+
+
 @authors.command("list")
 @db_option
 @click.option(
@@ -185,11 +217,29 @@ def _backup_db(db_path: Path) -> Path:
     default=False,
     help="Show only authors stored under more than one spelling.",
 )
-def list_authors(db_path: Path | None, duplicates_only: bool) -> None:
-    """List authors and their book counts (or only duplicate spellings)."""
+@click.option(
+    "--needs-review",
+    "needs_review",
+    is_flag=True,
+    default=False,
+    help="Show only malformed names that need a manual merge (blob/credential/mononym).",
+)
+def list_authors(
+    db_path: Path | None, duplicates_only: bool, needs_review: bool
+) -> None:
+    """List authors and their book counts.
+
+    With --duplicates, show only authors stored under more than one spelling.
+    With --needs-review, show only the malformed names that ``normalize`` won't
+    auto-fix (multi-author blobs, credential/suffix tails, single tokens) — the
+    worklist for ``authors merge``.
+    """
     conn = open_library(resolve_db_path(db_path))
     try:
         catalog = LibraryCatalog(conn)
+        if needs_review:
+            _render_needs_review(catalog.author_forms())
+            return
         if duplicates_only:
             clusters = catalog.author_clusters()
             if not clusters:
