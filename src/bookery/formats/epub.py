@@ -3,11 +3,14 @@
 
 import contextlib
 import logging
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 import ebooklib
 from ebooklib import epub
 
+from bookery.core.text_sort import compute_author_sort
 from bookery.metadata.types import BookMetadata
 from bookery.util.text import strip_html
 
@@ -288,6 +291,66 @@ def _set_dc_metadata(book: epub.EpubBook, name: str, value: str) -> None:
     book.add_metadata("DC", name, value)
 
 
+def _clear_creator_file_as(book: epub.EpubBook) -> None:
+    """Drop existing ``file-as`` refines meta so re-writes don't accumulate them.
+
+    ebooklib stores an author's sort key as a separate ``<meta refines="#uid"
+    property="file-as">`` entry under the OPF (``None``) namespace, which
+    ``_clear_dc_metadata(book, "creator")`` does not touch. Without clearing it,
+    re-running the write piles stale file-as entries onto each creator.
+    """
+    for ns_entries in book.metadata.values():
+        meta = ns_entries.get("meta")
+        if not meta:
+            continue
+        kept = [
+            (value, attrs)
+            for value, attrs in meta
+            if not (isinstance(attrs, dict) and attrs.get("property") == "file-as")
+        ]
+        if len(kept) != len(meta):
+            ns_entries["meta"] = kept
+
+
+_OPF_NS = "http://www.idpf.org/2007/opf"
+_DC_NS = "http://purl.org/dc/elements/1.1/"
+_CONTAINER = "META-INF/container.xml"
+
+
+def read_creator_file_as(path: Path) -> list[tuple[str, str | None]]:
+    """Return ``(creator, file_as)`` pairs from an EPUB's OPF, in document order.
+
+    Handles both EPUB2 (``opf:file-as`` attribute on ``dc:creator``) and EPUB3
+    (a ``<meta refines="#id" property="file-as">`` pointing at the creator's
+    ``id``). ``file_as`` is ``None`` when the creator declares no sort key.
+    """
+    with zipfile.ZipFile(path) as zf:
+        container = ET.fromstring(zf.read(_CONTAINER))
+        rootfile = container.find(".//{*}rootfile")
+        opf_path = rootfile.get("full-path") if rootfile is not None else None
+        if not opf_path:
+            return []
+        opf = ET.fromstring(zf.read(opf_path))
+
+    # EPUB3 file-as refines, keyed by the creator id they refine.
+    refines: dict[str, str] = {}
+    for meta in opf.iter(f"{{{_OPF_NS}}}meta"):
+        target = meta.get("refines")
+        if meta.get("property") == "file-as" and target:
+            refines[target.lstrip("#")] = (meta.text or "").strip()
+
+    pairs: list[tuple[str, str | None]] = []
+    for creator in opf.iter(f"{{{_DC_NS}}}creator"):
+        name = (creator.text or "").strip()
+        if not name:
+            continue
+        file_as = creator.get(f"{{{_OPF_NS}}}file-as")
+        if file_as is None:
+            file_as = refines.get(creator.get("id", ""))
+        pairs.append((name, file_as))
+    return pairs
+
+
 _COVER_EXTENSION_FOR_CONTENT_TYPE: dict[str, str] = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -369,8 +432,17 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
 
     if metadata.authors:
         _clear_dc_metadata(book, "creator")
-        for author in metadata.authors:
-            book.add_author(author)
+        _clear_creator_file_as(book)
+        for index, author in enumerate(metadata.authors):
+            # Each creator needs a distinct id so its file-as refines meta binds
+            # to the right author; ebooklib defaults every author to uid
+            # "creator", which would collapse co-authors onto one sort key.
+            uid = "creator" if index == 0 else f"creator{index}"
+            if index == 0 and metadata.author_sort:
+                file_as = metadata.author_sort
+            else:
+                file_as = compute_author_sort([author])
+            book.add_author(author, file_as=file_as, uid=uid)
 
     if metadata.language is not None:
         _set_dc_metadata(book, "language", metadata.language)
