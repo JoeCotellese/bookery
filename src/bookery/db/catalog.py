@@ -4,6 +4,7 @@
 import json
 import sqlite3
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from bookery.collections import (
@@ -29,12 +30,33 @@ from bookery.db.mapping import (
     row_to_record,
 )
 from bookery.db.status import BookStatus, DeviceReadState, PushCandidate
+from bookery.metadata.author_names import author_key
 from bookery.metadata.genres import is_canonical_genre
 from bookery.metadata.types import BookMetadata
 
 
 class DuplicateBookError(Exception):
     """Raised when attempting to add a book with a file_hash that already exists."""
+
+
+@dataclass(frozen=True)
+class AuthorForm:
+    """One stored author spelling and the books that carry it."""
+
+    name: str
+    book_ids: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AuthorCluster:
+    """Two-plus spellings that resolve to the same author (a duplicate set)."""
+
+    key: str
+    forms: list[AuthorForm] = field(default_factory=list)
+
+    @property
+    def book_count(self) -> int:
+        return len({bid for form in self.forms for bid in form.book_ids})
 
 
 def _fts_match_expression(q: str) -> str:
@@ -377,6 +399,73 @@ class LibraryCatalog:
             "SELECT * FROM books ORDER BY author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
         )
         return [row_to_record(row) for row in cursor.fetchall()]
+
+    def author_forms(self) -> dict[str, list[int]]:
+        """Map each distinct stored author spelling to the book ids carrying it.
+
+        The primitive read behind both ``author_clusters`` (duplicate view) and
+        the ``authors normalize`` planner. Parses each book's JSON authors array
+        rather than string-matching, so co-authors are counted independently.
+        """
+        forms: dict[str, list[int]] = {}
+        cursor = self._conn.execute("SELECT id, authors FROM books")
+        for row in cursor.fetchall():
+            raw = row["authors"]
+            if not raw:
+                continue
+            try:
+                names = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            for name in names:
+                if isinstance(name, str) and name.strip():
+                    forms.setdefault(name, []).append(row["id"])
+        return forms
+
+    def author_clusters(self) -> list[AuthorCluster]:
+        """Return author keys with two-plus distinct stored spellings.
+
+        These are the dedupe candidates: ``Cussler, Clive`` and
+        ``Clive Cussler`` collapse into one cluster, while a son who shares a
+        surname (``Dirk Cussler``) keys separately and is excluded.
+        """
+        forms = self.author_forms()
+        grouped: dict[str, list[AuthorForm]] = {}
+        for name, ids in forms.items():
+            grouped.setdefault(author_key(name), []).append(
+                AuthorForm(name=name, book_ids=sorted(ids))
+            )
+        clusters = [
+            AuthorCluster(key=key, forms=sorted(members, key=lambda f: f.name))
+            for key, members in grouped.items()
+            if len(members) >= 2
+        ]
+        return sorted(clusters, key=lambda c: c.key)
+
+    def rewrite_author(self, old: str, new: str) -> int:
+        """Replace the author spelling ``old`` with ``new`` across the catalog.
+
+        Co-author-safe (only the matching JSON element changes), de-duplicating
+        if ``new`` is already present on the same book, and idempotent (a no-op
+        once nothing carries ``old``). ``author_sort`` is re-derived by
+        ``update_book``. Returns the number of books changed.
+        """
+        if old == new:
+            return 0
+        changed = 0
+        for book_id in list(self.author_forms().get(old, [])):
+            record = self.get_by_id(book_id)
+            if record is None:
+                continue
+            updated: list[str] = []
+            for name in record.metadata.authors:
+                replacement = new if name == old else name
+                if replacement not in updated:
+                    updated.append(replacement)
+            if updated != record.metadata.authors:
+                self.update_book(book_id, authors=updated)
+                changed += 1
+        return changed
 
     def list_by_series(self, series: str) -> list[BookRecord]:
         """Return books in a given series, ordered by series_index."""

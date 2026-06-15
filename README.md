@@ -174,6 +174,9 @@ bookery info 42
 | `genre stats` | Show the most common subjects that don't map to a canonical genre |
 | `genre unmatched` | Show books with subjects but no genre assigned |
 | `mark finished <id>` | Mark a book as finished (also `mark reading <id>`, `mark unread <id>`; supports `--bulk-from FILE`) |
+| `authors list` | List authors with book counts (`--duplicates` shows only multi-spelling clusters; `--needs-review` lists malformed names for manual merge) |
+| `authors normalize` | Reorder `Surname, Given` → `Given Surname` (dry-run by default; `--apply` to write; `--include-reversed` for names with no twin) |
+| `authors merge <forms…> --into <canonical>` | Merge arbitrary spellings into one canonical name (dry-run by default; `--apply` to write) |
 | `authors fix-sort` | Backfill `opf:file-as` so devices sort authors by surname (dry-run by default; `--apply` to write) |
 | `verify` | Check for missing or changed files (supports `--check-hash`) |
 
@@ -279,6 +282,15 @@ Readers sort authors by the EPUB's `opf:file-as` key. If a device files
 an author under their given name (e.g. "Brandon" instead of "Sanderson"),
 the library copies are missing that key — run `bookery authors fix-sort`
 to backfill a surname-first `file-as`, then re-sync.
+
+Some devices (Kobo) ignore `file-as` and sort by the raw `dc:creator`
+text instead, so a name stored as `Cussler, Clive` files under "C". Fix
+the catalog with `bookery authors normalize` (reorders `Surname, Given`
+to `Given Surname`) or `bookery authors merge` (collapses typos and
+duplicate spellings into one canonical name). Both are dry-run by default
+and back the database up before `--apply`. The corrected name flows into
+the EPUB's `dc:creator` on the next write-back and re-sync. Use
+`bookery authors list --duplicates` first to see what would change.
 
 ### The `vault-export` workflow
 
