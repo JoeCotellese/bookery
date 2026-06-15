@@ -1,6 +1,7 @@
 # ABOUTME: Unit tests for EPUB metadata writing.
 # ABOUTME: Tests round-trip: read metadata, modify, write back, verify.
 
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -261,6 +262,36 @@ class TestWriteCreatorFileAs:
         assert read_creator_file_as(sample_epub) == [
             ("Brandon Sanderson", "Sanderson, Brandon")
         ]
+
+    def test_reads_epub2_file_as_attribute(self, tmp_path: Path) -> None:
+        """Reader also handles the EPUB2 ``opf:file-as`` attribute form."""
+        opf = (
+            '<?xml version="1.0"?>'
+            '<package xmlns="http://www.idpf.org/2007/opf" version="2.0"'
+            ' unique-identifier="id">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"'
+            ' xmlns:opf="http://www.idpf.org/2007/opf">'
+            '<dc:identifier id="id">x</dc:identifier><dc:title>T</dc:title>'
+            '<dc:creator opf:file-as="Brooks, John">John Brooks</dc:creator>'
+            "</metadata>"
+            '<manifest><item id="x" href="x.html"'
+            ' media-type="application/xhtml+xml"/></manifest>'
+            '<spine><itemref idref="x"/></spine></package>'
+        )
+        container = (
+            '<?xml version="1.0"?>'
+            '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"'
+            ' version="1.0"><rootfiles><rootfile full-path="content.opf"'
+            ' media-type="application/oebps-package+xml"/></rootfiles></container>'
+        )
+        path = tmp_path / "book.epub"
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr("META-INF/container.xml", container)
+            zf.writestr("content.opf", opf)
+            zf.writestr("x.html", "<html></html>")
+
+        assert read_creator_file_as(path) == [("John Brooks", "Brooks, John")]
 
 
 _JPEG_COVER = b"\xff\xd8\xff\xe0" + b"new-cover-bytes" * 8

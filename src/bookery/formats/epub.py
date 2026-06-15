@@ -291,6 +291,24 @@ def _set_dc_metadata(book: epub.EpubBook, name: str, value: str) -> None:
     book.add_metadata("DC", name, value)
 
 
+def creator_file_as_pairs(metadata: BookMetadata) -> list[tuple[str, str]]:
+    """Return ``(author, file_as)`` pairs as written to the OPF.
+
+    ``file_as`` is the surname-first sort key a reader uses to file the author:
+    the curator-set ``author_sort`` for the primary author when present,
+    otherwise derived per author via ``compute_author_sort``. Shared by the
+    write path and the ``authors fix-sort`` backfill so they can't drift.
+    """
+    pairs: list[tuple[str, str]] = []
+    for index, author in enumerate(metadata.authors):
+        if index == 0 and metadata.author_sort:
+            file_as = metadata.author_sort
+        else:
+            file_as = compute_author_sort([author])
+        pairs.append((author, file_as))
+    return pairs
+
+
 def _clear_creator_file_as(book: epub.EpubBook) -> None:
     """Drop existing ``file-as`` refines meta so re-writes don't accumulate them.
 
@@ -433,15 +451,11 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
     if metadata.authors:
         _clear_dc_metadata(book, "creator")
         _clear_creator_file_as(book)
-        for index, author in enumerate(metadata.authors):
+        for index, (author, file_as) in enumerate(creator_file_as_pairs(metadata)):
             # Each creator needs a distinct id so its file-as refines meta binds
             # to the right author; ebooklib defaults every author to uid
             # "creator", which would collapse co-authors onto one sort key.
             uid = "creator" if index == 0 else f"creator{index}"
-            if index == 0 and metadata.author_sort:
-                file_as = metadata.author_sort
-            else:
-                file_as = compute_author_sort([author])
             book.add_author(author, file_as=file_as, uid=uid)
 
     if metadata.language is not None:
