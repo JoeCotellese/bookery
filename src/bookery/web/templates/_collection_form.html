@@ -4,6 +4,14 @@
       hx-post="{{ action_url }}"
       hx-target="{{ target }}"
       hx-swap="innerHTML">
+    {% if convert_warning %}
+    {# Destructive static<->rule conversion: warn before the irreversible write. #}
+    {# The hidden confirm field makes the next submit execute the conversion. #}
+    <p class="convert-warning" role="status">
+        &#9888; {{ convert_warning }}
+    </p>
+    <input type="hidden" name="confirm" value="1">
+    {% endif %}
     <div class="form-field">
         <label for="collection-name">Name</label>
         <input type="text" id="collection-name" name="name"
