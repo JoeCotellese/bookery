@@ -207,6 +207,42 @@ class TestAuthorsList:
         assert "Brandon Sanderson" not in result.output
         assert "Cussler, Clive" not in result.output
 
+    def test_plain_list_shows_all_authors_with_counts(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "Elantris", ["Brandon Sanderson"])
+        _seed_db_only(db_path, "Mistborn", ["Brandon Sanderson"])
+        _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
+
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "Brandon Sanderson" in result.output
+        assert "Clive Cussler" in result.output
+        # Two books share one author, so the count column carries a 2.
+        assert "2" in result.output
+
+    def test_duplicates_reports_none_on_clean_catalog(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "Elantris", ["Brandon Sanderson"])
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "list", "--duplicates"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "No duplicate author spellings found" in result.output
+
+    def test_needs_review_reports_none_when_all_clean(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "Elantris", ["Brandon Sanderson"])
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "list", "--needs-review"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "No author names need manual review" in result.output
+
 
 class TestAuthorsNormalize:
     def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
@@ -331,3 +367,18 @@ class TestAuthorsMerge:
         assert result.exit_code == 0, result.output
         assert _authors_of(db_path, a) == ["Stephen King"]
         assert _authors_of(db_path, b) == ["Stephen King"]
+
+    def test_merge_noop_when_only_canonical_given(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        book = _seed_db_only(db_path, "It", ["Stephen King"])
+
+        result = CliRunner().invoke(
+            cli,
+            ["--db", str(db_path), "authors", "merge",
+             "Stephen King", "--into", "Stephen King", "--apply"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Nothing to merge" in result.output
+        assert _authors_of(db_path, book) == ["Stephen King"]
+        assert not list(tmp_path.glob("lib.db.bak-*"))  # no backup on a no-op
