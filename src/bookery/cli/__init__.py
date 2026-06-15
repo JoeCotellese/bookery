@@ -8,6 +8,7 @@ import click
 
 from bookery.cli.commands import (
     add_cmd,
+    authors_cmd,
     collection_cmd,
     convert_cmd,
     genre_cmd,
@@ -59,6 +60,7 @@ def cli(ctx: click.Context, verbose: int, db_path: Path | None) -> None:
 
 
 cli.add_command(add_cmd.add_command)
+cli.add_command(authors_cmd.authors)
 cli.add_command(collection_cmd.collections)
 cli.add_command(convert_cmd.convert)
 cli.add_command(genre_cmd.genre)

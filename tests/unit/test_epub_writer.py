@@ -1,11 +1,17 @@
 # ABOUTME: Unit tests for EPUB metadata writing.
 # ABOUTME: Tests round-trip: read metadata, modify, write back, verify.
 
+import zipfile
 from pathlib import Path
 
 import pytest
 
-from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
+from bookery.formats.epub import (
+    EpubReadError,
+    read_creator_file_as,
+    read_epub_metadata,
+    write_epub_metadata,
+)
 from bookery.metadata import BookMetadata
 
 
@@ -202,6 +208,90 @@ class TestWriteEpubMetadata:
         assert re_read.authors == ["Umberto Eco"]
         assert re_read.publisher == "Harcourt"
         assert re_read.description == "A mystery set in a medieval monastery."
+
+
+class TestWriteCreatorFileAs:
+    """Writing authors emits a surname-first opf:file-as so devices sort right."""
+
+    def test_first_last_gets_inverted_file_as(self, sample_epub: Path) -> None:
+        """A "First Last" author writes file-as "Last, First"."""
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="T", authors=["Brandon Sanderson"])
+        )
+        assert read_creator_file_as(sample_epub) == [
+            ("Brandon Sanderson", "Sanderson, Brandon")
+        ]
+
+    def test_already_inverted_author_keeps_file_as(self, sample_epub: Path) -> None:
+        """A "Last, First" author keeps its order as the file-as."""
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="T", authors=["Sanderson, Brandon"])
+        )
+        assert read_creator_file_as(sample_epub) == [
+            ("Sanderson, Brandon", "Sanderson, Brandon")
+        ]
+
+    def test_each_coauthor_gets_its_own_file_as(self, sample_epub: Path) -> None:
+        """Co-authors each get an independent file-as (no shared sort key)."""
+        write_epub_metadata(
+            sample_epub,
+            BookMetadata(title="T", authors=["Bryan Burrough", "John Helyar"]),
+        )
+        assert read_creator_file_as(sample_epub) == [
+            ("Bryan Burrough", "Burrough, Bryan"),
+            ("John Helyar", "Helyar, John"),
+        ]
+
+    def test_explicit_author_sort_wins_for_primary(self, sample_epub: Path) -> None:
+        """A curator-set author_sort is used for the primary author's file-as."""
+        write_epub_metadata(
+            sample_epub,
+            BookMetadata(
+                title="T", authors=["Plato"], author_sort="Plato (Greek)"
+            ),
+        )
+        assert read_creator_file_as(sample_epub) == [("Plato", "Plato (Greek)")]
+
+    def test_rewrite_does_not_accumulate_stale_file_as(
+        self, sample_epub: Path
+    ) -> None:
+        """Re-writing leaves exactly one file-as per creator, not a pile of them."""
+        meta = BookMetadata(title="T", authors=["Brandon Sanderson"])
+        write_epub_metadata(sample_epub, meta)
+        write_epub_metadata(sample_epub, meta)
+        assert read_creator_file_as(sample_epub) == [
+            ("Brandon Sanderson", "Sanderson, Brandon")
+        ]
+
+    def test_reads_epub2_file_as_attribute(self, tmp_path: Path) -> None:
+        """Reader also handles the EPUB2 ``opf:file-as`` attribute form."""
+        opf = (
+            '<?xml version="1.0"?>'
+            '<package xmlns="http://www.idpf.org/2007/opf" version="2.0"'
+            ' unique-identifier="id">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"'
+            ' xmlns:opf="http://www.idpf.org/2007/opf">'
+            '<dc:identifier id="id">x</dc:identifier><dc:title>T</dc:title>'
+            '<dc:creator opf:file-as="Brooks, John">John Brooks</dc:creator>'
+            "</metadata>"
+            '<manifest><item id="x" href="x.html"'
+            ' media-type="application/xhtml+xml"/></manifest>'
+            '<spine><itemref idref="x"/></spine></package>'
+        )
+        container = (
+            '<?xml version="1.0"?>'
+            '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"'
+            ' version="1.0"><rootfiles><rootfile full-path="content.opf"'
+            ' media-type="application/oebps-package+xml"/></rootfiles></container>'
+        )
+        path = tmp_path / "book.epub"
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr("META-INF/container.xml", container)
+            zf.writestr("content.opf", opf)
+            zf.writestr("x.html", "<html></html>")
+
+        assert read_creator_file_as(path) == [("John Brooks", "Brooks, John")]
 
 
 _JPEG_COVER = b"\xff\xd8\xff\xe0" + b"new-cover-bytes" * 8
