@@ -146,3 +146,167 @@ class TestAuthorsFixSort:
             ("Bryan Burrough", "Burrough, Bryan"),
             ("John Helyar", "Helyar, John"),
         ]
+
+
+def _seed_db_only(db_path: Path, title: str, authors: list[str]) -> int:
+    """Seed a catalog row without an EPUB — author dedupe is DB-only (#261)."""
+    conn = open_library(db_path)
+    book_id = LibraryCatalog(conn).add_book(
+        BookMetadata(title=title, authors=authors, source_path=Path(f"/src/{title}.epub")),
+        file_hash=f"hash-{title}",
+    )
+    conn.close()
+    return book_id
+
+
+def _authors_of(db_path: Path, book_id: int) -> list[str]:
+    conn = open_library(db_path)
+    rec = LibraryCatalog(conn).get_by_id(book_id)
+    conn.close()
+    assert rec is not None
+    return rec.metadata.authors
+
+
+class TestAuthorsList:
+    def test_duplicates_clusters_dupes_and_omits_distinct(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
+        _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
+        _seed_db_only(db_path, "The Navigator", ["Dirk Cussler"])
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "list", "--duplicates"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Cussler, Clive" in result.output
+        assert "Clive Cussler" in result.output
+        # A distinct author with one spelling is not a duplicate.
+        assert "Dirk Cussler" not in result.output
+
+
+class TestAuthorsNormalize:
+    def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        book = _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
+        _seed_db_only(db_path, "Sahara", ["Clive Cussler"])  # the collision twin
+
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "normalize"])
+
+        assert result.exit_code == 0, result.output
+        assert "Clive Cussler" in result.output
+        assert _authors_of(db_path, book) == ["Cussler, Clive"]
+
+    def test_apply_rewrites_collision_confirmed_and_backs_up(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "lib.db"
+        book = _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
+        _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
+
+        result = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "normalize", "--apply"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _authors_of(db_path, book) == ["Clive Cussler"]
+        # A timestamped backup exists and a restore command is printed.
+        assert list(tmp_path.glob("lib.db.bak-*"))
+        assert "Restore" in result.output or "restore" in result.output
+
+    def test_apply_is_idempotent(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
+        _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
+        runner = CliRunner()
+
+        runner.invoke(cli, ["--db", str(db_path), "authors", "normalize", "--apply"])
+        second = runner.invoke(
+            cli, ["--db", str(db_path), "authors", "normalize", "--apply"]
+        )
+
+        assert second.exit_code == 0, second.output
+        assert "Cussler, Clive" not in second.output
+
+    def test_reversed_without_twin_needs_include_flag(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        # No "Brandon Sanderson" twin exists -> not collision-confirmed.
+        book = _seed_db_only(db_path, "Elantris", ["Sanderson, Brandon"])
+
+        default = CliRunner().invoke(
+            cli, ["--db", str(db_path), "authors", "normalize", "--apply"]
+        )
+        assert _authors_of(db_path, book) == ["Sanderson, Brandon"]
+        assert "Sanderson, Brandon" not in default.output
+
+        CliRunner().invoke(
+            cli,
+            ["--db", str(db_path), "authors", "normalize", "--include-reversed", "--apply"],
+        )
+        assert _authors_of(db_path, book) == ["Brandon Sanderson"]
+
+    def test_blob_and_credential_never_rewritten(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        blob = _seed_db_only(db_path, "React Q", ["Mikhail Sakhniuk, Adam Boduch"])
+        cred = _seed_db_only(db_path, "Dog Sense", ["Patricia McConnell, Ph.D.,"])
+
+        CliRunner().invoke(
+            cli,
+            ["--db", str(db_path), "authors", "normalize", "--include-reversed", "--apply"],
+        )
+
+        assert _authors_of(db_path, blob) == ["Mikhail Sakhniuk, Adam Boduch"]
+        assert _authors_of(db_path, cred) == ["Patricia McConnell, Ph.D.,"]
+
+
+class TestAuthorsMerge:
+    def test_merge_into_canonical_with_apply(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        a = _seed_db_only(db_path, "Book A", ["Stephen King"])
+        b = _seed_db_only(db_path, "Book B", ["Steven King"])
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--db", str(db_path), "authors", "merge",
+                "Steven King", "--into", "Stephen King", "--apply",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _authors_of(db_path, a) == ["Stephen King"]
+        assert _authors_of(db_path, b) == ["Stephen King"]
+        assert list(tmp_path.glob("lib.db.bak-*"))
+
+    def test_merge_dry_run_writes_nothing(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "lib.db"
+        b = _seed_db_only(db_path, "Book B", ["Steven King"])
+
+        result = CliRunner().invoke(
+            cli,
+            ["--db", str(db_path), "authors", "merge", "Steven King", "--into", "Stephen King"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _authors_of(db_path, b) == ["Steven King"]
+
+    def test_merge_prompts_for_canonical_when_into_omitted(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "lib.db"
+        a = _seed_db_only(db_path, "Book A", ["Stephen King"])
+        b = _seed_db_only(db_path, "Book B", ["Steven King"])
+
+        # Pick option 1 ("Stephen King") at the prompt, then apply.
+        result = CliRunner().invoke(
+            cli,
+            ["--db", str(db_path), "authors", "merge",
+             "Stephen King", "Steven King", "--apply"],
+            input="1\n",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _authors_of(db_path, a) == ["Stephen King"]
+        assert _authors_of(db_path, b) == ["Stephen King"]
