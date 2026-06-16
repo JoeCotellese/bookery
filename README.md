@@ -10,6 +10,15 @@ Bookery takes the "metadata-first" approach that made beets great for music and 
 
 See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
+## ⚠️ Back up your Kobo first
+
+Bookery's library write-back is non-destructive, but **Kobo sync rewrites EPUB
+files and the device database** (`.kobo/KoboReader.sqlite`). **Back up both the
+files on your Kobo and that database before syncing, and keep those backups.**
+I daily-drive this tool, but you run it at your own risk — there is no warranty,
+and any data loss is on you, not the project. PRs to make it safer are always
+welcome.
+
 ## Features
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
