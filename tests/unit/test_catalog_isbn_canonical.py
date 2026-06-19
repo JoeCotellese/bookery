@@ -21,7 +21,10 @@ def catalog(tmp_path: Path):
 
 def test_add_book_canonicalizes_isbn10_to_13(catalog):
     meta = BookMetadata(
-        title="X", authors=["Y"], isbn="0151446474", source_path=Path("/tmp/x.epub"),
+        title="X",
+        authors=["Y"],
+        isbn="0151446474",
+        source_path=Path("/tmp/x.epub"),
     )
     book_id = catalog.add_book(meta, file_hash="h" * 64)
     record = catalog.get_by_id(book_id)
@@ -31,7 +34,10 @@ def test_add_book_canonicalizes_isbn10_to_13(catalog):
 
 def test_add_book_keeps_hyphens_out(catalog):
     meta = BookMetadata(
-        title="X", authors=["Y"], isbn="0-15-144647-4", source_path=Path("/tmp/x.epub"),
+        title="X",
+        authors=["Y"],
+        isbn="0-15-144647-4",
+        source_path=Path("/tmp/x.epub"),
     )
     book_id = catalog.add_book(meta, file_hash="h" * 64)
     record = catalog.get_by_id(book_id)
@@ -41,7 +47,10 @@ def test_add_book_keeps_hyphens_out(catalog):
 
 def test_update_book_canonicalizes_isbn(catalog):
     meta = BookMetadata(
-        title="X", authors=["Y"], isbn=None, source_path=Path("/tmp/x.epub"),
+        title="X",
+        authors=["Y"],
+        isbn=None,
+        source_path=Path("/tmp/x.epub"),
     )
     book_id = catalog.add_book(meta, file_hash="h" * 64)
 

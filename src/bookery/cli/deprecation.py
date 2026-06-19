@@ -186,11 +186,7 @@ def _build_callback(
         if value is None or value is False or value == ():
             return value
         _emit_warning(primary_old, canonical)
-        mapping = (
-            transform(value)
-            if transform is not None
-            else {default_param_name: value}
-        )
+        mapping = transform(value) if transform is not None else {default_param_name: value}
         # Push translated values into the params dict that Click will pass to
         # the wrapped function. We overwrite any existing default but do not
         # clobber a value the user explicitly set on the canonical name — if

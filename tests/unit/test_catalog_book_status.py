@@ -266,9 +266,7 @@ class TestMergeBookStatusFromDevice:
         assert status.status == STATUS_FINISHED
         assert status.updated_at == "2026-05-26T10:00:00+00:00"
 
-    def test_leaves_catalog_alone_when_catalog_is_newer(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_leaves_catalog_alone_when_catalog_is_newer(self, catalog: LibraryCatalog) -> None:
         book_id = _add_book(catalog, "Rose", "h1")
         catalog.set_book_status(
             book_id=book_id,
@@ -308,9 +306,7 @@ class TestMergeBookStatusFromDevice:
 class TestListPushCandidates:
     """Returns rows the sync orchestrator can decide to push to the device."""
 
-    def test_returns_books_with_status_and_device_file(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_returns_books_with_status_and_device_file(self, catalog: LibraryCatalog) -> None:
         book_id = _add_book(catalog, "Rose", "h1")
         device_id = catalog.upsert_device(
             kind="kobo", serial="A", label=None, now="2026-05-01T00:00:00"
@@ -516,9 +512,7 @@ class TestIsStatusQueuedForPush:
 
     def test_catalog_newer_than_device_returns_true(self, catalog: LibraryCatalog) -> None:
         book_id = _add_book(catalog, "Rose", "h1")
-        device_id = catalog.upsert_device(
-            kind="kobo", serial="N1", label="Libra", now="t0"
-        )
+        device_id = catalog.upsert_device(kind="kobo", serial="N1", label="Libra", now="t0")
         catalog.upsert_device_read_state(
             device_id=device_id,
             book_id=book_id,
@@ -540,9 +534,7 @@ class TestIsStatusQueuedForPush:
         # Equality means the most recent change matched what the device
         # already has — no push needed.
         book_id = _add_book(catalog, "Rose", "h1")
-        device_id = catalog.upsert_device(
-            kind="kobo", serial="N1", label="Libra", now="t0"
-        )
+        device_id = catalog.upsert_device(kind="kobo", serial="N1", label="Libra", now="t0")
         ts = "2026-05-26T10:00:00+00:00"
         catalog.upsert_device_read_state(
             device_id=device_id,
@@ -559,9 +551,7 @@ class TestIsStatusQueuedForPush:
 
     def test_catalog_older_than_device_returns_false(self, catalog: LibraryCatalog) -> None:
         book_id = _add_book(catalog, "Rose", "h1")
-        device_id = catalog.upsert_device(
-            kind="kobo", serial="N1", label="Libra", now="t0"
-        )
+        device_id = catalog.upsert_device(kind="kobo", serial="N1", label="Libra", now="t0")
         catalog.set_book_status(
             book_id=book_id,
             status=STATUS_READING,

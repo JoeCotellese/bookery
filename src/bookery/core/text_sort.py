@@ -26,9 +26,7 @@ def compute_title_sort(title: str) -> str:
     return stripped or title
 
 
-def compute_author_sort(
-    authors: list[str], explicit_author_sort: str | None = None
-) -> str:
+def compute_author_sort(authors: list[str], explicit_author_sort: str | None = None) -> str:
     """Return a sortable author key derived from an authors list.
 
     Mirrors `bookery.core.pathformat.derive_author_sort` but takes the raw

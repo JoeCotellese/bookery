@@ -17,7 +17,10 @@ from bookery.metadata.types import BookMetadata
 
 
 def _make_candidate(
-    title: str, author: str, confidence: float, isbn: str | None = None,
+    title: str,
+    author: str,
+    confidence: float,
+    isbn: str | None = None,
 ) -> MetadataCandidate:
     return MetadataCandidate(
         metadata=BookMetadata(title=title, authors=[author], isbn=isbn, language="en"),
@@ -28,7 +31,8 @@ def _make_candidate(
 
 
 def _import_book(
-    epub_path: Path, db_path: Path,
+    epub_path: Path,
+    db_path: Path,
 ) -> int:
     """Import a single book into the catalog and return its ID."""
     conn = open_library(db_path)
@@ -71,7 +75,8 @@ class TestRematchValidation:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["rematch", "--tag", "nonexistent", "--db", str(db_path)],
+            cli,
+            ["rematch", "--tag", "nonexistent", "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
@@ -102,9 +107,7 @@ class TestRematchQuietMode:
 
         candidate = _make_candidate("Il Nome della Rosa", "Umberto Eco", 0.95)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -114,9 +117,13 @@ class TestRematchQuietMode:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", str(book_id),
-                    "-q", "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    str(book_id),
+                    "-q",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -133,7 +140,9 @@ class TestRematchQuietMode:
         conn.close()
 
     def test_rematch_uses_library_copy_when_source_missing(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Same bug pattern as issue #205: when the original source file is
         gone (e.g. the user emptied Calibre's trash after import), rematch
@@ -164,9 +173,7 @@ class TestRematchQuietMode:
 
         candidate = _make_candidate("Il Nome della Rosa", "Umberto Eco", 0.95)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -176,9 +183,13 @@ class TestRematchQuietMode:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", str(book_id),
-                    "-q", "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    str(book_id),
+                    "-q",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -194,7 +205,10 @@ class TestRematchQuietMode:
         conn.close()
 
     def test_rematch_all_quiet(
-        self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        minimal_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Multiple books, all processed with --all -q."""
         db_path = tmp_path / "test.db"
@@ -213,9 +227,7 @@ class TestRematchQuietMode:
 
         candidate = _make_candidate("Matched Book", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -225,9 +237,13 @@ class TestRematchQuietMode:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", "--all",
-                    "-q", "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    "--all",
+                    "-q",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -249,9 +265,7 @@ class TestRematchQuietMode:
 
         candidate = _make_candidate("Tagged Match", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -261,9 +275,14 @@ class TestRematchQuietMode:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", "--tag", "fiction",
-                    "-q", "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    "--tag",
+                    "fiction",
+                    "-q",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -282,9 +301,7 @@ class TestRematchInteractive:
 
         candidate = _make_candidate("Interactive Match", "Author", 0.85)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -294,9 +311,12 @@ class TestRematchInteractive:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", str(book_id),
-                    "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    str(book_id),
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
                 input="1\n",
             )
@@ -312,9 +332,7 @@ class TestRematchInteractive:
 
         candidate = _make_candidate("Skip Me", "Author", 0.85)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -324,9 +342,12 @@ class TestRematchInteractive:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", str(book_id),
-                    "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    str(book_id),
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
                 input="s\n",
             )
@@ -347,7 +368,9 @@ class TestRematchResume:
     """E2E tests for --resume / --no-resume behavior."""
 
     def test_resume_skips_books_with_metadata_matched_at(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Books with metadata_matched_at set are skipped in resume mode."""
         db_path = tmp_path / "test.db"
@@ -368,9 +391,13 @@ class TestRematchResume:
         result = runner.invoke(
             cli,
             [
-                "rematch", str(book_id),
-                "-q", "--db", str(db_path),
-                "-o", str(output_dir),
+                "rematch",
+                str(book_id),
+                "-q",
+                "--db",
+                str(db_path),
+                "-o",
+                str(output_dir),
             ],
         )
 
@@ -378,7 +405,9 @@ class TestRematchResume:
         assert "already matched" in result.output.lower()
 
     def test_no_resume_reprocesses_all(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """--no-resume processes books even if output_path is set."""
         db_path = tmp_path / "test.db"
@@ -394,9 +423,7 @@ class TestRematchResume:
 
         candidate = _make_candidate("Rematched", "Author", 0.95)
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.return_value = [candidate]
@@ -406,10 +433,14 @@ class TestRematchResume:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", str(book_id),
-                    "-q", "--no-resume",
-                    "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    str(book_id),
+                    "-q",
+                    "--no-resume",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -421,7 +452,10 @@ class TestRematchSummary:
     """E2E tests for summary counts."""
 
     def test_rematch_summary_counts(
-        self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        minimal_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Summary shows matched/skipped/error counts."""
         db_path = tmp_path / "test.db"
@@ -450,9 +484,7 @@ class TestRematchSummary:
                 return [candidate]
             return []
 
-        with patch(
-            "bookery.cli.commands.rematch_cmd._create_provider"
-        ) as mock_fn:
+        with patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn:
             mock_provider = MagicMock()
             mock_provider.search_by_isbn.return_value = []
             mock_provider.search_by_title_author.side_effect = search_side_effect
@@ -462,9 +494,13 @@ class TestRematchSummary:
             result = runner.invoke(
                 cli,
                 [
-                    "rematch", "--all",
-                    "-q", "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "rematch",
+                    "--all",
+                    "-q",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 

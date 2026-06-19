@@ -407,11 +407,11 @@ class TestSplitHtmlByAnchors:
         from bookery.formats.mobi import NcxNavPoint, split_html_by_anchors
 
         html = (
-            '<html><body>'
-            '<p>Preamble</p>'
+            "<html><body>"
+            "<p>Preamble</p>"
             '<a id="filepos100"></a><h1>Chapter 1</h1><p>Content 1</p>'
             '<a id="filepos500"></a><h1>Chapter 2</h1><p>Content 2</p>'
-            '</body></html>'
+            "</body></html>"
         )
         nav_points = [
             NcxNavPoint(label="Chapter 1", anchor_id="filepos100"),
@@ -431,10 +431,10 @@ class TestSplitHtmlByAnchors:
         from bookery.formats.mobi import NcxNavPoint, split_html_by_anchors
 
         html = (
-            '<html><body>'
-            '<p>Preamble text</p>'
+            "<html><body>"
+            "<p>Preamble text</p>"
             '<a id="filepos100"></a><h1>Chapter 1</h1><p>Content 1</p>'
-            '</body></html>'
+            "</body></html>"
         )
         nav_points = [
             NcxNavPoint(label="Chapter 1", anchor_id="filepos100"),
@@ -451,10 +451,10 @@ class TestSplitHtmlByAnchors:
         from bookery.formats.mobi import NcxNavPoint, split_html_by_anchors
 
         html = (
-            '<html><body>'
+            "<html><body>"
             '<a id="filepos100"></a><h1>Chapter 1</h1>'
-            '<mbp:pagebreak/><p>After break</p>'
-            '</body></html>'
+            "<mbp:pagebreak/><p>After break</p>"
+            "</body></html>"
         )
         nav_points = [
             NcxNavPoint(label="Chapter 1", anchor_id="filepos100"),
@@ -469,11 +469,7 @@ class TestSplitHtmlByAnchors:
         """Each chapter is wrapped in valid XHTML boilerplate."""
         from bookery.formats.mobi import NcxNavPoint, split_html_by_anchors
 
-        html = (
-            '<html><body>'
-            '<a id="filepos100"></a><h1>Chapter 1</h1><p>Content</p>'
-            '</body></html>'
-        )
+        html = '<html><body><a id="filepos100"></a><h1>Chapter 1</h1><p>Content</p></body></html>'
         nav_points = [
             NcxNavPoint(label="Chapter 1", anchor_id="filepos100"),
         ]
@@ -514,10 +510,10 @@ class TestSplitHtmlByAnchors:
         from bookery.formats.mobi import NcxNavPoint, split_html_by_anchors
 
         html = (
-            '<html><body>'
+            "<html><body>"
             '<a id="filepos100"></a><h1>Chapter 1</h1><p>C1</p>'
             '<a id="filepos500"></a><h1>Chapter 2</h1><p>C2</p>'
-            '</body></html>'
+            "</body></html>"
         )
         nav_points = [
             NcxNavPoint(label="Chapter 1", anchor_id="filepos100"),
@@ -581,9 +577,7 @@ class TestAssembleEpubFromHtml:
         from bookery.formats.mobi import assemble_epub_from_html
 
         html_file = tmp_path / "book.html"
-        html_file.write_text(
-            '<html><body><img src="Images/photo.jpg"/></body></html>'
-        )
+        html_file.write_text('<html><body><img src="Images/photo.jpg"/></body></html>')
         images_dir = tmp_path / "Images"
         images_dir.mkdir()
         # Minimal JPEG header (non-cover filename to test regular image path)
@@ -594,10 +588,7 @@ class TestAssembleEpubFromHtml:
 
         # Read back and verify image item exists
         book = epublib.read_epub(str(output), options={"ignore_ncx": True})
-        image_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
-        ]
+        image_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_IMAGE]
         assert len(image_items) == 1
         assert image_items[0].get_name() == "Images/photo.jpg"
         assert image_items[0].get_content() == b"\xff\xd8\xff\xe0fake-jpeg"
@@ -639,10 +630,7 @@ class TestAssembleEpubFromHtml:
 
         html_file = tmp_path / "book.html"
         html_file.write_text(
-            '<html><body>'
-            '<img src="Images/img1.jpg"/>'
-            '<img src="Images/img2.png"/>'
-            '</body></html>'
+            '<html><body><img src="Images/img1.jpg"/><img src="Images/img2.png"/></body></html>'
         )
         images_dir = tmp_path / "Images"
         images_dir.mkdir()
@@ -653,10 +641,7 @@ class TestAssembleEpubFromHtml:
         assemble_epub_from_html(html_file, output, images_dir=images_dir)
 
         book = epublib.read_epub(str(output), options={"ignore_ncx": True})
-        image_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
-        ]
+        image_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_IMAGE]
         image_names = {item.get_name() for item in image_items}
         assert "Images/img1.jpg" in image_names
         assert "Images/img2.png" in image_names
@@ -695,8 +680,7 @@ class TestAssembleEpubFromHtml:
         book = epublib.read_epub(str(output), options={"ignore_ncx": True})
         # Spine should contain our 3 chapters (plus nav)
         doc_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_DOCUMENT
+            item for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
         ]
         doc_names = [item.get_name() for item in doc_items]
         assert "ch001.xhtml" in doc_names
@@ -797,9 +781,7 @@ class TestAssembleEpubFromHtml:
         spine = root.find("opf:spine", ns)
         assert spine is not None
         itemrefs = spine.findall("opf:itemref", ns)
-        assert itemrefs[0].get("idref") == "cover", (
-            "Expected cover as first spine item"
-        )
+        assert itemrefs[0].get("idref") == "cover", "Expected cover as first spine item"
 
     def test_cover_page_has_fullscreen_styling(self, tmp_path: Path) -> None:
         """Cover page XHTML uses viewport-filling CSS for e-reader compatibility."""
@@ -823,9 +805,7 @@ class TestAssembleEpubFromHtml:
         # Inline styles on the img tag (preserved by lxml)
         assert "width:100%" in cover_xhtml, "Cover img should have width:100%"
         assert "height:100%" in cover_xhtml, "Cover img should have height:100%"
-        assert "object-fit:contain" in cover_xhtml, (
-            "Cover img should use object-fit:contain"
-        )
+        assert "object-fit:contain" in cover_xhtml, "Cover img should use object-fit:contain"
         # Linked external CSS for belt-and-suspenders e-reader support
         assert "cover.css" in cover_xhtml, "Cover should link to cover.css"
         assert "object-fit" in cover_css, "Cover CSS should contain object-fit"

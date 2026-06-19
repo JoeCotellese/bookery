@@ -76,9 +76,7 @@ class TestClassifyRowCheckBoth:
         src = tmp_path / "src.epub"
         src.write_bytes(b"x")
 
-        result = classify_row(
-            _record(source_path=src, output_path=None), check="both"
-        )
+        result = classify_row(_record(source_path=src, output_path=None), check="both")
         assert result.state is PruneState.HEALTHY
 
     def test_no_output_path_with_source_missing_is_orphan(self, tmp_path: Path) -> None:
@@ -104,9 +102,7 @@ class TestClassifyRowCheckSource:
         src = tmp_path / "src.epub"
         src.write_bytes(b"x")
 
-        result = classify_row(
-            _record(source_path=src, output_path=None), check="source"
-        )
+        result = classify_row(_record(source_path=src, output_path=None), check="source")
         assert result.state is PruneState.HEALTHY
 
 

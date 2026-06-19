@@ -20,13 +20,11 @@ def _make_epub(path: Path, title: str, author: str | None = None) -> Path:
         book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
-    chapter.content = (
-        b"<html><body><h1>Chapter 1</h1>"
-        b"<p>Content.</p>"
-        b"</body></html>"
-    )
+    chapter.content = b"<html><body><h1>Chapter 1</h1><p>Content.</p></body></html>"
     book.add_item(chapter)
     book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
     book.add_item(epub.EpubNcx())
@@ -68,9 +66,7 @@ class TestDbCrossReference:
         # Cataloged book
         cataloged_dir = tmp_path / "Author" / "Cataloged (1)"
         cataloged_dir.mkdir(parents=True)
-        epub_path = _make_epub(
-            cataloged_dir / "Cataloged.epub", "Cataloged", "Author"
-        )
+        epub_path = _make_epub(cataloged_dir / "Cataloged.epub", "Cataloged", "Author")
 
         catalog = self._setup_catalog(tmp_path, [epub_path])
 

@@ -59,7 +59,9 @@ class TestInfoCatalogAndPathTogether:
         assert "Cataloged Book" in result.output
 
     def test_info_path_reads_disk_metadata_directly(
-        self, db_path: Path, tmp_path: Path,
+        self,
+        db_path: Path,
+        tmp_path: Path,
     ) -> None:
         """`info <path>` reads from disk even when a catalog is configured."""
         loose = _make_epub(tmp_path / "loose.epub", "Loose Title", "Loose Author")
@@ -71,7 +73,9 @@ class TestInfoCatalogAndPathTogether:
         assert "Cataloged Book" not in result.output
 
     def test_info_path_with_catalog_flags_rejected(
-        self, db_path: Path, tmp_path: Path,
+        self,
+        db_path: Path,
+        tmp_path: Path,
     ) -> None:
         """`info <path> --set ...` is operator error — flags need a catalog ID."""
         loose = _make_epub(tmp_path / "loose.epub", "Loose", "Author")

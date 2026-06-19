@@ -133,6 +133,7 @@ class TestWriteEpubMetadata:
 
         # Write a temp copy with the poisoned metadata
         from bookery.formats.epub import _fix_toc_uids
+
         _fix_toc_uids(book)
         epub.write_epub(str(sample_epub), book)
 
@@ -215,21 +216,13 @@ class TestWriteCreatorFileAs:
 
     def test_first_last_gets_inverted_file_as(self, sample_epub: Path) -> None:
         """A "First Last" author writes file-as "Last, First"."""
-        write_epub_metadata(
-            sample_epub, BookMetadata(title="T", authors=["Brandon Sanderson"])
-        )
-        assert read_creator_file_as(sample_epub) == [
-            ("Brandon Sanderson", "Sanderson, Brandon")
-        ]
+        write_epub_metadata(sample_epub, BookMetadata(title="T", authors=["Brandon Sanderson"]))
+        assert read_creator_file_as(sample_epub) == [("Brandon Sanderson", "Sanderson, Brandon")]
 
     def test_already_inverted_author_keeps_file_as(self, sample_epub: Path) -> None:
         """A "Last, First" author keeps its order as the file-as."""
-        write_epub_metadata(
-            sample_epub, BookMetadata(title="T", authors=["Sanderson, Brandon"])
-        )
-        assert read_creator_file_as(sample_epub) == [
-            ("Sanderson, Brandon", "Sanderson, Brandon")
-        ]
+        write_epub_metadata(sample_epub, BookMetadata(title="T", authors=["Sanderson, Brandon"]))
+        assert read_creator_file_as(sample_epub) == [("Sanderson, Brandon", "Sanderson, Brandon")]
 
     def test_each_coauthor_gets_its_own_file_as(self, sample_epub: Path) -> None:
         """Co-authors each get an independent file-as (no shared sort key)."""
@@ -246,22 +239,16 @@ class TestWriteCreatorFileAs:
         """A curator-set author_sort is used for the primary author's file-as."""
         write_epub_metadata(
             sample_epub,
-            BookMetadata(
-                title="T", authors=["Plato"], author_sort="Plato (Greek)"
-            ),
+            BookMetadata(title="T", authors=["Plato"], author_sort="Plato (Greek)"),
         )
         assert read_creator_file_as(sample_epub) == [("Plato", "Plato (Greek)")]
 
-    def test_rewrite_does_not_accumulate_stale_file_as(
-        self, sample_epub: Path
-    ) -> None:
+    def test_rewrite_does_not_accumulate_stale_file_as(self, sample_epub: Path) -> None:
         """Re-writing leaves exactly one file-as per creator, not a pile of them."""
         meta = BookMetadata(title="T", authors=["Brandon Sanderson"])
         write_epub_metadata(sample_epub, meta)
         write_epub_metadata(sample_epub, meta)
-        assert read_creator_file_as(sample_epub) == [
-            ("Brandon Sanderson", "Sanderson, Brandon")
-        ]
+        assert read_creator_file_as(sample_epub) == [("Brandon Sanderson", "Sanderson, Brandon")]
 
     def test_reads_epub2_file_as_attribute(self, tmp_path: Path) -> None:
         """Reader also handles the EPUB2 ``opf:file-as`` attribute form."""

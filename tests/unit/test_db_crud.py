@@ -73,7 +73,8 @@ class TestAddBook:
     ) -> None:
         """Output path is stored when provided."""
         book_id = catalog.add_book(
-            sample_metadata, file_hash="hash1",
+            sample_metadata,
+            file_hash="hash1",
             output_path=Path("/output/rose.epub"),
         )
         record = catalog.get_by_id(book_id)
@@ -88,9 +89,7 @@ class TestGetBy:
         """Returns None for nonexistent ID."""
         assert catalog.get_by_id(999) is None
 
-    def test_get_by_hash(
-        self, catalog: LibraryCatalog, sample_metadata: BookMetadata
-    ) -> None:
+    def test_get_by_hash(self, catalog: LibraryCatalog, sample_metadata: BookMetadata) -> None:
         """Look up a book by its file hash."""
         catalog.add_book(sample_metadata, file_hash="unique_hash")
         record = catalog.get_by_hash("unique_hash")
@@ -101,9 +100,7 @@ class TestGetBy:
         """Returns None for unknown hash."""
         assert catalog.get_by_hash("nonexistent") is None
 
-    def test_get_by_isbn(
-        self, catalog: LibraryCatalog, sample_metadata: BookMetadata
-    ) -> None:
+    def test_get_by_isbn(self, catalog: LibraryCatalog, sample_metadata: BookMetadata) -> None:
         """Look up a book by ISBN."""
         catalog.add_book(sample_metadata, file_hash="hash1")
         record = catalog.get_by_isbn("9780156001311")
@@ -143,21 +140,26 @@ class TestListBooks:
         """Filter books by series name."""
         catalog.add_book(
             BookMetadata(
-                title="Book 1", series="Cotton Malone", series_index=1.0,
+                title="Book 1",
+                series="Cotton Malone",
+                series_index=1.0,
                 source_path=Path("/b1.epub"),
             ),
             file_hash="h1",
         )
         catalog.add_book(
             BookMetadata(
-                title="Book 2", series="Cotton Malone", series_index=2.0,
+                title="Book 2",
+                series="Cotton Malone",
+                series_index=2.0,
                 source_path=Path("/b2.epub"),
             ),
             file_hash="h2",
         )
         catalog.add_book(
             BookMetadata(
-                title="Other Book", series="Other Series",
+                title="Other Book",
+                series="Other Series",
                 source_path=Path("/other.epub"),
             ),
             file_hash="h3",
@@ -202,9 +204,7 @@ class TestUpdateBook:
         with pytest.raises(ValueError, match="not found"):
             catalog.update_book(999, title="Nope")
 
-    def test_set_output_path(
-        self, catalog: LibraryCatalog, sample_metadata: BookMetadata
-    ) -> None:
+    def test_set_output_path(self, catalog: LibraryCatalog, sample_metadata: BookMetadata) -> None:
         """set_output_path updates just the output_path column."""
         book_id = catalog.add_book(sample_metadata, file_hash="hash1")
         catalog.set_output_path(book_id, Path("/output/rose.epub"))
@@ -279,9 +279,7 @@ class TestTitleSortPersistence:
         catalog.update_book(book_id, title="The Hobbit")
         assert self._title_sort_for(catalog, book_id) == "Hobbit"
 
-    def test_update_unrelated_field_preserves_title_sort(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_update_unrelated_field_preserves_title_sort(self, catalog: LibraryCatalog) -> None:
         book_id = catalog.add_book(
             BookMetadata(title="The Hobbit", source_path=Path("/h.epub")),
             file_hash="hashpres",
@@ -347,9 +345,7 @@ class TestAuthorSortPersistence:
         catalog.update_book(book_id, authors=["Gabriel Garcia Marquez"])
         assert self._author_sort_for(catalog, book_id) == "Marquez, Gabriel Garcia"
 
-    def test_update_unrelated_field_preserves_author_sort(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_update_unrelated_field_preserves_author_sort(self, catalog: LibraryCatalog) -> None:
         book_id = catalog.add_book(
             BookMetadata(
                 title="Title",
@@ -421,9 +417,7 @@ class TestListMethodsArticleStrippedOrder:
             ids.append(catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0")))
         return ids
 
-    def test_list_all_sorts_by_article_stripped_title(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_list_all_sorts_by_article_stripped_title(self, catalog: LibraryCatalog) -> None:
         self._seed(catalog)
         titles = [r.metadata.title for r in catalog.list_all()]
         assert titles == self._STRIPPED_ORDER
@@ -456,26 +450,20 @@ class TestListMethodsArticleStrippedOrder:
         rows = catalog.list_books_by_status(2)
         assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
 
-    def test_list_books_unread_uses_article_stripped_order(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_list_books_unread_uses_article_stripped_order(self, catalog: LibraryCatalog) -> None:
         # No book_status rows seeded → all four are implicitly unread.
         self._seed(catalog)
         rows = catalog.list_books_unread()
         assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
 
-    def test_get_books_by_tag_uses_article_stripped_order(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_get_books_by_tag_uses_article_stripped_order(self, catalog: LibraryCatalog) -> None:
         ids = self._seed(catalog)
         for book_id in ids:
             catalog.add_tag(book_id, "classics")
         rows = catalog.get_books_by_tag("classics")
         assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
 
-    def test_get_books_by_genre_uses_article_stripped_order(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_get_books_by_genre_uses_article_stripped_order(self, catalog: LibraryCatalog) -> None:
         ids = self._seed(catalog)
         for book_id in ids:
             catalog.add_genre(book_id, "Literary Fiction")

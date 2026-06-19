@@ -74,8 +74,7 @@ def _call_llm(client: Any, cfg: SemanticConfig, text_blob: str) -> MagazineDoc:
     finish_reason = getattr(choice, "finish_reason", None)
     if finish_reason == "length":
         raise LLMBadResponse(
-            "response truncated by max_tokens; "
-            "increase [convert.semantic] max_tokens"
+            "response truncated by max_tokens; increase [convert.semantic] max_tokens"
         )
     message = choice.message
     parsed = getattr(message, "parsed", None)

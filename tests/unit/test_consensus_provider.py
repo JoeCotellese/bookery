@@ -230,9 +230,7 @@ def test_authors_list_agreement_prefers_agreed_value() -> None:
 def test_new_scalar_fields_vote_and_record_provenance() -> None:
     p1 = FakeProvider(
         "openlibrary",
-        isbn_results=[
-            _cand("openlibrary", title="Dune", subtitle="A Novel", rating=4.5)
-        ],
+        isbn_results=[_cand("openlibrary", title="Dune", subtitle="A Novel", rating=4.5)],
     )
     p2 = FakeProvider(
         "googlebooks",

@@ -148,9 +148,7 @@ class ReviewSession:
                 try:
                     idx = int(choice[1:]) - 1
                     if 0 <= idx < len(candidates):
-                        result = self._detail_prompt(
-                            extracted, candidates[idx]
-                        )
+                        result = self._detail_prompt(extracted, candidates[idx])
                         if result is not None:
                             return result
                         # result is None means "back to list"

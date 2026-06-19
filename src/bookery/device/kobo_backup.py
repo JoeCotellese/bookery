@@ -41,9 +41,7 @@ def backup_kobo_db(
     try:
         device_dir.mkdir(parents=True, exist_ok=True)
     except (NotADirectoryError, FileExistsError, OSError) as exc:
-        logger.warning(
-            "Could not prepare backup dir at %s: %s", device_dir, exc
-        )
+        logger.warning("Could not prepare backup dir at %s: %s", device_dir, exc)
         return None
 
     # Same-day idempotency: any file whose name starts with today's date
@@ -51,9 +49,7 @@ def backup_kobo_db(
     # earliest snapshot of the day is the one we want to preserve.
     date_prefix = now.strftime("%Y-%m-%d")
     try:
-        existing_today = sorted(
-            p for p in device_dir.iterdir() if p.name.startswith(date_prefix)
-        )
+        existing_today = sorted(p for p in device_dir.iterdir() if p.name.startswith(date_prefix))
     except OSError as exc:
         logger.warning("Could not list backup dir %s: %s", device_dir, exc)
         return None

@@ -14,7 +14,10 @@ from bookery.metadata.types import BookMetadata
 
 
 def _make_candidate(
-    title: str, author: str, confidence: float, isbn: str | None = None,
+    title: str,
+    author: str,
+    confidence: float,
+    isbn: str | None = None,
 ) -> MetadataCandidate:
     return MetadataCandidate(
         metadata=BookMetadata(title=title, authors=[author], isbn=isbn, language="en"),
@@ -52,7 +55,9 @@ class TestRematchPipeline:
     """Integration tests for the rematch DB update loop."""
 
     def test_rematch_updates_catalog_metadata(
-        self, catalog_with_book, tmp_path: Path,
+        self,
+        catalog_with_book,
+        tmp_path: Path,
     ) -> None:
         """Catalog record is updated with enriched metadata after rematch."""
         catalog, _conn, record = catalog_with_book
@@ -79,7 +84,9 @@ class TestRematchPipeline:
         assert updated.output_path == output_path
 
     def test_rematch_sets_output_path(
-        self, catalog_with_book, tmp_path: Path,
+        self,
+        catalog_with_book,
+        tmp_path: Path,
     ) -> None:
         """Output path is set on the catalog record after successful match."""
         catalog, _conn, record = catalog_with_book
@@ -91,7 +98,9 @@ class TestRematchPipeline:
         assert updated.output_path == output_path
 
     def test_rematch_skips_when_no_match(
-        self, catalog_with_book, tmp_path: Path,
+        self,
+        catalog_with_book,
+        tmp_path: Path,
     ) -> None:
         """DB record is unchanged when match returns 'skipped'."""
         catalog, _conn, record = catalog_with_book
@@ -109,7 +118,8 @@ class TestRematchPipeline:
         assert unchanged.output_path is None
 
     def test_rematch_handles_missing_source_file(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Source path doesn't exist -> error, DB unchanged."""
         db_path = tmp_path / "test.db"

@@ -278,10 +278,7 @@ def write_collection_shelves(
                     )
                     VALUES (?, ?, ?, 'false', 'true')
                     """,
-                    [
-                        (upd.internal_name, content_id, timestamp)
-                        for content_id in upd.content_ids
-                    ],
+                    [(upd.internal_name, content_id, timestamp) for content_id in upd.content_ids],
                 )
                 report.pushed_count += 1
 

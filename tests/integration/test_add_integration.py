@@ -19,7 +19,9 @@ def _make_epub(path: Path, title: str, author: str = "Integration Author") -> Pa
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
         b"<html><body><h1>Chapter 1</h1><p>" + title.encode() + b".</p></body></html>"
@@ -35,7 +37,9 @@ def _make_epub(path: Path, title: str, author: str = "Integration Author") -> Pa
 
 class TestAddIntegration:
     def test_add_full_flow_copies_and_catalogs(
-        self, tmp_path: Path, _isolate_library_root: Path,
+        self,
+        tmp_path: Path,
+        _isolate_library_root: Path,
     ) -> None:
         library_root = _isolate_library_root
         db_path = tmp_path / "catalog.db"
@@ -43,7 +47,8 @@ class TestAddIntegration:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
@@ -62,7 +67,9 @@ class TestAddIntegration:
         conn.close()
 
     def test_add_move_with_real_epub(
-        self, tmp_path: Path, _isolate_library_root: Path,
+        self,
+        tmp_path: Path,
+        _isolate_library_root: Path,
     ) -> None:
         library_root = _isolate_library_root
         db_path = tmp_path / "catalog.db"

@@ -94,9 +94,7 @@ def _destination_page(reader: pypdf.PdfReader, dest: Destination) -> int | None:
     if isinstance(page_ref, NumberObject):
         return int(page_ref) + 1  # pypdf page index is 0-based
     try:
-        page_obj = (
-            page_ref.get_object() if isinstance(page_ref, IndirectObject) else page_ref
-        )
+        page_obj = page_ref.get_object() if isinstance(page_ref, IndirectObject) else page_ref
         if page_obj is None:
             return None
         idx = reader.get_page_number(page_obj)  # type: ignore[arg-type]

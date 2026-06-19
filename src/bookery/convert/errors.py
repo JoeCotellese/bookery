@@ -22,9 +22,7 @@ class PdfScanned(ConvertError):
     exit_code = 1
 
     def __init__(self, path: Path) -> None:
-        super().__init__(
-            f"{path} appears to be a scanned PDF. OCR is not yet supported."
-        )
+        super().__init__(f"{path} appears to be a scanned PDF. OCR is not yet supported.")
         self.path = path
 
 
@@ -42,5 +40,3 @@ class LLMBadResponse(ConvertError):
     def __init__(self, detail: str) -> None:
         super().__init__(f"LLM returned a malformed response: {detail}")
         self.detail = detail
-
-

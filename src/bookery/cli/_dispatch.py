@@ -25,10 +25,6 @@ def detect_source_format(path: Path) -> SourceFormat:
         except OSError as exc:
             raise UnknownFormatError(f"cannot read {path}: {exc}") from exc
         if not head.startswith(b"%PDF-"):
-            raise UnknownFormatError(
-                f"{path.name} has a .pdf suffix but is not a PDF file."
-            )
+            raise UnknownFormatError(f"{path.name} has a .pdf suffix but is not a PDF file.")
         return "pdf"
-    raise UnknownFormatError(
-        f"{path.name}: unsupported format (expected .epub, .mobi, or .pdf)."
-    )
+    raise UnknownFormatError(f"{path.name}: unsupported format (expected .epub, .mobi, or .pdf).")

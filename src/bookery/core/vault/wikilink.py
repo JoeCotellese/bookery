@@ -20,7 +20,7 @@ def resolve_wikilinks(body: str, title_to_slug: dict[str, str]) -> tuple[str, in
         nonlocal broken
         target = match.group(1).strip()
         alias = match.group(2)
-        display = (alias.strip() if alias else target)
+        display = alias.strip() if alias else target
         slug = lowered.get(target.lower())
         if slug is None:
             broken += 1

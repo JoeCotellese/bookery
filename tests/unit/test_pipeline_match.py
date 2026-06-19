@@ -33,7 +33,10 @@ def _make_epub(tmp_path: Path, title: str = "Test Book", author: str = "Test Aut
 
 
 def _make_candidate(
-    title: str, author: str, confidence: float, isbn: str | None = None,
+    title: str,
+    author: str,
+    confidence: float,
+    isbn: str | None = None,
 ) -> MetadataCandidate:
     return MetadataCandidate(
         metadata=BookMetadata(title=title, authors=[author], isbn=isbn, language="en"),
@@ -186,8 +189,11 @@ class TestMatchOne:
 
         with patch("bookery.core.pipeline.apply_metadata_safely") as mock_write:
             from bookery.core.pipeline import WriteResult
+
             mock_write.return_value = WriteResult(
-                path=None, success=False, error="Disk full",
+                path=None,
+                success=False,
+                error="Disk full",
             )
             result = match_one(epub_path, provider, review, output_dir)
 

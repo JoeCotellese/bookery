@@ -59,9 +59,7 @@ def test_two_pass_sync_uses_cache(tmp_path: Path) -> None:
 
     with (
         patch("bookery.device.kepubify.shutil.which", return_value="/usr/bin/kepubify"),
-        patch(
-            "bookery.device.kepubify.subprocess.run", side_effect=_fake_subprocess
-        ) as mock_run,
+        patch("bookery.device.kepubify.subprocess.run", side_effect=_fake_subprocess) as mock_run,
     ):
         conn = open_library(db_path)
         try:

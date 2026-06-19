@@ -125,9 +125,7 @@ def test_search_by_title_author_builds_query_and_sorts() -> None:
 
 
 def test_subtitle_is_kept_separate_from_title() -> None:
-    http = FakeHttpClient(
-        {"volumes": {"items": [_volume(title="Dune", subtitle="A Novel")]}}
-    )
+    http = FakeHttpClient({"volumes": {"items": [_volume(title="Dune", subtitle="A Novel")]}})
     provider = GoogleBooksProvider(http_client=http)
     candidates = provider.search_by_isbn("9780441013593")
     assert candidates[0].metadata.title == "Dune"
@@ -240,9 +238,7 @@ def test_non_book_print_type_is_skipped() -> None:
 
 def test_isbn_10_is_used_when_no_isbn_13() -> None:
     volume = _volume(isbn_13=None)
-    volume["volumeInfo"]["industryIdentifiers"] = [
-        {"type": "ISBN_10", "identifier": "0441013597"}
-    ]
+    volume["volumeInfo"]["industryIdentifiers"] = [{"type": "ISBN_10", "identifier": "0441013597"}]
     http = FakeHttpClient({"volumes": {"items": [volume]}})
     provider = GoogleBooksProvider(http_client=http)
     candidates = provider.search_by_isbn("0441013597")

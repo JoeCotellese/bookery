@@ -102,9 +102,7 @@ class TestOpfMetadataRoundTrip:
         import ebooklib
 
         html_file = tmp_path / "book.html"
-        html_file.write_text(
-            '<html><body><img src="Images/photo.jpg"/></body></html>'
-        )
+        html_file.write_text('<html><body><img src="Images/photo.jpg"/></body></html>')
         images_dir = tmp_path / "Images"
         images_dir.mkdir()
         image_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100  # Fake JPEG
@@ -114,10 +112,7 @@ class TestOpfMetadataRoundTrip:
         assemble_epub_from_html(html_file, output, images_dir=images_dir)
 
         book = epub.read_epub(str(output), options={"ignore_ncx": True})
-        image_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
-        ]
+        image_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_IMAGE]
         assert len(image_items) == 1
         assert image_items[0].get_content() == image_data
 
@@ -140,9 +135,7 @@ class TestOpfMetadataRoundTrip:
         metadata = parse_opf_metadata(opf_file)
 
         html_file = tmp_path / "book.html"
-        html_file.write_text(
-            '<html><body><img src="Images/fig1.png"/><p>Text</p></body></html>'
-        )
+        html_file.write_text('<html><body><img src="Images/fig1.png"/><p>Text</p></body></html>')
         images_dir = tmp_path / "Images"
         images_dir.mkdir()
         (images_dir / "fig1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake-png")
@@ -155,10 +148,7 @@ class TestOpfMetadataRoundTrip:
         assert read_back.authors == ["Test Author"]
 
         book = epub.read_epub(str(output), options={"ignore_ncx": True})
-        image_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_IMAGE
-        ]
+        image_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_IMAGE]
         assert len(image_items) == 1
 
 
@@ -200,15 +190,15 @@ class TestNcxSplitRoundTrip:
         # Create matching HTML with anchor points
         html_file = tmp_path / "book.html"
         html_file.write_text(
-            '<html><body>'
-            '<p>Book preamble</p>'
+            "<html><body>"
+            "<p>Book preamble</p>"
             '<a id="filepos000100"></a><h1>Chapter 1</h1>'
-            '<p>Arrival on Mars. Content for chapter one.</p>'
+            "<p>Arrival on Mars. Content for chapter one.</p>"
             '<a id="filepos000500"></a><h1>Chapter 2</h1>'
-            '<p>Learning to survive. Content for chapter two.</p>'
+            "<p>Learning to survive. Content for chapter two.</p>"
             '<a id="filepos001000"></a><h1>Chapter 3</h1>'
-            '<p>Rescue mission. Content for chapter three.</p>'
-            '</body></html>'
+            "<p>Rescue mission. Content for chapter three.</p>"
+            "</body></html>"
         )
 
         # Parse NCX
@@ -228,7 +218,10 @@ class TestNcxSplitRoundTrip:
             language="en",
         )
         assemble_epub_from_html(
-            html_file, output, metadata=metadata, chapters=chapters,
+            html_file,
+            output,
+            metadata=metadata,
+            chapters=chapters,
         )
 
         # Verify the EPUB
@@ -244,15 +237,13 @@ class TestNcxSplitRoundTrip:
 
         # Spine has 3 document items (plus nav)
         doc_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_DOCUMENT
+            item for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
         ]
         assert len(doc_items) >= 3
 
         # Content is present in each chapter
         all_content = b"".join(
-            item.get_content() for item in doc_items
-            if hasattr(item, "get_content")
+            item.get_content() for item in doc_items if hasattr(item, "get_content")
         )
         assert b"Arrival on Mars" in all_content
         assert b"Learning to survive" in all_content
@@ -289,10 +280,10 @@ class TestNcxSplitRoundTrip:
 
         html_file = tmp_path / "book.html"
         html_file.write_text(
-            '<html><body>'
+            "<html><body>"
             '<a id="filepos000100"></a><h1>Chapter 1</h1>'
-            '<p>Content here.</p>'
-            '</body></html>'
+            "<p>Content here.</p>"
+            "</body></html>"
         )
 
         images_dir = tmp_path / "Images"
@@ -305,7 +296,10 @@ class TestNcxSplitRoundTrip:
         output = tmp_path / "output.epub"
         metadata = BookMetadata(title="Cover Test", authors=["Author"], language="en")
         assemble_epub_from_html(
-            html_file, output, metadata=metadata, chapters=chapters,
+            html_file,
+            output,
+            metadata=metadata,
+            chapters=chapters,
             images_dir=images_dir,
         )
 
@@ -347,10 +341,10 @@ class TestNcxSplitRoundTrip:
 
         html_file = tmp_path / "book.html"
         html_file.write_text(
-            '<html><body>'
+            "<html><body>"
             '<a id="filepos000100"></a><h1>Chapter 1</h1>'
             '<img src="Images/cover.jpg"/><p>Content</p>'
-            '</body></html>'
+            "</body></html>"
         )
 
         images_dir = tmp_path / "Images"
@@ -362,14 +356,14 @@ class TestNcxSplitRoundTrip:
 
         output = tmp_path / "output.epub"
         assemble_epub_from_html(
-            html_file, output, chapters=chapters, images_dir=images_dir,
+            html_file,
+            output,
+            chapters=chapters,
+            images_dir=images_dir,
         )
 
         book = epub.read_epub(str(output), options={"ignore_ncx": True})
-        cover_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_COVER
-        ]
+        cover_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_COVER]
         assert len(cover_items) == 1
         assert cover_items[0].get_name() == "Images/cover.jpg"
 

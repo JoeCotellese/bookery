@@ -63,7 +63,9 @@ def stub_render(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 def test_default_uses_stable_identifier(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -76,12 +78,15 @@ def test_default_uses_stable_identifier(
     assert result.exit_code == 0, result.output
     # Stable UUIDs are deterministic and derived from the vault path.
     from bookery.core.vault.epub import stable_uuid
+
     assert stub_render["metadata"].identifier == stable_uuid(fake_vault)
     assert result.stderr == ""
 
 
 def test_random_ids_flag_produces_random_identifier(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -93,6 +98,7 @@ def test_random_ids_flag_produces_random_identifier(
     )
     assert result.exit_code == 0, result.output
     from bookery.core.vault.epub import stable_uuid
+
     identifier = stub_render["metadata"].identifier
     assert identifier.startswith("urn:uuid:")
     assert identifier != stable_uuid(fake_vault)
@@ -101,7 +107,9 @@ def test_random_ids_flag_produces_random_identifier(
 
 
 def test_deprecated_uuid_random_translates_to_random_ids(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -113,17 +121,17 @@ def test_deprecated_uuid_random_translates_to_random_ids(
     )
     assert result.exit_code == 0, result.output
     from bookery.core.vault.epub import stable_uuid
+
     identifier = stub_render["metadata"].identifier
     assert identifier.startswith("urn:uuid:")
     assert identifier != stable_uuid(fake_vault)
-    assert (
-        "warning: '--uuid' is deprecated; use '--random-ids' instead."
-        in result.stderr
-    )
+    assert "warning: '--uuid' is deprecated; use '--random-ids' instead." in result.stderr
 
 
 def test_deprecated_uuid_stable_keeps_stable_identifier(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -135,12 +143,15 @@ def test_deprecated_uuid_stable_keeps_stable_identifier(
     )
     assert result.exit_code == 0, result.output
     from bookery.core.vault.epub import stable_uuid
+
     assert stub_render["metadata"].identifier == stable_uuid(fake_vault)
     assert "warning: '--uuid' is deprecated" in result.stderr
 
 
 def test_uuid_invalid_value_errors(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -156,7 +167,9 @@ def test_uuid_invalid_value_errors(
 
 
 def test_deprecation_warning_fires_once(
-    fake_vault: Path, stub_render: dict[str, Any], tmp_path: Path,
+    fake_vault: Path,
+    stub_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     reset_deprecation_state()
     runner = CliRunner()
@@ -218,6 +231,7 @@ def test_config_uuid_mode_random_still_honored_without_flag(
     )
     assert result.exit_code == 0, result.output
     from bookery.core.vault.epub import stable_uuid
+
     identifier = captured["metadata"].identifier
     assert identifier.startswith("urn:uuid:")
     assert identifier != stable_uuid(fake_vault)

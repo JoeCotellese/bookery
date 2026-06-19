@@ -146,9 +146,7 @@ class DbCrossReference:
     not_in_catalog: list[BookEntry]
 
 
-def cross_reference_db(
-    scan_result: ScanResult, catalog: LibraryCatalog
-) -> DbCrossReference:
+def cross_reference_db(scan_result: ScanResult, catalog: LibraryCatalog) -> DbCrossReference:
     """Match scanned books against the catalog by source_path.
 
     A book is considered "in catalog" if any file in its directory matches
@@ -162,9 +160,7 @@ def cross_reference_db(
         A DbCrossReference with books split into cataloged and uncataloged.
     """
     cataloged_paths: set[Path] = {
-        record.source_path
-        for record in catalog.list_all()
-        if record.source_path is not None
+        record.source_path for record in catalog.list_all() if record.source_path is not None
     }
 
     in_catalog: list[BookEntry] = []

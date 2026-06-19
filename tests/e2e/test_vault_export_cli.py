@@ -11,9 +11,7 @@ from ebooklib import epub
 from bookery.cli import cli
 from bookery.cli.deprecation import reset_deprecation_state
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="pandoc not installed"
-)
+pytestmark = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc not installed")
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "vault"
 
@@ -127,7 +125,8 @@ def test_vault_export_stable_identifier_across_runs(tmp_path: Path):
 
 
 def test_vault_export_catalog_flag_imports_into_library(
-    tmp_path: Path, _isolate_library_root: Path,
+    tmp_path: Path,
+    _isolate_library_root: Path,
 ) -> None:
     """`--catalog` should append the produced EPUB into the bookery catalog so
     it ships on the next `bookery sync kobo` without a separate `bookery add`.
@@ -138,9 +137,14 @@ def test_vault_export_catalog_flag_imports_into_library(
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--catalog", "--db", str(db),
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--catalog",
+            "--db",
+            str(db),
         ],
         catch_exceptions=False,
     )
@@ -151,7 +155,8 @@ def test_vault_export_catalog_flag_imports_into_library(
 
 
 def test_vault_export_catalog_replaces_prior_export(
-    tmp_path: Path, _isolate_library_root: Path,
+    tmp_path: Path,
+    _isolate_library_root: Path,
 ) -> None:
     """A vault export is a point-in-time snapshot — running `--catalog` twice
     must leave exactly one row in the catalog and one EPUB on disk, even when
@@ -165,18 +170,27 @@ def test_vault_export_catalog_replaces_prior_export(
     db = tmp_path / "library.db"
 
     args = [
-        "vault-export", "--vault", str(FIXTURE),
-        "-o", str(out),
-        "--catalog", "--db", str(db),
+        "vault-export",
+        "--vault",
+        str(FIXTURE),
+        "-o",
+        str(out),
+        "--catalog",
+        "--db",
+        str(db),
     ]
 
     first = runner.invoke(
-        cli, [*args, "--version-label", "v1"], catch_exceptions=False,
+        cli,
+        [*args, "--version-label", "v1"],
+        catch_exceptions=False,
     )
     assert first.exit_code == 0, first.output
 
     second = runner.invoke(
-        cli, [*args, "--version-label", "v2"], catch_exceptions=False,
+        cli,
+        [*args, "--version-label", "v2"],
+        catch_exceptions=False,
     )
     assert second.exit_code == 0, second.output
     assert "replaced 1 prior vault export" in second.output
@@ -194,7 +208,8 @@ def test_vault_export_catalog_replaces_prior_export(
 
 
 def test_vault_export_catalog_does_not_clobber_unrelated_books(
-    tmp_path: Path, _isolate_library_root: Path,
+    tmp_path: Path,
+    _isolate_library_root: Path,
 ) -> None:
     """`--catalog` must only replace prior snapshots of the *same* vault. A
     real book whose title happens to start with the vault title (e.g. "Notes
@@ -227,11 +242,18 @@ def test_vault_export_catalog_does_not_clobber_unrelated_books(
     # Stub import_books so we don't need a real EPUB on disk for the seeded
     # row's hash check; we only care that the prune step leaves it alone.
     args = [
-        "vault-export", "--vault", str(FIXTURE),
-        "-o", str(out),
-        "--title", "Notes",
-        "--author", "Joe Cotellese",
-        "--catalog", "--db", str(db),
+        "vault-export",
+        "--vault",
+        str(FIXTURE),
+        "-o",
+        str(out),
+        "--title",
+        "Notes",
+        "--author",
+        "Joe Cotellese",
+        "--catalog",
+        "--db",
+        str(db),
     ]
     result = runner.invoke(cli, args, catch_exceptions=False)
     assert result.exit_code == 0, result.output
@@ -245,7 +267,9 @@ def test_vault_export_catalog_does_not_clobber_unrelated_books(
 
 
 def test_vault_export_catalog_preserves_prior_when_import_fails(
-    tmp_path: Path, _isolate_library_root: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    _isolate_library_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If `import_books` fails after the EPUB renders, the prior vault row
     must remain in the catalog. We must never delete the user's last good
@@ -275,19 +299,27 @@ def test_vault_export_catalog_preserves_prior_when_import_fails(
 
     def _explode(*_args, **_kwargs):
         from bookery.core.importer import ImportResult
+
         return ImportResult(added=0, errors=1, error_details=[(out, "boom")])
 
     monkeypatch.setattr(
-        "bookery.cli.commands.vault_export_cmd.import_books", _explode,
+        "bookery.cli.commands.vault_export_cmd.import_books",
+        _explode,
     )
 
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--title", "vault Vault",
-            "--catalog", "--db", str(db),
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--title",
+            "vault Vault",
+            "--catalog",
+            "--db",
+            str(db),
         ],
         catch_exceptions=False,
     )
@@ -313,7 +345,8 @@ def test_vault_export_rejects_missing_vault(tmp_path: Path):
 
 
 def test_vault_export_default_output_lands_in_library_root_with_catalog(
-    tmp_path: Path, _isolate_library_root: Path,
+    tmp_path: Path,
+    _isolate_library_root: Path,
 ) -> None:
     """When --catalog is set and no -o is passed, the EPUB should be written
     directly into the library root with a stable filename so `sync kobo`
@@ -326,9 +359,14 @@ def test_vault_export_default_output_lands_in_library_root_with_catalog(
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "--title", "Test Vault",
-            "--catalog", "--db", str(db),
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "--title",
+            "Test Vault",
+            "--catalog",
+            "--db",
+            str(db),
         ],
         catch_exceptions=False,
         # Pinning --title keeps the test deterministic even when the
@@ -392,9 +430,13 @@ def test_vault_export_include_folder_filters_to_subset(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--include-folder", "3_Permanent Notes",
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--include-folder",
+            "3_Permanent Notes",
         ],
         catch_exceptions=False,
     )
@@ -412,18 +454,19 @@ def test_vault_export_folder_alias_still_works(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--folder", "3_Permanent Notes",
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--folder",
+            "3_Permanent Notes",
         ],
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
     assert out.exists()
-    assert (
-        "warning: '--folder' is deprecated; use '--include-folder' instead."
-        in result.stderr
-    )
+    assert "warning: '--folder' is deprecated; use '--include-folder' instead." in result.stderr
 
 
 def test_vault_export_folder_alias_warns_once_when_repeated(tmp_path: Path) -> None:
@@ -434,10 +477,15 @@ def test_vault_export_folder_alias_warns_once_when_repeated(tmp_path: Path) -> N
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--folder", "3_Permanent Notes",
-            "--folder", "2_Literature Notes",
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--folder",
+            "3_Permanent Notes",
+            "--folder",
+            "2_Literature Notes",
         ],
         catch_exceptions=False,
     )
@@ -453,10 +501,15 @@ def test_vault_export_include_folder_repeatable(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "vault-export", "--vault", str(FIXTURE),
-            "-o", str(out),
-            "--include-folder", "3_Permanent Notes",
-            "--include-folder", "2_Literature Notes",
+            "vault-export",
+            "--vault",
+            str(FIXTURE),
+            "-o",
+            str(out),
+            "--include-folder",
+            "3_Permanent Notes",
+            "--include-folder",
+            "2_Literature Notes",
         ],
         catch_exceptions=False,
     )

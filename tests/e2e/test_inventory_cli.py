@@ -112,9 +112,7 @@ class TestInventoryCliDbCrossRef:
 
     def _import_epub(self, runner, epub_path: Path, db_path: Path) -> None:
         """Import an EPUB into the catalog via CLI."""
-        result = runner.invoke(
-            cli, ["import", str(epub_path.parent), "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["import", str(epub_path.parent), "--db", str(db_path)])
         assert result.exit_code == 0
 
     def test_db_shows_catalog_status_rich(
@@ -156,9 +154,7 @@ class TestInventoryCliDbCrossRef:
         assert "in_catalog" in xref
         assert "not_in_catalog" in xref
 
-    def test_db_empty_catalog_all_not_in_catalog(
-        self, calibre_tree: Path, tmp_path: Path
-    ) -> None:
+    def test_db_empty_catalog_all_not_in_catalog(self, calibre_tree: Path, tmp_path: Path) -> None:
         """Empty catalog → all scanned books are not in catalog."""
         db_path = tmp_path / "empty.db"
         runner = CliRunner()

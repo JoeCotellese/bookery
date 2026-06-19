@@ -46,34 +46,34 @@ class TestMigration:
     def test_migration_applies(self, tmp_path: Path) -> None:
         """V11 migration creates collections and collection_books tables."""
         conn = open_library(tmp_path / "migration_test.db")
-        
+
         # Check collections table exists
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='collections'"
         )
         assert cursor.fetchone() is not None, "collections table should exist"
-        
+
         # Check collection_books table exists
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='collection_books'"
         )
         assert cursor.fetchone() is not None, "collection_books table should exist"
-        
+
         conn.close()
 
     def test_collections_name_has_nocase_collation(self, tmp_path: Path) -> None:
         """Collections name column uses NOCASE collation to prevent duplicates."""
         conn = open_library(tmp_path / "nocase_test.db")
-        
+
         # Insert a collection
         conn.execute("INSERT INTO collections (name, description) VALUES ('Favorites', 'My favs')")
-        
+
         # Attempting to insert same name with different case should fail
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO collections (name, description) VALUES ('favorites', 'Duplicate')"
             )
-        
+
         conn.close()
 
     def test_collection_books_cascade_on_collection_delete(self, catalog: LibraryCatalog) -> None:
@@ -88,19 +88,18 @@ class TestMigration:
             for i in range(2)
         ]
         catalog.add_books_to_collection(collection_id, book_ids)
-        
+
         # Verify books are in collection
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 2
-        
+
         # Delete the collection
         catalog.delete_collection(collection_id)
-        
+
         # Verify junction table entries are gone
         conn = catalog._conn
         cursor = conn.execute(
-            "SELECT COUNT(*) FROM collection_books WHERE collection_id = ?",
-            (collection_id,)
+            "SELECT COUNT(*) FROM collection_books WHERE collection_id = ?", (collection_id,)
         )
         assert cursor.fetchone()[0] == 0
 
@@ -116,10 +115,10 @@ class TestMigration:
             for i in range(2)
         ]
         catalog.add_books_to_collection(collection_id, book_ids)
-        
+
         # Delete one book
         catalog.delete_book(book_ids[0])
-        
+
         # Verify that book is no longer in collection
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 1
@@ -210,7 +209,7 @@ class TestAddBooksToCollection:
         """Adding a single book associates it with the collection."""
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, [book_id])
-        
+
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 1
         assert books[0].id == book_id
@@ -219,7 +218,7 @@ class TestAddBooksToCollection:
         """Adding multiple books associates all with the collection."""
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, book_ids)
-        
+
         books = catalog.get_collection_books(collection_id)
         assert len(books) == len(book_ids)
         book_ids_in_collection = {b.id for b in books}
@@ -229,10 +228,10 @@ class TestAddBooksToCollection:
         """A book can be in multiple collections."""
         collection1_id = catalog.create_collection("Favorites")
         collection2_id = catalog.create_collection("To Read")
-        
+
         catalog.add_books_to_collection(collection1_id, [book_id])
         catalog.add_books_to_collection(collection2_id, [book_id])
-        
+
         books1 = catalog.get_collection_books(collection1_id)
         books2 = catalog.get_collection_books(collection2_id)
         assert len(books1) == 1
@@ -245,7 +244,7 @@ class TestAddBooksToCollection:
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, [book_id])
         catalog.add_books_to_collection(collection_id, [book_id])
-        
+
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 1
 
@@ -268,9 +267,9 @@ class TestRemoveBooksFromCollection:
         """Removing a single book disassociates it from the collection."""
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, book_ids)
-        
+
         catalog.remove_books_from_collection(collection_id, [book_ids[0]])
-        
+
         books = catalog.get_collection_books(collection_id)
         assert len(books) == len(book_ids) - 1
         remaining_ids = {b.id for b in books}
@@ -280,9 +279,9 @@ class TestRemoveBooksFromCollection:
         """Removing multiple books disassociates all from the collection."""
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, book_ids)
-        
+
         catalog.remove_books_from_collection(collection_id, book_ids[:2])
-        
+
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 1
         assert books[0].id == book_ids[2]
@@ -291,10 +290,10 @@ class TestRemoveBooksFromCollection:
         """Removing a book not in the collection succeeds silently."""
         collection_id = catalog.create_collection("Favorites")
         catalog.add_books_to_collection(collection_id, [book_id])
-        
+
         # Try to remove a book that was never added
         catalog.remove_books_from_collection(collection_id, [9999])
-        
+
         # Original book should still be there
         books = catalog.get_collection_books(collection_id)
         assert len(books) == 1
@@ -321,21 +320,21 @@ class TestListCollections:
         """list_collections returns collection info with book counts."""
         collection1_id = catalog.create_collection("Favorites")
         collection2_id = catalog.create_collection("To Read")
-        
+
         catalog.add_books_to_collection(collection1_id, book_ids[:2])
         catalog.add_books_to_collection(collection2_id, book_ids[1:])
-        
+
         collections = catalog.list_collections()
-        
+
         # Should return 2 collections
         assert len(collections) == 2
-        
+
         # Find collections by name
         by_name = {c["name"]: c for c in collections}
-        
+
         assert "Favorites" in by_name
         assert by_name["Favorites"]["book_count"] == 2
-        
+
         assert "To Read" in by_name
         assert by_name["To Read"]["book_count"] == 2
 
@@ -344,7 +343,7 @@ class TestListCollections:
         catalog.create_collection("Z Collection")
         catalog.create_collection("A Collection")
         catalog.create_collection("M Collection")
-        
+
         collections = catalog.list_collections()
         names = [c["name"] for c in collections]
         assert names == ["A Collection", "M Collection", "Z Collection"]
@@ -356,7 +355,7 @@ class TestGetCollectionBooks:
     def test_get_collection_books_ordered(self, catalog: LibraryCatalog) -> None:
         """Books are returned ordered by title_sort."""
         collection_id = catalog.create_collection("Favorites")
-        
+
         # Add books with titles that sort differently
         book_z = catalog.add_book(
             BookMetadata(title="Zebra", source_path=Path("/books/z.epub")),
@@ -370,9 +369,9 @@ class TestGetCollectionBooks:
             BookMetadata(title="Mango", source_path=Path("/books/m.epub")),
             file_hash="hash_m",
         )
-        
+
         catalog.add_books_to_collection(collection_id, [book_z, book_a, book_m])
-        
+
         books = catalog.get_collection_books(collection_id)
         titles = [b.metadata.title for b in books]
         assert titles == ["Apple", "Mango", "Zebra"]
@@ -396,9 +395,9 @@ class TestDeleteCollection:
         """Deleting a collection removes it."""
         collection_id = catalog.create_collection("To Delete")
         catalog.add_books_to_collection(collection_id, [book_id])
-        
+
         catalog.delete_collection(collection_id)
-        
+
         collection = catalog.get_collection_by_id(collection_id)
         assert collection is None
 
@@ -414,9 +413,9 @@ class TestRenameCollection:
     def test_rename_collection(self, catalog: LibraryCatalog) -> None:
         """Renaming a collection updates its name."""
         collection_id = catalog.create_collection("Old Name")
-        
+
         catalog.rename_collection(collection_id, "New Name")
-        
+
         collection = catalog.get_collection_by_id(collection_id)
         assert collection is not None
         assert collection["name"] == "New Name"
@@ -424,9 +423,9 @@ class TestRenameCollection:
     def test_rename_collection_preserves_description(self, catalog: LibraryCatalog) -> None:
         """Renaming preserves other fields."""
         collection_id = catalog.create_collection("Old Name", "A description")
-        
+
         catalog.rename_collection(collection_id, "New Name")
-        
+
         collection = catalog.get_collection_by_id(collection_id)
         assert collection is not None
         assert collection["name"] == "New Name"
@@ -436,7 +435,7 @@ class TestRenameCollection:
         """Renaming to an existing name raises IntegrityError."""
         catalog.create_collection("First")
         collection_id = catalog.create_collection("Second")
-        
+
         with pytest.raises(sqlite3.IntegrityError):
             catalog.rename_collection(collection_id, "First")
 
@@ -481,9 +480,7 @@ class TestSetCollectionDescription:
 
     def test_set_description_preserves_name_and_query(self, catalog: LibraryCatalog) -> None:
         """Setting a description leaves name and query untouched."""
-        collection_id = catalog.create_collection(
-            "Sci-Fi", "Old", query='genre:"Science Fiction"'
-        )
+        collection_id = catalog.create_collection("Sci-Fi", "Old", query='genre:"Science Fiction"')
 
         catalog.set_collection_description(collection_id, "New")
 
@@ -507,13 +504,13 @@ class TestGetCollectionsForBook:
         collection1_id = catalog.create_collection("Favorites")
         collection2_id = catalog.create_collection("To Read")
         collection3_id = catalog.create_collection("Not In This")
-        
+
         catalog.add_books_to_collection(collection1_id, [book_id])
         catalog.add_books_to_collection(collection2_id, [book_id])
-        
+
         collections = catalog.get_collections_for_book(book_id)
         collection_ids = {c["id"] for c in collections}
-        
+
         assert collection1_id in collection_ids
         assert collection2_id in collection_ids
         assert collection3_id not in collection_ids
@@ -522,10 +519,10 @@ class TestGetCollectionsForBook:
         """Collections are returned ordered by name."""
         collection_z = catalog.create_collection("Z Collection")
         collection_a = catalog.create_collection("A Collection")
-        
+
         catalog.add_books_to_collection(collection_z, [book_id])
         catalog.add_books_to_collection(collection_a, [book_id])
-        
+
         collections = catalog.get_collections_for_book(book_id)
         names = [c["name"] for c in collections]
         assert names == ["A Collection", "Z Collection"]

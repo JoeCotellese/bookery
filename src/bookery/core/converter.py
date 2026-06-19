@@ -111,7 +111,8 @@ def convert_one(
             nav_points = parse_ncx_toc(extract_result.ncx_path)
             if nav_points:
                 html_content = html_path.read_text(
-                    encoding="utf-8", errors="replace",
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 chapters = split_html_by_anchors(html_content, nav_points)
                 if chapters:

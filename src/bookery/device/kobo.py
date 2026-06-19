@@ -652,9 +652,7 @@ def _shelf_member_hash(shelf_name: str, content_ids: list[str]) -> str:
     ``_IsSynced='true'``) invalidates every stored hash and forces a one-time
     re-push that heals shelves written by an older, broken format.
     """
-    payload = (
-        _SHELF_WRITE_FORMAT + "\x00" + "\n".join(sorted(content_ids)) + "\x00" + shelf_name
-    )
+    payload = _SHELF_WRITE_FORMAT + "\x00" + "\n".join(sorted(content_ids)) + "\x00" + shelf_name
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

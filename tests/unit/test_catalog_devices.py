@@ -34,9 +34,7 @@ class TestUpsertDevice:
         assert isinstance(device_id, int)
         assert device_id > 0
 
-    def test_second_insert_same_serial_returns_same_id(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_second_insert_same_serial_returns_same_id(self, catalog: LibraryCatalog) -> None:
         first = catalog.upsert_device(
             kind="kobo", serial="N1", label=None, now="2026-05-26T08:00:00"
         )
@@ -45,12 +43,8 @@ class TestUpsertDevice:
         )
         assert first == second
 
-    def test_second_insert_updates_last_seen_at_and_label(
-        self, catalog: LibraryCatalog
-    ) -> None:
-        catalog.upsert_device(
-            kind="kobo", serial="N1", label=None, now="2026-05-26T08:00:00"
-        )
+    def test_second_insert_updates_last_seen_at_and_label(self, catalog: LibraryCatalog) -> None:
+        catalog.upsert_device(kind="kobo", serial="N1", label=None, now="2026-05-26T08:00:00")
         catalog.upsert_device(
             kind="kobo", serial="N1", label="Bedside Kobo", now="2026-05-26T09:00:00"
         )
@@ -85,9 +79,7 @@ class TestUpsertDeviceFile:
             now="2026-05-26T08:00:00",
         )
         assert (
-            catalog.resolve_book_id_for_remote_path(
-                device_id=device_id, remote_path=path
-            )
+            catalog.resolve_book_id_for_remote_path(device_id=device_id, remote_path=path)
             == book_id
         )
 
@@ -96,15 +88,11 @@ class TestUpsertDeviceFile:
             kind="kobo", serial="N1", label=None, now="2026-05-26T08:00:00"
         )
         assert (
-            catalog.resolve_book_id_for_remote_path(
-                device_id=device_id, remote_path="/nowhere"
-            )
+            catalog.resolve_book_id_for_remote_path(device_id=device_id, remote_path="/nowhere")
             is None
         )
 
-    def test_reinsert_is_idempotent_and_updates_written_at(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_reinsert_is_idempotent_and_updates_written_at(self, catalog: LibraryCatalog) -> None:
         device_id = catalog.upsert_device(
             kind="kobo", serial="N1", label=None, now="2026-05-26T08:00:00"
         )
@@ -129,9 +117,7 @@ class TestUpsertDeviceFile:
         assert len(rows) == 1
         assert rows[0]["written_at"] == "2026-05-26T09:00:00"
 
-    def test_reinsert_with_new_path_updates_path(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_reinsert_with_new_path_updates_path(self, catalog: LibraryCatalog) -> None:
         # If a book moves on the device (e.g. retitled in catalog), the new path
         # must overwrite the old — otherwise the resolver would silently miss the
         # current file.

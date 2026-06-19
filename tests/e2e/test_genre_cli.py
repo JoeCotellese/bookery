@@ -49,16 +49,12 @@ class TestGenreCliE2E:
         assert "Literary Fiction" in result.output
 
         # ls --genre filters
-        result = runner.invoke(
-            cli, ["ls", "--genre", "Literary Fiction", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["ls", "--genre", "Literary Fiction", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "The Name of the Rose" in result.output
 
         # ls --genre with empty genre shows no books
-        result = runner.invoke(
-            cli, ["ls", "--genre", "Horror", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["ls", "--genre", "Horror", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "No books" in result.output
 
@@ -79,9 +75,7 @@ class TestGenreCliE2E:
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "assign", "1", "Fake Genre", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "assign", "1", "Fake Genre", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "not a canonical genre" in result.output
 

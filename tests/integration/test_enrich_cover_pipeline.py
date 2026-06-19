@@ -13,9 +13,7 @@ _FETCHED_JPEG = b"\xff\xd8\xff\xe0" + b"fetched-cover" * 16
 class TestApplyEmbedsCover:
     """apply_metadata_safely writes the supplied cover into the non-destructive copy."""
 
-    def test_cover_bytes_land_in_rewritten_epub(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_cover_bytes_land_in_rewritten_epub(self, sample_epub: Path, tmp_path: Path) -> None:
         original_bytes = sample_epub.read_bytes()
         # The starting EPUB has no cover.
         assert read_epub_metadata(sample_epub).cover_image is None
@@ -46,9 +44,7 @@ class TestApplyEmbedsCover:
         # Non-destructive guarantee: the original source EPUB is untouched.
         assert sample_epub.read_bytes() == original_bytes
 
-    def test_no_cover_bytes_leaves_copy_coverless(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_no_cover_bytes_leaves_copy_coverless(self, sample_epub: Path, tmp_path: Path) -> None:
         proposed = BookMetadata(title="Dune", authors=["Frank Herbert"])
         output_dir = tmp_path / "output"
 

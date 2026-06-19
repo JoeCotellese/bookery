@@ -38,9 +38,7 @@ def client(catalog: LibraryCatalog):
 
 
 class TestCreateRuleCollectionEndToEnd:
-    def test_create_rule_collection_lands_on_detail(
-        self, client, catalog: LibraryCatalog
-    ) -> None:
+    def test_create_rule_collection_lands_on_detail(self, client, catalog: LibraryCatalog) -> None:
         """A valid rule persists a rule-based collection; the redirect target shows it."""
         resp = client.post(
             "/collections/create",
@@ -144,9 +142,7 @@ class TestQueryBuilderEndToEnd:
             data={"field": "author", "value": "Frank Herbert", "query": "series:Dune"},
             headers={"HX-Request": "true"},
         )
-        composed = html.unescape(
-            second.data.decode().split(">", 1)[1].rsplit("</textarea>", 1)[0]
-        )
+        composed = html.unescape(second.data.decode().split(">", 1)[1].rsplit("</textarea>", 1)[0])
         assert composed == 'series:Dune AND author:"Frank Herbert"'
 
         # Preview the composed query — it matches the seeded Dune book.
@@ -173,9 +169,7 @@ class TestQueryBuilderEndToEnd:
         assert 'series:Dune AND author:"Frank Herbert"' in detail
         assert "Dune" in detail  # the matched book title
 
-    def test_append_rejects_unknown_field(
-        self, client, catalog: LibraryCatalog
-    ) -> None:
+    def test_append_rejects_unknown_field(self, client, catalog: LibraryCatalog) -> None:
         """The composer never emits an off-whitelist field — the route 400s."""
         resp = client.post(
             "/collections/query/append",

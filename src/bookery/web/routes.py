@@ -329,9 +329,7 @@ def bulk_update_status():
         page_size=query.page_size,
         query=query,
     )
-    book_statuses = (
-        catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
-    )
+    book_statuses = catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
     list_url = _current_list_url()
     return render_template(
         "_book_list.html",
@@ -980,9 +978,7 @@ def enrich_apply(book_id):
                 proposed.cover_url,
             )
 
-    write_result = apply_metadata_safely(
-        source, proposed, output_dir, cover_image=cover_image
-    )
+    write_result = apply_metadata_safely(source, proposed, output_dir, cover_image=cover_image)
     if not write_result.success or write_result.path is None:
         flash(
             f"Apply failed: {write_result.error or 'unknown error'}",
@@ -1046,6 +1042,7 @@ def enrich_apply(book_id):
 
 
 # --- Collection routes ------------------------------------------------
+
 
 @bp.route("/collections")
 def collections_list():
@@ -1182,9 +1179,7 @@ def collection_create():
         return render_errors({"name": f"A collection named '{name}' already exists."})
 
     flash(f'Created collection "{name}".', "success")
-    return _redirect_after_save(
-        url_for("web.collection_detail", collection_id=collection_id)
-    )
+    return _redirect_after_save(url_for("web.collection_detail", collection_id=collection_id))
 
 
 # Cap on how many sample books a preview lists; the true total is always shown
@@ -1231,9 +1226,7 @@ def collection_preview():
     try:
         total, sample = catalog.resolve_query_preview(query, PREVIEW_SAMPLE_LIMIT)
     except CollectionQueryError as exc:
-        return render_template(
-            "_collection_query_error.html", errors={"query": str(exc)}
-        ), 200
+        return render_template("_collection_query_error.html", errors={"query": str(exc)}), 200
 
     return render_template(
         "_collection_preview.html",
@@ -1262,9 +1255,7 @@ def collection_query_append():
         abort(400)
 
     new_query = append_clause(query, field, value)
-    return render_template(
-        "_collection_query_field.html", form={"query": new_query}, errors={}
-    )
+    return render_template("_collection_query_field.html", form={"query": new_query}, errors={})
 
 
 def _books(n: int) -> str:
@@ -1291,9 +1282,7 @@ def _render_collection_form(
     and a hidden ``confirm`` field so the next submit executes the conversion.
     """
     template = (
-        "_collection_form.html"
-        if request.headers.get("HX-Request")
-        else "collection_form.html"
+        "_collection_form.html" if request.headers.get("HX-Request") else "collection_form.html"
     )
     # The query-builder composer offers exactly the whitelisted fields, each with a
     # value hint. A single source for both create and edit keeps the dropdown and
@@ -1474,9 +1463,7 @@ def collection_update(collection_id):
         try:
             catalog.rename_collection(collection_id, name)
         except sqlite3.IntegrityError:
-            return render_errors(
-                {"name": f"A collection named '{name}' already exists."}
-            )
+            return render_errors({"name": f"A collection named '{name}' already exists."})
 
     if description != collection["description"]:
         catalog.set_collection_description(collection_id, description)
@@ -1489,9 +1476,7 @@ def collection_update(collection_id):
         catalog.clear_collection_query(collection_id)
 
     flash(f'Updated collection "{name}".', "success")
-    return _redirect_after_save(
-        url_for("web.collection_detail", collection_id=collection_id)
-    )
+    return _redirect_after_save(url_for("web.collection_detail", collection_id=collection_id))
 
 
 @bp.route("/collections/<int:collection_id>/delete", methods=["POST"])

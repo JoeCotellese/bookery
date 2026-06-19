@@ -13,8 +13,7 @@ class KepubifyMissing(DeviceError):
 
     def __init__(self) -> None:
         super().__init__(
-            "kepubify is not on PATH. Install it (e.g. `brew install kepubify`) "
-            "and re-run."
+            "kepubify is not on PATH. Install it (e.g. `brew install kepubify`) and re-run."
         )
 
 
@@ -30,6 +29,4 @@ class KoboNotMounted(DeviceError):
     exit_code = 1
 
     def __init__(self) -> None:
-        super().__init__(
-            "No mounted Kobo detected. Pass --target /path/to/mount to override."
-        )
+        super().__init__("No mounted Kobo detected. Pass --target /path/to/mount to override.")

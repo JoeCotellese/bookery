@@ -154,9 +154,9 @@ class TestWriteCollectionShelves:
             "file:///mnt/onboard/Bookery/A/A.kepub.epub"
         ]
         conn = connect_ro(kobo_db_path)
-        name = conn.execute(
-            "SELECT Name FROM Shelf WHERE InternalName = 'bookery-7'"
-        ).fetchone()["Name"]
+        name = conn.execute("SELECT Name FROM Shelf WHERE InternalName = 'bookery-7'").fetchone()[
+            "Name"
+        ]
         conn.close()
         assert name == "New Name"
 

@@ -77,9 +77,7 @@ def _seed_catalog(tmp_path: Path) -> tuple[LibraryCatalog, int, Path]:
     return catalog, book_id, library
 
 
-def _run_sync(
-    *, catalog: LibraryCatalog, mount: Path, tmp_path: Path, backup_root: Path
-):
+def _run_sync(*, catalog: LibraryCatalog, mount: Path, tmp_path: Path, backup_root: Path):
     return sync_library_to_kobo(
         catalog=catalog,
         target=mount,
@@ -106,7 +104,9 @@ def test_read_only_kobo_db_does_not_crash(
     )
     # First sync populates device_files normally.
     _run_sync(
-        catalog=catalog, mount=mount, tmp_path=tmp_path / "s1",
+        catalog=catalog,
+        mount=mount,
+        tmp_path=tmp_path / "s1",
         backup_root=tmp_path / "backups",
     )
     catalog.set_book_status(
@@ -119,7 +119,9 @@ def test_read_only_kobo_db_does_not_crash(
     try:
         with caplog.at_level(logging.WARNING, logger="bookery.device.kobo"):
             report = _run_sync(
-                catalog=catalog, mount=mount, tmp_path=tmp_path / "s2",
+                catalog=catalog,
+                mount=mount,
+                tmp_path=tmp_path / "s2",
                 backup_root=tmp_path / "backups",
             )
     finally:
@@ -130,9 +132,7 @@ def test_read_only_kobo_db_does_not_crash(
     assert report.read_states_pulled == 1
     # Push failed cleanly — failure list populated, push count zero.
     assert report.read_statuses_pushed == 0
-    assert any(
-        "Read-status push failed" in rec.message for rec in caplog.records
-    )
+    assert any("Read-status push failed" in rec.message for rec in caplog.records)
 
 
 def test_corrupted_backup_dir_does_not_block_sync(tmp_path: Path) -> None:
@@ -148,7 +148,9 @@ def test_corrupted_backup_dir_does_not_block_sync(tmp_path: Path) -> None:
         "file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",
     )
     _run_sync(
-        catalog=catalog, mount=mount, tmp_path=tmp_path / "s1",
+        catalog=catalog,
+        mount=mount,
+        tmp_path=tmp_path / "s1",
         backup_root=tmp_path / "backups",
     )
     catalog.set_book_status(
@@ -161,10 +163,10 @@ def test_corrupted_backup_dir_does_not_block_sync(tmp_path: Path) -> None:
     (backup_root / "N428440071799").write_text("not a directory")
 
     report = _run_sync(
-        catalog=catalog, mount=mount, tmp_path=tmp_path / "s2",
+        catalog=catalog,
+        mount=mount,
+        tmp_path=tmp_path / "s2",
         backup_root=backup_root,
     )
     assert report.read_statuses_pushed == 1
     assert report.backup_path is None
-
-

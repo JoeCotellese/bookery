@@ -130,9 +130,7 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
         candidates = _find_candidates(catalog)
 
         if not candidates:
-            console.print(
-                "[green]All author file-as sort keys are already correct.[/green]"
-            )
+            console.print("[green]All author file-as sort keys are already correct.[/green]")
             return
 
         if not apply_changes:
@@ -150,16 +148,13 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
             except (OSError, EpubReadError) as exc:
                 # One unreadable file shouldn't abort the whole backfill; each
                 # fix is atomic, so already-processed books stay valid.
-                console.print(
-                    f"[red]failed:[/red] {cand.record.metadata.title}: {exc}"
-                )
+                console.print(f"[red]failed:[/red] {cand.record.metadata.title}: {exc}")
                 continue
             if applied:
                 fixed += 1
             else:
                 console.print(
-                    f"[yellow]skipped (verify failed):[/yellow] "
-                    f"{cand.record.metadata.title}"
+                    f"[yellow]skipped (verify failed):[/yellow] {cand.record.metadata.title}"
                 )
         console.print(f"[green]Updated file-as for {fixed} book(s).[/green]")
     finally:
@@ -224,9 +219,7 @@ def _render_needs_review(forms: dict[str, list[int]]) -> None:
     default=False,
     help="Show only malformed names that need a manual merge (blob/credential/mononym).",
 )
-def list_authors(
-    db_path: Path | None, duplicates_only: bool, needs_review: bool
-) -> None:
+def list_authors(db_path: Path | None, duplicates_only: bool, needs_review: bool) -> None:
     """List authors and their book counts.
 
     With --duplicates, show only authors stored under more than one spelling.
@@ -285,9 +278,7 @@ def list_authors(
     default=False,
     help="Also flip reversed names with no existing twin (lower confidence).",
 )
-def normalize(
-    db_path: Path | None, apply_changes: bool, include_reversed: bool
-) -> None:
+def normalize(db_path: Path | None, apply_changes: bool, include_reversed: bool) -> None:
     """Reorder ``Surname, Given`` author names to ``Given Surname``.
 
     Dry-run by default. The default tier touches only collision-confirmed
@@ -331,8 +322,7 @@ def normalize(
 
         if not apply_changes:
             console.print(
-                f"\n[dim]dry-run:[/dim] {len(plan)} rewrite(s). "
-                "Re-run with --apply to write."
+                f"\n[dim]dry-run:[/dim] {len(plan)} rewrite(s). Re-run with --apply to write."
             )
             return
 
@@ -340,9 +330,7 @@ def normalize(
         total = 0
         for old, new, _n, _c in plan:
             total += catalog.rewrite_author(old, new)
-        console.print(
-            f"[green]Normalized {len(plan)} name(s) across {total} book(s).[/green]"
-        )
+        console.print(f"[green]Normalized {len(plan)} name(s) across {total} book(s).[/green]")
     finally:
         conn.close()
 
@@ -392,9 +380,7 @@ def merge(
 
         sources = [form for form in forms if form != canonical]
         if not sources:
-            console.print(
-                "[yellow]Nothing to merge — every form equals the canonical.[/yellow]"
-            )
+            console.print("[yellow]Nothing to merge — every form equals the canonical.[/yellow]")
             return
 
         table = Table(title="Author merge")
@@ -415,8 +401,6 @@ def merge(
         total = 0
         for source in sources:
             total += catalog.rewrite_author(source, canonical)
-        console.print(
-            f"[green]Merged {len(sources)} spelling(s) across {total} book(s).[/green]"
-        )
+        console.print(f"[green]Merged {len(sources)} spelling(s) across {total} book(s).[/green]")
     finally:
         conn.close()

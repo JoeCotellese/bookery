@@ -13,9 +13,7 @@ from bookery.core.config import (
 
 
 @pytest.fixture
-def _isolated_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def _isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("BOOKERY_LIBRARY_ROOT", raising=False)
     return tmp_path
@@ -62,9 +60,7 @@ def test_semantic_overrides_parsed(_isolated_home: Path) -> None:
     assert cfg.convert.semantic.llm_max_retries == 5
 
 
-def test_resolve_api_key_from_env(
-    _isolated_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_resolve_api_key_from_env(_isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
     cfg = SemanticConfig(api_key_env="OPENAI_API_KEY")
     assert cfg.resolve_api_key() == "sk-test-123"

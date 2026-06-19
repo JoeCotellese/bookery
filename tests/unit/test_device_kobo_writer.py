@@ -101,8 +101,7 @@ class TestPushReadStatus:
         conn = sqlite3.connect(str(db))
         try:
             row = conn.execute(
-                "SELECT ReadStatus, ___PercentRead, DateLastRead "
-                "FROM content WHERE ContentID = ?",
+                "SELECT ReadStatus, ___PercentRead, DateLastRead FROM content WHERE ContentID = ?",
                 (self._CID_A,),
             ).fetchone()
         finally:
@@ -122,8 +121,7 @@ class TestPushReadStatus:
         conn = sqlite3.connect(str(db))
         try:
             row = conn.execute(
-                "SELECT ReadStatus, ___PercentRead, DateLastRead "
-                "FROM content WHERE ContentID = ?",
+                "SELECT ReadStatus, ___PercentRead, DateLastRead FROM content WHERE ContentID = ?",
                 (self._CID_B,),
             ).fetchone()
         finally:
@@ -141,8 +139,7 @@ class TestPushReadStatus:
         conn = sqlite3.connect(str(db))
         try:
             row = conn.execute(
-                "SELECT ReadStatus, ___PercentRead, DateLastRead "
-                "FROM content WHERE ContentID = ?",
+                "SELECT ReadStatus, ___PercentRead, DateLastRead FROM content WHERE ContentID = ?",
                 (self._CID_B,),
             ).fetchone()
         finally:
@@ -241,9 +238,7 @@ class TestPushReadStatus:
         )
         conn = sqlite3.connect(str(db))
         try:
-            rows = conn.execute(
-                "SELECT DateLastRead FROM content ORDER BY ContentID"
-            ).fetchall()
+            rows = conn.execute("SELECT DateLastRead FROM content ORDER BY ContentID").fetchall()
         finally:
             conn.close()
         assert all(r[0] == FROZEN_NOW for r in rows)

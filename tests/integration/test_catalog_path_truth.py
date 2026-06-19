@@ -37,12 +37,12 @@ def _make_epub(path: Path, title: str, author: str | None = None) -> Path:
         book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
-        b"<html><body><h1>Chapter 1</h1>"
-        b"<p>Content for " + title.encode() + b".</p>"
-        b"</body></html>"
+        b"<html><body><h1>Chapter 1</h1><p>Content for " + title.encode() + b".</p></body></html>"
     )
     book.add_item(chapter)
     book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
@@ -67,7 +67,8 @@ class TestImporterOutputPath:
     """
 
     def test_unmatched_import_populates_output_path_under_library_root(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Importing without --match sets output_path to a real file in library_root."""
         db_path = tmp_path / "lib.db"
@@ -77,14 +78,18 @@ class TestImporterOutputPath:
         library_root.mkdir()
 
         epub_path = _make_epub(
-            source_dir / "rose.epub", "The Name of the Rose", "Umberto Eco",
+            source_dir / "rose.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
         )
 
         conn = open_library(db_path)
         try:
             catalog = LibraryCatalog(conn)
             result = import_books(
-                [epub_path], catalog, library_root=library_root,
+                [epub_path],
+                catalog,
+                library_root=library_root,
             )
 
             assert result.added == 1
@@ -101,18 +106,16 @@ class TestImporterOutputPath:
             # Invariant 2: output_path resolves under library_root.
             resolved_root = library_root.resolve()
             assert output_path.resolve().is_relative_to(resolved_root), (
-                f"output_path {output_path} is not under library_root "
-                f"{library_root}"
+                f"output_path {output_path} is not under library_root {library_root}"
             )
             # Invariant 3: the file actually exists on disk at output_path.
-            assert output_path.exists(), (
-                f"output_path {output_path} does not exist on disk"
-            )
+            assert output_path.exists(), f"output_path {output_path} does not exist on disk"
         finally:
             conn.close()
 
     def test_unmatched_import_of_multiple_files_all_have_output_paths(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Every cataloged book from an unmatched batch import has output_path set."""
         db_path = tmp_path / "lib.db"
@@ -130,7 +133,9 @@ class TestImporterOutputPath:
         try:
             catalog = LibraryCatalog(conn)
             result = import_books(
-                paths, catalog, library_root=library_root,
+                paths,
+                catalog,
+                library_root=library_root,
             )
 
             assert result.added == 3
@@ -179,7 +184,8 @@ class TestMatchedSignal:
             conn.close()
 
     def test_v7_migration_backfills_rows_with_provider_provenance(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """V7 backfill is anchored on book_field_provenance, not identifiers JSON.
 
@@ -196,20 +202,21 @@ class TestMatchedSignal:
         conn = _make_v6_db(db_path)
 
         def _insert_book(
-            title: str, file_hash: str, identifiers: str | None, date_modified: str,
+            title: str,
+            file_hash: str,
+            identifiers: str | None,
+            date_modified: str,
         ) -> int:
             cursor = conn.execute(
                 "INSERT INTO books (title, authors, identifiers, source_path, "
                 "file_hash, date_modified) VALUES (?, ?, ?, ?, ?, ?)",
-                (title, '["Author"]', identifiers,
-                 f"/{file_hash}.epub", file_hash, date_modified),
+                (title, '["Author"]', identifiers, f"/{file_hash}.epub", file_hash, date_modified),
             )
             return cursor.lastrowid  # type: ignore[return-value]
 
         def _add_provenance(book_id: int, source: str, field: str = "title") -> None:
             conn.execute(
-                "INSERT INTO book_field_provenance (book_id, field_name, source) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO book_field_provenance (book_id, field_name, source) VALUES (?, ?, ?)",
                 (book_id, field, source),
             )
 
@@ -326,7 +333,10 @@ class TestMatchedSignal:
             conn.close()
 
     def test_rematch_resume_skips_matched_rows(
-        self, tmp_path: Path, sample_epub: Path, monkeypatch,
+        self,
+        tmp_path: Path,
+        sample_epub: Path,
+        monkeypatch,
     ) -> None:
         """rematch --resume now keys off metadata_matched_at, not output_path."""
         db_path = tmp_path / "resume.db"
@@ -342,7 +352,9 @@ class TestMatchedSignal:
             )
             file_hash = compute_file_hash(sample_epub)
             book_id = catalog.add_book(
-                metadata, file_hash=file_hash, output_path=sample_epub,
+                metadata,
+                file_hash=file_hash,
+                output_path=sample_epub,
             )
             catalog.set_matched_at(book_id, "2026-05-01T00:00:00")
         finally:
@@ -355,8 +367,10 @@ class TestMatchedSignal:
             return MatchOneResult(status="skipped")
 
         monkeypatch.setattr(
-            "bookery.cli.commands.rematch_cmd.match_one", fake_match_one,
+            "bookery.cli.commands.rematch_cmd.match_one",
+            fake_match_one,
         )
+
         class _StubProvider:
             def lookup_by_url(self, url):  # pragma: no cover - guard
                 return None
@@ -376,7 +390,10 @@ class TestMatchedSignal:
         assert "already matched" in result.output.lower()
 
     def test_rematch_resume_reprocesses_unmatched_rows(
-        self, tmp_path: Path, sample_epub: Path, monkeypatch,
+        self,
+        tmp_path: Path,
+        sample_epub: Path,
+        monkeypatch,
     ) -> None:
         """An unmatched row (no metadata_matched_at) IS reprocessed on --resume."""
         db_path = tmp_path / "resume2.db"
@@ -402,8 +419,10 @@ class TestMatchedSignal:
             return MatchOneResult(status="skipped")
 
         monkeypatch.setattr(
-            "bookery.cli.commands.rematch_cmd.match_one", fake_match_one,
+            "bookery.cli.commands.rematch_cmd.match_one",
+            fake_match_one,
         )
+
         class _StubProvider:
             def lookup_by_url(self, url):  # pragma: no cover - guard
                 return None
@@ -422,7 +441,10 @@ class TestMatchedSignal:
         assert called == [1]
 
     def test_rematch_writes_matched_at_on_accept(
-        self, tmp_path: Path, sample_epub: Path, monkeypatch,
+        self,
+        tmp_path: Path,
+        sample_epub: Path,
+        monkeypatch,
     ) -> None:
         """rematch records metadata_matched_at when match_one returns matched."""
         db_path = tmp_path / "writes.db"
@@ -430,7 +452,9 @@ class TestMatchedSignal:
         try:
             catalog = LibraryCatalog(conn)
             metadata = BookMetadata(
-                title="Pre-Match", authors=["Eco"], source_path=sample_epub,
+                title="Pre-Match",
+                authors=["Eco"],
+                source_path=sample_epub,
             )
             file_hash = compute_file_hash(sample_epub)
             book_id = catalog.add_book(metadata, file_hash=file_hash)
@@ -443,19 +467,27 @@ class TestMatchedSignal:
 
         def fake_match_one(*_args, **_kwargs):
             enriched = BookMetadata(
-                title="Matched!", authors=["Eco"], language="en",
+                title="Matched!",
+                authors=["Eco"],
+                language="en",
                 identifiers={"openlibrary_work": "/works/OL1W"},
             )
             return MatchOneResult(
-                status="matched", metadata=enriched, output_path=out_path,
+                status="matched",
+                metadata=enriched,
+                output_path=out_path,
                 normalization=NormalizationResult(
-                    original=metadata, normalized=metadata, was_modified=False,
+                    original=metadata,
+                    normalized=metadata,
+                    was_modified=False,
                 ),
             )
 
         monkeypatch.setattr(
-            "bookery.cli.commands.rematch_cmd.match_one", fake_match_one,
+            "bookery.cli.commands.rematch_cmd.match_one",
+            fake_match_one,
         )
+
         class _StubProvider:
             def lookup_by_url(self, url):  # pragma: no cover - guard
                 return None
@@ -468,8 +500,7 @@ class TestMatchedSignal:
         runner = CliRunner()
         result = runner.invoke(
             rematch,
-            ["--all", "--db", str(db_path), "--yes", "--no-resume",
-             "-o", str(tmp_path / "out")],
+            ["--all", "--db", str(db_path), "--yes", "--no-resume", "-o", str(tmp_path / "out")],
         )
         assert result.exit_code == 0, result.output
 

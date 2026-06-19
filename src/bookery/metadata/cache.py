@@ -41,9 +41,7 @@ class MetadataCache:
             )
             conn.commit()
 
-    def get(
-        self, provider: str, query_type: str, query_key: str
-    ) -> dict[str, Any] | None:
+    def get(self, provider: str, query_type: str, query_key: str) -> dict[str, Any] | None:
         """Return the cached response if fresh, otherwise None."""
         with closing(sqlite3.connect(self.path)) as conn:
             row = conn.execute(

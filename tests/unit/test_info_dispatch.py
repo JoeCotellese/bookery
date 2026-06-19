@@ -22,7 +22,9 @@ def _make_epub(path: Path, title: str, author: str = "Some Author") -> Path:
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = b"<html><body><h1>Chapter 1</h1><p>x.</p></body></html>"
     book.add_item(chapter)
@@ -61,7 +63,8 @@ class TestInfoIdDispatch:
         assert "Frank Herbert" in result.output
 
     def test_info_with_missing_id_errors_with_helpful_message(
-        self, db_path: Path,
+        self,
+        db_path: Path,
     ) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["info", "999", "--db", str(db_path)])
@@ -74,7 +77,8 @@ class TestInfoPathDispatch:
     """`info <path>` reads a loose EPUB file on disk (was inspect's job)."""
 
     def test_info_with_path_shows_extracted_metadata(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Foundation", "Isaac Asimov")
         runner = CliRunner()
@@ -84,7 +88,8 @@ class TestInfoPathDispatch:
         assert "Isaac Asimov" in result.output
 
     def test_info_with_extensioned_path_dispatches_as_path(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """An arg ending in .epub is always treated as a path, never an ID."""
         source = _make_epub(tmp_path / "rose.epub", "Rose", "Eco")
@@ -110,7 +115,8 @@ class TestInfoAmbiguousArg:
         assert "Dune" in result.output
 
     def test_info_unknown_bare_arg_reports_both_lookups(
-        self, db_path: Path,
+        self,
+        db_path: Path,
     ) -> None:
         """When neither ID nor path resolves, the error mentions both."""
         runner = CliRunner()

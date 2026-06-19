@@ -56,9 +56,7 @@ class TestReadKoboSerial:
         (kobo / "version").write_text("N428440071799,4.45.23684,...\n")
         assert read_kobo_serial(tmp_path) == "N428440071799"
 
-    def test_falls_back_to_full_stripped_content_when_no_comma(
-        self, tmp_path: Path
-    ) -> None:
+    def test_falls_back_to_full_stripped_content_when_no_comma(self, tmp_path: Path) -> None:
         kobo = tmp_path / ".kobo"
         kobo.mkdir()
         (kobo / "version").write_text("OPAQUE-SERIAL\n")
@@ -255,9 +253,7 @@ class TestPullReadState:
         assert bs["status"] == 2
         assert bs["updated_at"] == "2026-05-20T10:00:00"
 
-    def test_pull_does_not_overwrite_when_catalog_is_newer(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pull_does_not_overwrite_when_catalog_is_newer(self, tmp_path: Path) -> None:
         """The P2 merge: catalog with a strictly newer timestamp wins, so the
         user's bookery mark finished/reading/unread intent is preserved across syncs.
         """
@@ -279,13 +275,9 @@ class TestPullReadState:
         # Fixture's DateLastRead is "2026-05-20T10:00:00". Stamp the catalog
         # with a strictly-later ISO timestamp via the user write path.
         pull_read_state(catalog, device_id=device_id, mount_path=mount, now="t1")
-        catalog.set_book_status(
-            book_id=book_id, status=0, updated_at="2026-05-21T10:00:00"
-        )
+        catalog.set_book_status(book_id=book_id, status=0, updated_at="2026-05-21T10:00:00")
 
-        pulled, skipped = pull_read_state(
-            catalog, device_id=device_id, mount_path=mount, now="t2"
-        )
+        pulled, skipped = pull_read_state(catalog, device_id=device_id, mount_path=mount, now="t2")
         assert (pulled, skipped) == (1, 1)
         bs = conn.execute(
             "SELECT status, updated_at FROM book_status WHERE book_id = ?",
@@ -300,9 +292,7 @@ class TestPullReadState:
         ).fetchone()
         assert row["pulled_at"] == "t2"
 
-    def test_pull_overwrites_book_status_when_device_is_newer(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pull_overwrites_book_status_when_device_is_newer(self, tmp_path: Path) -> None:
         """The other side of the merge: device with a strictly newer timestamp
         clobbers the catalog. Closes the "user read on device after marking
         unread on desktop" hole from #178's sync model.
@@ -323,13 +313,9 @@ class TestPullReadState:
             now="2026-05-26T08:00:00",
         )
         # User marked unread on a date before the device's DateLastRead.
-        catalog.set_book_status(
-            book_id=book_id, status=0, updated_at="2026-05-19T10:00:00"
-        )
+        catalog.set_book_status(book_id=book_id, status=0, updated_at="2026-05-19T10:00:00")
 
-        pulled, _ = pull_read_state(
-            catalog, device_id=device_id, mount_path=mount, now="t"
-        )
+        pulled, _ = pull_read_state(catalog, device_id=device_id, mount_path=mount, now="t")
         assert pulled == 1
         bs = conn.execute(
             "SELECT status, updated_at FROM book_status WHERE book_id = ?",
@@ -346,9 +332,7 @@ class TestPullReadState:
         # KoboReader.sqlite is intentionally absent.
         conn = open_library(tmp_path / "library.db")
         catalog = LibraryCatalog(conn)
-        device_id = catalog.upsert_device(
-            kind="kobo", serial="N1", label=None, now="t"
-        )
+        device_id = catalog.upsert_device(kind="kobo", serial="N1", label=None, now="t")
         with caplog.at_level(logging.WARNING, logger="bookery.device.kobo_reader"):
             pulled, skipped = pull_read_state(
                 catalog, device_id=device_id, mount_path=mount, now="t"

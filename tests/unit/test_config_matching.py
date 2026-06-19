@@ -23,9 +23,7 @@ def test_config_file_override(isolated_home):
     config_dir = isolated_home / ".bookery"
     config_dir.mkdir()
     (config_dir / "config.toml").write_text(
-        'library_root = "/tmp/lib"\n'
-        "[matching]\n"
-        "auto_accept_threshold = 0.92\n"
+        'library_root = "/tmp/lib"\n[matching]\nauto_accept_threshold = 0.92\n'
     )
     assert config_module.load_config().matching.auto_accept_threshold == 0.92
 
@@ -42,8 +40,6 @@ def test_config_file_cache_ttl_override(isolated_home):
     config_dir = isolated_home / ".bookery"
     config_dir.mkdir()
     (config_dir / "config.toml").write_text(
-        'library_root = "/tmp/lib"\n'
-        "[matching]\n"
-        "cache_ttl_days = 7\n"
+        'library_root = "/tmp/lib"\n[matching]\ncache_ttl_days = 7\n'
     )
     assert config_module.load_config().matching.cache_ttl_days == 7

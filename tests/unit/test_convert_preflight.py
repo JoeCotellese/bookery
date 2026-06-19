@@ -59,9 +59,7 @@ def test_check_pdf_scanned(tmp_path: Path) -> None:
         preflight.check_pdf(pdf)
 
 
-def test_check_pdf_encrypted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_check_pdf_encrypted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pdf = write_text_pdf(tmp_path / "enc.pdf", [["hello world"]])
 
     class FakeReader:

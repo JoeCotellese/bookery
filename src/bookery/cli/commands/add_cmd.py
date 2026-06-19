@@ -105,7 +105,8 @@ def _convert_mobis(
 
     for i, mobi_path in enumerate(mobi_files, 1):
         console.print(
-            f"  [{i}/{total}] {mobi_path.name}… ", end="",
+            f"  [{i}/{total}] {mobi_path.name}… ",
+            end="",
         )
         result = convert_one(mobi_path, resolved_output, force=False)
         if result.skipped and result.epub_path:
@@ -134,8 +135,7 @@ def _convert_mobis(
         parts.append(f"[red]{failed} failed[/red]")
     console.print(f"\nConversion: {', '.join(parts)}")
     console.print(
-        f"Converted [bold]{converted + skipped}[/bold] of "
-        f"[bold]{total}[/bold] MOBI file(s)\n",
+        f"Converted [bold]{converted + skipped}[/bold] of [bold]{total}[/bold] MOBI file(s)\n",
     )
     return epub_files
 
@@ -157,9 +157,7 @@ def _print_summary(result: ImportResult) -> None:
         console.print(", ".join(parts))
 
     if result.error_details:
-        console.print(
-            f"\n[yellow]{result.errors} file(s) could not be read:[/yellow]"
-        )
+        console.print(f"\n[yellow]{result.errors} file(s) could not be read:[/yellow]")
         for path, msg in result.error_details:
             console.print(f"  [dim]{path.name}:[/dim] {msg}")
 
@@ -185,8 +183,7 @@ def _add_file(
 
     # Warn when --no-match is combined with flags only meaningful to matching.
     threshold_from_cli = (
-        ctx.get_parameter_source("threshold")
-        == click.core.ParameterSource.COMMANDLINE
+        ctx.get_parameter_source("threshold") == click.core.ParameterSource.COMMANDLINE
     )
     if not do_match and (auto_accept or threshold_from_cli):
         console.print(
@@ -236,7 +233,8 @@ def _add_file(
                 )
 
         result = import_books(
-            [epub_to_import], catalog,
+            [epub_to_import],
+            catalog,
             library_root=library_root,
             match_fn=match_fn,
             move=do_move,
@@ -278,12 +276,12 @@ def _add_directory(
         mobi_files = _find_mobis(directory)
         if mobi_files:
             mobi_files, dedup_skipped = filter_redundant_mobis(
-                mobi_files, epub_files,
+                mobi_files,
+                epub_files,
             )
             if dedup_skipped:
                 console.print(
-                    f"Skipped {len(dedup_skipped)} MOBI file(s) "
-                    f"— EPUB exists in directory\n",
+                    f"Skipped {len(dedup_skipped)} MOBI file(s) — EPUB exists in directory\n",
                 )
         if mobi_files:
             epub_files = _convert_mobis(mobi_files, epub_files, output_dir)
@@ -335,7 +333,8 @@ def _add_directory(
     effective_move = do_move and not pdf_epubs
 
     result = import_books(
-        epub_files, catalog,
+        epub_files,
+        catalog,
         library_root=library_root,
         match_fn=match_fn,
         move=effective_move,
@@ -374,7 +373,8 @@ def _add_directory(
     ),
 )
 @click.option(
-    "-o", "--output-dir",
+    "-o",
+    "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
     help=(
@@ -387,8 +387,7 @@ def _add_directory(
     "do_convert",
     default=False,
     help=(
-        "Convert MOBI files to EPUB before cataloging. "
-        "Only meaningful when PATH is a directory."
+        "Convert MOBI files to EPUB before cataloging. Only meaningful when PATH is a directory."
     ),
 )
 @click.option(

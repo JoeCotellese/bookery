@@ -32,7 +32,8 @@ def patched_render(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         Path(output_path).write_bytes(b"fake-epub")
 
     monkeypatch.setattr(
-        "bookery.cli.commands.vault_export_cmd.render_epub", _render,
+        "bookery.cli.commands.vault_export_cmd.render_epub",
+        _render,
     )
     monkeypatch.setattr(
         "bookery.cli.commands.vault_export_cmd.load_config",
@@ -46,7 +47,9 @@ def patched_render(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 def test_random_ids_and_old_alias_route_to_same_branch(
-    vault_with_note: Path, patched_render: dict[str, Any], tmp_path: Path,
+    vault_with_note: Path,
+    patched_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     """`--random-ids` and `--uuid random` must both produce a non-stable
     identifier — proves the alias is fully wired into the boolean path.
@@ -57,8 +60,7 @@ def test_random_ids_and_old_alias_route_to_same_branch(
     out_new = tmp_path / "new.epub"
     runner.invoke(
         cli,
-        ["vault-export", "--vault", str(vault_with_note), "-o", str(out_new),
-         "--random-ids"],
+        ["vault-export", "--vault", str(vault_with_note), "-o", str(out_new), "--random-ids"],
         catch_exceptions=False,
     )
     id_new = patched_render["metadata"].identifier
@@ -67,8 +69,7 @@ def test_random_ids_and_old_alias_route_to_same_branch(
     out_old = tmp_path / "old.epub"
     runner.invoke(
         cli,
-        ["vault-export", "--vault", str(vault_with_note), "-o", str(out_old),
-         "--uuid", "random"],
+        ["vault-export", "--vault", str(vault_with_note), "-o", str(out_old), "--uuid", "random"],
         catch_exceptions=False,
     )
     id_old = patched_render["metadata"].identifier
@@ -81,7 +82,9 @@ def test_random_ids_and_old_alias_route_to_same_branch(
 
 
 def test_uuid_stable_alias_matches_default_behavior(
-    vault_with_note: Path, patched_render: dict[str, Any], tmp_path: Path,
+    vault_with_note: Path,
+    patched_render: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
     """`--uuid stable` should produce the same identifier as no flag at all."""
     runner = CliRunner()
@@ -99,8 +102,15 @@ def test_uuid_stable_alias_matches_default_behavior(
     out_alias = tmp_path / "alias.epub"
     runner.invoke(
         cli,
-        ["vault-export", "--vault", str(vault_with_note), "-o", str(out_alias),
-         "--uuid", "stable"],
+        [
+            "vault-export",
+            "--vault",
+            str(vault_with_note),
+            "-o",
+            str(out_alias),
+            "--uuid",
+            "stable",
+        ],
         catch_exceptions=False,
     )
     id_alias = patched_render["metadata"].identifier

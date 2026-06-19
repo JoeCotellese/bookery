@@ -620,9 +620,7 @@ class TestEnrichApplyPost:
         mock_catalog.set_output_path.assert_called_once_with(1, dest)
         assert response.headers.get("HX-Redirect") == "/books/1"
 
-    def test_no_readable_file_flashes_error(
-        self, mock_catalog, client, open_library, tmp_path
-    ):
+    def test_no_readable_file_flashes_error(self, mock_catalog, client, open_library, tmp_path):
         """Both source_path and output_path missing → flash error, no writes."""
         missing_source = tmp_path / "missing-source.epub"
         missing_output = tmp_path / "missing-library.epub"
@@ -820,9 +818,7 @@ class TestEnrichApplyCarriedPayload:
 
         with (
             patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
-            patch(
-                "bookery.web.routes.fetch_cover_image", return_value=_COVER_JPEG
-            ) as mock_fetch,
+            patch("bookery.web.routes.fetch_cover_image", return_value=_COVER_JPEG) as mock_fetch,
             patch("bookery.web.routes.invalidate_cover"),
         ):
             mock_apply.return_value = WriteResult(path=dest, success=True)
@@ -1320,9 +1316,7 @@ class TestEnrichApplyCover:
         # Cache invalidated so the next /cover request re-extracts the new file.
         mock_invalidate.assert_called_once()
 
-    def test_no_cover_url_skips_fetch(
-        self, mock_catalog, client, open_library, tmp_path
-    ):
+    def test_no_cover_url_skips_fetch(self, mock_catalog, client, open_library, tmp_path):
         source = tmp_path / "src.epub"
         source.write_bytes(b"epub")
         mock_catalog.get_by_id.return_value = make_book(1, source_path=source)

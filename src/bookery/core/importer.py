@@ -164,8 +164,12 @@ def import_books(
                     result.error_details.append((epub_path, f"copy failed: {exc}"))
                     if on_progress:
                         on_progress(
-                            epub_path, metadata.title, metadata.author,
-                            "error", f"copy failed: {exc}", None,
+                            epub_path,
+                            metadata.title,
+                            metadata.author,
+                            "error",
+                            f"copy failed: {exc}",
+                            None,
                         )
                     continue
                 output_path = dest
@@ -187,15 +191,21 @@ def import_books(
                 result.skipped_metadata += 1
                 if on_progress:
                     on_progress(
-                        epub_path, metadata.title, metadata.author,
-                        "skipped", dup_match.reason, existing_id,
+                        epub_path,
+                        metadata.title,
+                        metadata.author,
+                        "skipped",
+                        dup_match.reason,
+                        existing_id,
                     )
                 continue
             # force_duplicates: import anyway but track it
 
         try:
             book_id = catalog.add_book(
-                metadata, file_hash=file_hash, output_path=output_path,
+                metadata,
+                file_hash=file_hash,
+                output_path=output_path,
             )
             if matched_via_provider:
                 catalog.set_matched_at(book_id)
@@ -205,7 +215,9 @@ def import_books(
             if on_progress:
                 status = "forced" if dup_match else "added"
                 on_progress(
-                    epub_path, metadata.title, metadata.author,
+                    epub_path,
+                    metadata.title,
+                    metadata.author,
                     status,
                     dup_match.reason if dup_match else None,
                     dup_match.record.id if dup_match else None,
@@ -225,8 +237,12 @@ def import_books(
             except OSError as exc:
                 if on_progress:
                     on_progress(
-                        epub_path, metadata.title, metadata.author,
-                        "move_failed", str(exc), None,
+                        epub_path,
+                        metadata.title,
+                        metadata.author,
+                        "move_failed",
+                        str(exc),
+                        None,
                     )
 
         # Auto-assign genres from subjects

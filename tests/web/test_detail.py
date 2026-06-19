@@ -105,11 +105,9 @@ class TestDetailSections:
         # render layer would escape it. After issue #123 the catalog stores
         # plain text, so the literal '<p class="description">' string the
         # bug report flagged never appears on the detail page.
-        mock_catalog.get_by_id.return_value = make_book(
-            1, description="Plain prose, no markup."
-        )
+        mock_catalog.get_by_id.return_value = make_book(1, description="Plain prose, no markup.")
         html = client.get("/books/1").data.decode()
-        assert '&lt;p class=&#34;description&#34;&gt;' not in html
+        assert "&lt;p class=&#34;description&#34;&gt;" not in html
         assert '<p class="description">' not in html
         assert "<p>Plain prose, no markup.</p>" in html
 
@@ -143,7 +141,9 @@ class TestEnrichedBadge:
 
     def test_badge_absent_when_output_path_missing(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(
-            1, output_path=None, metadata_matched_at=None,
+            1,
+            output_path=None,
+            metadata_matched_at=None,
         )
         html = client.get("/books/1").data.decode()
         assert "Enriched" not in html

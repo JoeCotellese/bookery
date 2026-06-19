@@ -45,7 +45,15 @@ class TestCollectionsCreate:
         """Creating a collection with description stores it."""
         result = runner.invoke(
             cli,
-            ["--db", str(db_path), "collections", "create", "Favorites", "-d", "My favorite books"]
+            [
+                "--db",
+                str(db_path),
+                "collections",
+                "create",
+                "Favorites",
+                "-d",
+                "My favorite books",
+            ],
         )
         assert result.exit_code == 0
 

@@ -1776,9 +1776,7 @@ class LibraryCatalog:
         member_ids = self._compile_query_member_ids(compiled)
         return self._fetch_books_ordered(member_ids)
 
-    def resolve_query_preview(
-        self, query: str, limit: int
-    ) -> tuple[int, list[BookRecord]]:
+    def resolve_query_preview(self, query: str, limit: int) -> tuple[int, list[BookRecord]]:
         """Resolve an ad-hoc query WITHOUT persisting; return (total, sample).
 
         Reuses the stored-query engine path (parse + compile to parameterized
@@ -1872,8 +1870,7 @@ class LibraryCatalog:
             return []
         placeholders = ",".join("?" * len(book_ids))
         sql = (
-            f"SELECT * FROM books WHERE id IN ({placeholders}) "
-            "ORDER BY title_sort COLLATE NOCASE"
+            f"SELECT * FROM books WHERE id IN ({placeholders}) ORDER BY title_sort COLLATE NOCASE"
         )
         params: list[object] = list(book_ids)
         if limit is not None:
@@ -1921,9 +1918,7 @@ class LibraryCatalog:
         if cursor.rowcount == 0:
             raise ValueError(f"Collection {collection_id} not found")
 
-    def set_collection_description(
-        self, collection_id: int, description: str | None
-    ) -> None:
+    def set_collection_description(self, collection_id: int, description: str | None) -> None:
         """Set (or clear) a collection's description.
 
         Args:

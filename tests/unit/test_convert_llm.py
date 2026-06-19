@@ -19,17 +19,13 @@ class FakeMessage:
 
 
 class FakeChoice:
-    def __init__(
-        self, message: FakeMessage, finish_reason: str = "stop"
-    ) -> None:
+    def __init__(self, message: FakeMessage, finish_reason: str = "stop") -> None:
         self.message = message
         self.finish_reason = finish_reason
 
 
 class FakeResponse:
-    def __init__(
-        self, message: FakeMessage, finish_reason: str = "stop"
-    ) -> None:
+    def __init__(self, message: FakeMessage, finish_reason: str = "stop") -> None:
         self.choices = [FakeChoice(message, finish_reason)]
 
 
@@ -90,10 +86,7 @@ def cfg() -> SemanticConfig:
 
 
 def _raw_doc(texts: list[str]) -> RawDoc:
-    blocks = tuple(
-        RawBlock(text=t, page=1, bbox=(0, 0, 100, 20), font_size=11.0)
-        for t in texts
-    )
+    blocks = tuple(RawBlock(text=t, page=1, bbox=(0, 0, 100, 20), font_size=11.0) for t in texts)
     page = RawPage(number=1, width=600, height=800, blocks=blocks)
     return RawDoc(pages=(page,), outline=())
 
@@ -132,9 +125,7 @@ def test_cache_hit_skips_llm(cache: LLMCache, cfg: SemanticConfig) -> None:
     assert len(result.articles) == 2
 
 
-def test_empty_articles_retries_then_raises(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_empty_articles_retries_then_raises(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["garbled"])
     empty = MagazineDoc(articles=[])
     fake = FakeClient([FakeMessage(parsed=empty), FakeMessage(parsed=empty)])
@@ -143,9 +134,7 @@ def test_empty_articles_retries_then_raises(
     assert fake._completions.calls == 2
 
 
-def test_malformed_json_retries_then_succeeds(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_malformed_json_retries_then_succeeds(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["x"])
     good = _doc()
     # First response: no parsed, invalid content → LLMBadResponse. Second: valid parsed.
@@ -160,9 +149,7 @@ def test_malformed_json_retries_then_succeeds(
     assert len(result.articles) == 2
 
 
-def test_empty_content_raises_after_retries(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_empty_content_raises_after_retries(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["x"])
     fake = FakeClient(
         [
@@ -186,14 +173,10 @@ def test_truncated_response_raises(cache: LLMCache, cfg: SemanticConfig) -> None
         extract_semantic(raw, cfg, cache, client_factory=lambda _c: fake)
 
 
-def test_truncated_error_mentions_max_tokens(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_truncated_error_mentions_max_tokens(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["x"])
     doc = _doc()
-    fake = FakeClient(
-        [FakeMessage(parsed=doc)], finish_reasons=["length"]
-    )
+    fake = FakeClient([FakeMessage(parsed=doc)], finish_reasons=["length"])
     cfg_once = SemanticConfig(
         provider="lm-studio",
         model="test-model",
@@ -205,9 +188,7 @@ def test_truncated_error_mentions_max_tokens(
     assert "max_tokens" in str(exc_info.value)
 
 
-def test_cache_key_varies_with_max_tokens(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_cache_key_varies_with_max_tokens(cache: LLMCache, cfg: SemanticConfig) -> None:
     """Changing max_tokens must invalidate the cached response."""
     raw = _raw_doc(["x"])
     doc = _doc()
@@ -242,9 +223,7 @@ def test_cache_key_varies_with_max_tokens(
     assert fake_b._completions.calls == 1
 
 
-def test_max_tokens_sent_to_client_when_set(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_max_tokens_sent_to_client_when_set(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["x"])
     doc = _doc()
     cfg_big = SemanticConfig(
@@ -260,9 +239,7 @@ def test_max_tokens_sent_to_client_when_set(
     assert fake._completions.last_kwargs.get("max_tokens") == 262144
 
 
-def test_max_tokens_omitted_when_zero(
-    cache: LLMCache, cfg: SemanticConfig
-) -> None:
+def test_max_tokens_omitted_when_zero(cache: LLMCache, cfg: SemanticConfig) -> None:
     raw = _raw_doc(["x"])
     doc = _doc()
     fake = FakeClient([FakeMessage(parsed=doc)])

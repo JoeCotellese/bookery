@@ -77,9 +77,7 @@ class TestGenreAutoAssign:
         reset_deprecation_state()
         db_path = _setup_db(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "auto-assign", "--dry-run", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "auto-assign", "--dry-run", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "dry run" in result.output.lower() or "Dry run" in result.output
 
@@ -96,9 +94,7 @@ class TestGenreAutoAssign:
         reset_deprecation_state()
         db_path = _setup_db(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "auto-assign", "--force", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "auto-assign", "--force", "--db", str(db_path)])
         assert result.exit_code == 0
         # Should show assignments for both matchable books
         assert "2" in result.output  # 2 assigned (Murder Mystery + Sci-Fi Classic)
@@ -166,9 +162,7 @@ class TestGenreApplyDeprecatedAlias:
         reset_deprecation_state()
         db_path = _setup_db(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "apply", "--dry-run", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "apply", "--dry-run", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "dry run" in result.output.lower() or "Dry run" in result.output
 
@@ -177,9 +171,7 @@ class TestGenreApplyDeprecatedAlias:
         reset_deprecation_state()
         db_path = _setup_db(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "apply", "--force", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "apply", "--force", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "2" in result.output  # 2 assigned via --force
 

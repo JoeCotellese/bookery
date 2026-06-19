@@ -45,55 +45,62 @@ def _verify_write(dest: Path, metadata: BookMetadata) -> list[FieldVerification]
     verifications: list[FieldVerification] = []
 
     # Title — always verified (title is never None)
-    verifications.append(FieldVerification(
-        field="title",
-        expected=metadata.title,
-        actual=read_back.title,
-        passed=metadata.title == read_back.title,
-    ))
+    verifications.append(
+        FieldVerification(
+            field="title",
+            expected=metadata.title,
+            actual=read_back.title,
+            passed=metadata.title == read_back.title,
+        )
+    )
 
     # Authors — sorted comparison for order independence, stripped for whitespace tolerance
     if metadata.authors:
         expected_sorted = ", ".join(sorted(a.strip() for a in metadata.authors))
         actual_sorted = ", ".join(sorted(a.strip() for a in read_back.authors))
-        verifications.append(FieldVerification(
-            field="authors",
-            expected=expected_sorted,
-            actual=actual_sorted,
-            passed=expected_sorted == actual_sorted,
-        ))
+        verifications.append(
+            FieldVerification(
+                field="authors",
+                expected=expected_sorted,
+                actual=actual_sorted,
+                passed=expected_sorted == actual_sorted,
+            )
+        )
 
     # Language — case-insensitive
     if metadata.language is not None:
         actual_lang = read_back.language
-        passed = (
-            actual_lang is not None
-            and metadata.language.lower() == actual_lang.lower()
+        passed = actual_lang is not None and metadata.language.lower() == actual_lang.lower()
+        verifications.append(
+            FieldVerification(
+                field="language",
+                expected=metadata.language,
+                actual=actual_lang,
+                passed=passed,
+            )
         )
-        verifications.append(FieldVerification(
-            field="language",
-            expected=metadata.language,
-            actual=actual_lang,
-            passed=passed,
-        ))
 
     # Publisher — exact match
     if metadata.publisher is not None:
-        verifications.append(FieldVerification(
-            field="publisher",
-            expected=metadata.publisher,
-            actual=read_back.publisher,
-            passed=metadata.publisher == read_back.publisher,
-        ))
+        verifications.append(
+            FieldVerification(
+                field="publisher",
+                expected=metadata.publisher,
+                actual=read_back.publisher,
+                passed=metadata.publisher == read_back.publisher,
+            )
+        )
 
     # Description — exact match
     if metadata.description is not None:
-        verifications.append(FieldVerification(
-            field="description",
-            expected=metadata.description,
-            actual=read_back.description,
-            passed=metadata.description == read_back.description,
-        ))
+        verifications.append(
+            FieldVerification(
+                field="description",
+                expected=metadata.description,
+                actual=read_back.description,
+                passed=metadata.description == read_back.description,
+            )
+        )
 
     return verifications
 
@@ -166,7 +173,9 @@ def apply_metadata_safely(
             if not v.passed:
                 logger.warning(
                     "apply_metadata_safely: field %s mismatch expected=%r actual=%r",
-                    v.field, v.expected, v.actual,
+                    v.field,
+                    v.expected,
+                    v.actual,
                 )
         logger.error("apply_metadata_safely: verification failed, cleaning up %s", dest)
         _cleanup_dest(dest)
@@ -229,7 +238,9 @@ def match_one(
 
     logger.debug(
         "match_one: extracted title=%r author=%r isbn=%r",
-        extracted.title, extracted.author, extracted.isbn,
+        extracted.title,
+        extracted.author,
+        extracted.isbn,
     )
 
     # Normalize mangled metadata for better search queries
@@ -239,7 +250,8 @@ def match_one(
     if norm_result.was_modified:
         logger.debug(
             "match_one: normalized title=%r author=%r",
-            search_meta.title, search_meta.author,
+            search_meta.title,
+            search_meta.author,
         )
 
     # Try ISBN lookup first, then fall back to title/author search
@@ -250,7 +262,8 @@ def match_one(
 
     if not candidates:
         candidates = provider.search_by_title_author(
-            search_meta.title, search_meta.author or None,
+            search_meta.title,
+            search_meta.author or None,
         )
         logger.debug("match_one: title/author search returned %d candidates", len(candidates))
 
@@ -266,7 +279,9 @@ def match_one(
 
     logger.info(
         "match_one: selected %r by %s for %s",
-        selected.title, selected.author, epub_path.name,
+        selected.title,
+        selected.author,
+        epub_path.name,
     )
 
     # Write the selected metadata to a copy

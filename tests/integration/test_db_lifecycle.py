@@ -15,8 +15,7 @@ class TestDatabaseLifecycle:
 
         conn = open_library(db_path)
         conn.execute(
-            "INSERT INTO books (title, authors, source_path, file_hash) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO books (title, authors, source_path, file_hash) VALUES (?, ?, ?, ?)",
             ("The Name of the Rose", '["Umberto Eco"]', "/books/rose.epub", "hash1"),
         )
         conn.commit()
@@ -57,8 +56,11 @@ class TestDatabaseLifecycle:
             "INSERT INTO books (title, authors, description, source_path, file_hash) "
             "VALUES (?, ?, ?, ?, ?)",
             (
-                "Foucault's Pendulum", '["Umberto Eco"]',
-                "A conspiracy thriller.", "/books/fp.epub", "hash2",
+                "Foucault's Pendulum",
+                '["Umberto Eco"]',
+                "A conspiracy thriller.",
+                "/books/fp.epub",
+                "hash2",
             ),
         )
         conn.commit()

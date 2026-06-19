@@ -25,8 +25,8 @@ class PlannedAction:
     book_id: int
     title: str
     current: Path | None  # None = unrecoverable
-    target: Path | None   # None = unrecoverable
-    reason: str           # "ok" | "already-at-target" | "missing-source" | "missing-output"
+    target: Path | None  # None = unrecoverable
+    reason: str  # "ok" | "already-at-target" | "missing-source" | "missing-output"
 
 
 def _resolve_current_location(record: BookRecord, legacy_cwd: Path) -> Path | None:
@@ -43,7 +43,7 @@ def _resolve_current_location(record: BookRecord, legacy_cwd: Path) -> Path | No
         if candidate.exists():
             return candidate
     source = record.source_path
-    if source.exists():
+    if source is not None and source.exists():
         return source
     return None
 
@@ -94,6 +94,7 @@ def plan_actions(
 
 def _reserve_unique(target: Path, claimed: set[Path]) -> Path:
     """Like resolve_collision, but also avoids targets reserved within this plan."""
+
     def taken(p: Path) -> bool:
         return p.exists() or p in claimed
 
@@ -132,9 +133,7 @@ def execute_actions(
         for action in actions:
             if action.current is None or action.target is None:
                 counts[action.reason] += 1
-                log.write(
-                    f"{action.book_id}\t{action.reason}\t-\t-\t{action.title}\n"
-                )
+                log.write(f"{action.book_id}\t{action.reason}\t-\t-\t{action.title}\n")
                 continue
 
             try:
@@ -150,9 +149,7 @@ def execute_actions(
                 )
             except Exception as exc:
                 counts["errors"] += 1
-                log.write(
-                    f"{action.book_id}\terror\t{action.current}\t{action.target}\t{exc}\n"
-                )
+                log.write(f"{action.book_id}\terror\t{action.current}\t{action.target}\t{exc}\n")
 
     return counts
 
@@ -171,27 +168,38 @@ def _print_summary(actions: list[PlannedAction], library_root: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--execute", action="store_true",
+        "--execute",
+        action="store_true",
         help="Actually copy files and update DB. Without this flag, dry-run only.",
     )
     parser.add_argument(
-        "--db", type=Path, default=None,
+        "--db",
+        type=Path,
+        default=None,
         help=f"Database path (default: {DEFAULT_DB_PATH}).",
     )
     parser.add_argument(
-        "--library-root", type=Path, default=None,
+        "--library-root",
+        type=Path,
+        default=None,
         help="Override library root (default: from config).",
     )
     parser.add_argument(
-        "--legacy-cwd", type=Path, default=Path.home() / "git" / "bookery",
+        "--legacy-cwd",
+        type=Path,
+        default=Path.home() / "git" / "bookery",
         help="Directory used to resolve legacy relative output_path values.",
     )
     parser.add_argument(
-        "--log-file", type=Path, default=None,
+        "--log-file",
+        type=Path,
+        default=None,
         help="Migration log path (default: ~/.bookery/migrations/<timestamp>.log).",
     )
     parser.add_argument(
-        "--sample", type=int, default=10,
+        "--sample",
+        type=int,
+        default=10,
         help="How many planned actions to print in dry-run (default 10).",
     )
     args = parser.parse_args(argv)
@@ -216,8 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     log_file = args.log_file or (
-        Path.home() / ".bookery" / "migrations"
-        / f"{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
+        Path.home() / ".bookery" / "migrations" / f"{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
     )
     print(f"\nExecuting. Log: {log_file}")
     counts = execute_actions(actions, catalog, conn, log_file)

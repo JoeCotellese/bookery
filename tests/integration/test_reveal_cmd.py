@@ -186,9 +186,7 @@ class TestRevealCommandFilesystemErrors:
 class TestFolderAliasDeprecated:
     """`folder` is the deprecated alias for `reveal`. It must still work and warn."""
 
-    def test_folder_alias_still_works(
-        self, db_with_books: tuple[Path, dict[str, int]]
-    ) -> None:
+    def test_folder_alias_still_works(self, db_with_books: tuple[Path, dict[str, int]]) -> None:
         db_path, ids = db_with_books
         runner = CliRunner()
         result = runner.invoke(
@@ -208,7 +206,4 @@ class TestFolderAliasDeprecated:
             ["folder", str(ids["The Hobbit"]), "--print", "--db", str(db_path)],
         )
         assert result.exit_code == 0, result.stdout
-        assert (
-            "warning: 'folder' is deprecated; use 'reveal' instead."
-            in result.stderr
-        )
+        assert "warning: 'folder' is deprecated; use 'reveal' instead." in result.stderr

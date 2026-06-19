@@ -19,7 +19,7 @@ class TestSanitizeComponent:
 
     def test_replaces_unsafe_chars(self) -> None:
         """Unsafe filesystem chars are replaced with dashes."""
-        assert sanitize_component('foo/bar\\baz:qux*?\"<>|') == "foo-bar-baz-qux"
+        assert sanitize_component('foo/bar\\baz:qux*?"<>|') == "foo-bar-baz-qux"
 
     def test_collapses_runs_of_dashes(self) -> None:
         """Multiple consecutive dashes are collapsed to one."""
@@ -36,7 +36,7 @@ class TestSanitizeComponent:
     def test_truncates_to_255_bytes(self) -> None:
         """Result is at most 255 bytes in UTF-8, without splitting codepoints."""
         # Each emoji is 4 bytes in UTF-8
-        long_name = "\U0001F4DA" * 100  # 400 bytes
+        long_name = "\U0001f4da" * 100  # 400 bytes
         result = sanitize_component(long_name)
         assert len(result.encode("utf-8")) <= 255
         # Should not have partial codepoints

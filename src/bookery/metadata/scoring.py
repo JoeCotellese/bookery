@@ -24,6 +24,7 @@ _COMPLETENESS_FIELDS: dict[str, float] = {
     "publisher": 0.05,
 }
 
+
 def _normalize_author(name: str) -> str:
     """Normalize 'Last, First' to 'First Last' and lowercase."""
     name = name.strip().lower()

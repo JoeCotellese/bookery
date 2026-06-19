@@ -144,9 +144,7 @@ class TestEnrichSearchPost:
         assert open_library.isbn_calls == []
         assert open_library.url_calls == []
 
-    def test_title_only_dispatch_passes_none_author(
-        self, mock_catalog, client, open_library
-    ):
+    def test_title_only_dispatch_passes_none_author(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1)
 
         client.post("/books/1/enrich/search", data={"title": "Dune"})
@@ -282,16 +280,12 @@ class TestEnrichFormRestoresResults:
     without forcing them to re-type their query.
     """
 
-    def test_query_params_override_metadata_prefill(
-        self, mock_catalog, client, open_library
-    ):
+    def test_query_params_override_metadata_prefill(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(
             1, title="Original", authors=["Original Author"]
         )
 
-        html = client.get(
-            "/books/1/enrich?title=Searched&author=Searched+Author"
-        ).data.decode()
+        html = client.get("/books/1/enrich?title=Searched&author=Searched+Author").data.decode()
 
         # Form is prefilled with the searched values, not the book metadata.
         assert 'value="Searched"' in html
@@ -303,22 +297,16 @@ class TestEnrichFormRestoresResults:
         self, mock_catalog, client, open_library, google_books
     ):
         mock_catalog.get_by_id.return_value = make_book(1)
-        open_library.by_title_author = [
-            make_candidate(title="Restored Hit", confidence=0.9)
-        ]
+        open_library.by_title_author = [make_candidate(title="Restored Hit", confidence=0.9)]
 
-        html = client.get(
-            "/books/1/enrich?title=Dune&author=Frank+Herbert"
-        ).data.decode()
+        html = client.get("/books/1/enrich?title=Dune&author=Frank+Herbert").data.decode()
 
         # The search was actually dispatched with the structured args.
         assert open_library.title_author_calls == [("Dune", "Frank Herbert")]
         # And the candidate is rendered inline in the response.
         assert "Restored Hit" in html
 
-    def test_isbn_query_param_triggers_isbn_search(
-        self, mock_catalog, client, open_library
-    ):
+    def test_isbn_query_param_triggers_isbn_search(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_isbn = [make_candidate(title="ISBN Hit", confidence=0.95)]
 
@@ -327,12 +315,8 @@ class TestEnrichFormRestoresResults:
         assert open_library.isbn_calls == ["9780441172719"]
         assert "ISBN Hit" in html
 
-    def test_no_query_params_renders_form_without_search(
-        self, mock_catalog, client, open_library
-    ):
-        mock_catalog.get_by_id.return_value = make_book(
-            1, title="Dune", authors=["Frank Herbert"]
-        )
+    def test_no_query_params_renders_form_without_search(self, mock_catalog, client, open_library):
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", authors=["Frank Herbert"])
 
         html = client.get("/books/1/enrich").data.decode()
 
@@ -343,9 +327,7 @@ class TestEnrichFormRestoresResults:
         assert 'value="Dune"' in html
         assert 'value="Frank Herbert"' in html
 
-    def test_empty_query_params_treated_as_absent(
-        self, mock_catalog, client, open_library
-    ):
+    def test_empty_query_params_treated_as_absent(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1, title="Dune")
 
         client.get("/books/1/enrich?isbn=&title=&author=")
@@ -366,9 +348,7 @@ class TestEnrichDiffBackToResults:
     ):
         mock_catalog.get_by_id.return_value = make_book(1)
         open_library.by_title_author = [
-            make_candidate(
-                title="Dune", confidence=0.9, source_id="ol:1", source="Open Library"
-            )
+            make_candidate(title="Dune", confidence=0.9, source_id="ol:1", source="Open Library")
         ]
 
         html = client.get(

@@ -35,9 +35,7 @@ console = Console()
     help="Output results as JSON.",
 )
 @db_option
-def inventory(
-    path: Path, target_format: str, json_output: bool, db_path: Path | None
-) -> None:
+def inventory(path: Path, target_format: str, json_output: bool, db_path: Path | None) -> None:
     """Scan a directory tree and report ebook format coverage."""
     result = scan_directory(path)
 

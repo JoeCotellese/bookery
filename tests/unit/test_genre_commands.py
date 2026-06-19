@@ -95,9 +95,7 @@ class TestGenreAssign:
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["genre", "assign", "1", "Made Up", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["genre", "assign", "1", "Made Up", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "not a canonical genre" in result.output
 
@@ -206,9 +204,7 @@ class TestLsGenreFilter:
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["ls", "--genre", "Literary Fiction", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["ls", "--genre", "Literary Fiction", "--db", str(db_path)])
         assert result.exit_code == 0
         assert "Fiction Book" in result.output
         assert "Other Book" not in result.output
@@ -219,9 +215,7 @@ class TestLsGenreFilter:
         open_library(db_path).close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["ls", "--genre", "Made Up Genre", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["ls", "--genre", "Made Up Genre", "--db", str(db_path)])
         assert result.exit_code == 1
         assert "not a canonical genre" in result.output
 
@@ -233,11 +227,13 @@ class TestGenreStats:
         db_path = tmp_path / "test.db"
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
-        for i, subs in enumerate([
-            ["widgetology", "science fiction"],
-            ["widgetology"],
-            ["whatsits"],
-        ]):
+        for i, subs in enumerate(
+            [
+                ["widgetology", "science fiction"],
+                ["widgetology"],
+                ["whatsits"],
+            ]
+        ):
             catalog.add_book(
                 BookMetadata(title=f"B{i}", source_path=Path(f"/{i}.epub")),
                 file_hash=f"h{i}",

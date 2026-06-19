@@ -86,9 +86,7 @@ class BookeryHttpClient:
                 return response.json()
 
             if response.status_code not in _RETRYABLE_STATUS_CODES:
-                raise MetadataFetchError(
-                    f"HTTP {response.status_code} from {url}"
-                )
+                raise MetadataFetchError(f"HTTP {response.status_code} from {url}")
 
             if attempt < attempts - 1:
                 delay = self._retry_after(response)

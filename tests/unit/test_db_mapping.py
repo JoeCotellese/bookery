@@ -17,12 +17,30 @@ class TestMetadataToRow:
         row = metadata_to_row(meta, file_hash="abc123")
 
         expected_keys = {
-            "title", "title_sort", "subtitle", "authors", "author_sort",
-            "language", "publisher", "isbn", "description", "series",
-            "series_index", "identifiers", "subjects", "source_path",
-            "output_path", "file_hash", "cover_url", "published_date",
-            "original_publication_date", "page_count", "rating",
-            "ratings_count", "print_type", "maturity_rating",
+            "title",
+            "title_sort",
+            "subtitle",
+            "authors",
+            "author_sort",
+            "language",
+            "publisher",
+            "isbn",
+            "description",
+            "series",
+            "series_index",
+            "identifiers",
+            "subjects",
+            "source_path",
+            "output_path",
+            "file_hash",
+            "cover_url",
+            "published_date",
+            "original_publication_date",
+            "page_count",
+            "rating",
+            "ratings_count",
+            "print_type",
+            "maturity_rating",
         }
         assert expected_keys == set(row.keys())
 
@@ -88,10 +106,17 @@ class TestRowToMetadata:
     def test_deserializes_json_authors(self) -> None:
         """JSON author string is deserialized to a list."""
         row = {
-            "title": "Test", "authors": '["A", "B"]', "author_sort": None,
-            "language": None, "publisher": None, "isbn": None,
-            "description": None, "series": None, "series_index": None,
-            "identifiers": "{}", "source_path": "/test.epub",
+            "title": "Test",
+            "authors": '["A", "B"]',
+            "author_sort": None,
+            "language": None,
+            "publisher": None,
+            "isbn": None,
+            "description": None,
+            "series": None,
+            "series_index": None,
+            "identifiers": "{}",
+            "source_path": "/test.epub",
         }
         meta = row_to_metadata(row)
         assert meta.authors == ["A", "B"]
@@ -99,10 +124,17 @@ class TestRowToMetadata:
     def test_deserializes_json_identifiers(self) -> None:
         """JSON identifiers string is deserialized to a dict."""
         row = {
-            "title": "Test", "authors": "[]", "author_sort": None,
-            "language": None, "publisher": None, "isbn": None,
-            "description": None, "series": None, "series_index": None,
-            "identifiers": '{"key": "val"}', "source_path": "/test.epub",
+            "title": "Test",
+            "authors": "[]",
+            "author_sort": None,
+            "language": None,
+            "publisher": None,
+            "isbn": None,
+            "description": None,
+            "series": None,
+            "series_index": None,
+            "identifiers": '{"key": "val"}',
+            "source_path": "/test.epub",
         }
         meta = row_to_metadata(row)
         assert meta.identifiers == {"key": "val"}
@@ -110,10 +142,17 @@ class TestRowToMetadata:
     def test_handles_null_fields(self) -> None:
         """NULL columns map to None on BookMetadata."""
         row = {
-            "title": "Test", "authors": "[]", "author_sort": None,
-            "language": None, "publisher": None, "isbn": None,
-            "description": None, "series": None, "series_index": None,
-            "identifiers": "{}", "source_path": "/test.epub",
+            "title": "Test",
+            "authors": "[]",
+            "author_sort": None,
+            "language": None,
+            "publisher": None,
+            "isbn": None,
+            "description": None,
+            "series": None,
+            "series_index": None,
+            "identifiers": "{}",
+            "source_path": "/test.epub",
         }
         meta = row_to_metadata(row)
         assert meta.language is None
@@ -124,10 +163,17 @@ class TestRowToMetadata:
     def test_source_path_restored_as_path(self) -> None:
         """source_path string is converted back to a Path."""
         row = {
-            "title": "Test", "authors": "[]", "author_sort": None,
-            "language": None, "publisher": None, "isbn": None,
-            "description": None, "series": None, "series_index": None,
-            "identifiers": "{}", "source_path": "/books/test.epub",
+            "title": "Test",
+            "authors": "[]",
+            "author_sort": None,
+            "language": None,
+            "publisher": None,
+            "isbn": None,
+            "description": None,
+            "series": None,
+            "series_index": None,
+            "identifiers": "{}",
+            "source_path": "/books/test.epub",
         }
         meta = row_to_metadata(row)
         assert meta.source_path == Path("/books/test.epub")

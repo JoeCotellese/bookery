@@ -59,9 +59,7 @@ def _stub_openai(monkeypatch: pytest.MonkeyPatch) -> None:
             Article(title="Chapter One", body="Body paragraph one.\n\nBody paragraph two."),
         ]
     )
-    monkeypatch.setattr(
-        llm_mod, "_default_client_factory", lambda _cfg: _FakeClient(doc)
-    )
+    monkeypatch.setattr(llm_mod, "_default_client_factory", lambda _cfg: _FakeClient(doc))
 
 
 def test_add_pdf_creates_epub_in_library(

@@ -213,9 +213,7 @@ class TestEditForm:
         )
 
         assert resp.headers.get("HX-Redirect") == "/collections/4"
-        mock_catalog.set_collection_query.assert_called_once_with(
-            4, 'genre:"Science Fiction"'
-        )
+        mock_catalog.set_collection_query.assert_called_once_with(4, 'genre:"Science Fiction"')
 
     # static -> rule and rule -> static are destructive conversions gated behind
     # a one-time confirm; see TestConversionGate for that behavior.
@@ -242,9 +240,7 @@ class TestConversionGate:
     form gates them behind a one-time confirm (mirrors the delete-confirm flow).
     """
 
-    def test_static_to_rule_with_members_warns_before_mutation(
-        self, mock_catalog, client
-    ):
+    def test_static_to_rule_with_members_warns_before_mutation(self, mock_catalog, client):
         # A static collection that holds hand-picked books. Setting a rule would
         # drop them, so the first POST must warn and persist nothing.
         mock_catalog.get_collection_by_id.return_value = _collection(
@@ -351,9 +347,7 @@ class TestConversionGate:
         )
 
         assert resp.headers.get("HX-Redirect") == "/collections/4"
-        mock_catalog.set_collection_query.assert_called_once_with(
-            4, 'genre:"Science Fiction"'
-        )
+        mock_catalog.set_collection_query.assert_called_once_with(4, 'genre:"Science Fiction"')
         mock_catalog.clear_collection_query.assert_not_called()
 
     def test_name_only_edit_on_static_skips_gate(self, mock_catalog, client):
@@ -374,9 +368,7 @@ class TestConversionGate:
         mock_catalog.set_collection_query.assert_not_called()
         mock_catalog.clear_collection_query.assert_not_called()
 
-    def test_static_to_rule_invalid_query_rejects_without_warning(
-        self, mock_catalog, client
-    ):
+    def test_static_to_rule_invalid_query_rejects_without_warning(self, mock_catalog, client):
         # Invalid rule on a conversion: inline alert, no mutation, no confirm gate.
         mock_catalog.get_collection_by_id.return_value = _collection(
             collection_id=4, name="Favorites", query=None

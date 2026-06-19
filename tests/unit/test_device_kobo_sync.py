@@ -65,9 +65,7 @@ class StubCatalog:
         )
         self.device_files[(device_id, remote_path)] = book_id
 
-    def resolve_book_id_for_remote_path(
-        self, *, device_id: int, remote_path: str
-    ) -> int | None:
+    def resolve_book_id_for_remote_path(self, *, device_id: int, remote_path: str) -> int | None:
         return self.device_files.get((device_id, remote_path))
 
     def upsert_device_read_state(self, **kwargs) -> None:
@@ -84,17 +82,13 @@ class StubCatalog:
     def upsert_device_shelf_state(self, **kwargs) -> None:
         pass
 
-    def get_collection_shelf_state(
-        self, device_id: int, collection_id: int
-    ) -> dict | None:
+    def get_collection_shelf_state(self, device_id: int, collection_id: int) -> dict | None:
         return None
 
     def list_collection_shelf_candidates(self, *, device_id: int) -> list:
         return []
 
-    def list_collection_device_paths(
-        self, *, collection_id: int, device_id: int
-    ) -> list[str]:
+    def list_collection_device_paths(self, *, collection_id: int, device_id: int) -> list[str]:
         return []
 
 
@@ -163,9 +157,7 @@ def test_single_book_first_sync_runs_kepubify_and_copies(tmp_path: Path) -> None
     env = _setup(tmp_path)
     epub = env["library"] / "Author A" / "Title A" / "Title A.epub"
     _write_epub(epub)
-    record = _make_record(
-        rec_id=1, title="Title A", author="Author A", epub_path=epub
-    )
+    record = _make_record(rec_id=1, title="Title A", author="Author A", epub_path=epub)
 
     report = sync_library_to_kobo(
         catalog=StubCatalog(records=[record]),
@@ -177,9 +169,7 @@ def test_single_book_first_sync_runs_kepubify_and_copies(tmp_path: Path) -> None
         books_subdir="Books",
     )
 
-    expected_dest = (
-        env["target"] / "Books" / "Author A" / "Title A" / "Title A.kepub.epub"
-    )
+    expected_dest = env["target"] / "Books" / "Author A" / "Title A" / "Title A.kepub.epub"
     assert expected_dest.exists()
     assert expected_dest.read_bytes() == b"FAKE-KEPUB"
     assert report.copied == [expected_dest]
@@ -217,8 +207,7 @@ def test_resync_with_unchanged_files_skips_kepubify(tmp_path: Path) -> None:
     )
 
     assert len(env["kepubify"].calls) == first_call_count, (
-        "kepubify should not be re-invoked when source hash, version and "
-        "on-device hash all match."
+        "kepubify should not be re-invoked when source hash, version and on-device hash all match."
     )
     assert len(report.skipped) == 1
     assert len(report.copied) == 0
@@ -334,9 +323,7 @@ def test_unknown_author_path_component(tmp_path: Path) -> None:
         books_subdir="Books",
     )
 
-    expected = (
-        env["target"] / "Books" / "Unknown Author" / "Mystery" / "Mystery.kepub.epub"
-    )
+    expected = env["target"] / "Books" / "Unknown Author" / "Mystery" / "Mystery.kepub.epub"
     assert expected.exists()
 
 
@@ -638,7 +625,7 @@ def test_kepubify_failure_is_recorded_not_raised(tmp_path: Path) -> None:
             cache=env["cache"],
             run_kepubify=boom,
             kepubify_version=env["kepubify"].get_version,
-        workspace_dir=env["workspace"],
+            workspace_dir=env["workspace"],
             books_subdir="Books",
         )
 

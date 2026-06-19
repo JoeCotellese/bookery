@@ -97,7 +97,8 @@ class TestLsCommand:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["ls", "--db", str(db_path), "--series", "Cotton Malone"],
+            cli,
+            ["ls", "--db", str(db_path), "--series", "Cotton Malone"],
         )
 
         assert result.exit_code == 0
@@ -203,7 +204,8 @@ class TestSearchCommand:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["search", "zzz_nonexistent", "--db", str(db_path)],
+            cli,
+            ["search", "zzz_nonexistent", "--db", str(db_path)],
         )
 
         assert result.exit_code == 0

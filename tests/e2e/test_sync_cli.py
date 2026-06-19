@@ -71,10 +71,14 @@ def test_empty_catalog_exits_zero(tmp_path: Path) -> None:
         result = runner.invoke(
             cli,
             [
-                "sync", "kobo",
-                "--target", str(target),
-                "--db", str(db_path),
-                "--data-dir", str(tmp_path / "data"),
+                "sync",
+                "kobo",
+                "--target",
+                str(target),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
             ],
         )
 
@@ -96,17 +100,19 @@ def test_sync_copies_kepub_to_target(tmp_path: Path) -> None:
         result = runner.invoke(
             cli,
             [
-                "sync", "kobo",
-                "--target", str(target),
-                "--db", str(db_path),
-                "--data-dir", str(tmp_path / "data"),
+                "sync",
+                "kobo",
+                "--target",
+                str(target),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
             ],
         )
 
     assert result.exit_code == 0, result.output
-    expected = (
-        target / "Bookery" / "Some Author" / "Some Title" / "Some Title.kepub.epub"
-    )
+    expected = target / "Bookery" / "Some Author" / "Some Title" / "Some Title.kepub.epub"
     assert expected.exists()
     assert "Some Title" in result.output
 
@@ -125,11 +131,15 @@ def test_dry_run_makes_no_writes(tmp_path: Path) -> None:
         result = runner.invoke(
             cli,
             [
-                "sync", "kobo",
-                "--target", str(target),
+                "sync",
+                "kobo",
+                "--target",
+                str(target),
                 "--dry-run",
-                "--db", str(db_path),
-                "--data-dir", str(tmp_path / "data"),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
             ],
         )
 
@@ -151,10 +161,14 @@ def test_kepubify_missing_exits_3(tmp_path: Path) -> None:
         result = runner.invoke(
             cli,
             [
-                "sync", "kobo",
-                "--target", str(target),
-                "--db", str(db_path),
-                "--data-dir", str(tmp_path / "data"),
+                "sync",
+                "kobo",
+                "--target",
+                str(target),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
             ],
         )
 
@@ -201,10 +215,14 @@ def test_per_book_failure_does_not_fail_command(tmp_path: Path) -> None:
         result = runner.invoke(
             cli,
             [
-                "sync", "kobo",
-                "--target", str(target),
-                "--db", str(db_path),
-                "--data-dir", str(tmp_path / "data"),
+                "sync",
+                "kobo",
+                "--target",
+                str(target),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
             ],
         )
 
@@ -222,9 +240,12 @@ def test_no_target_and_no_detection_fails(tmp_path: Path, monkeypatch) -> None:
     result = runner.invoke(
         cli,
         [
-            "sync", "kobo",
-            "--db", str(db_path),
-            "--data-dir", str(tmp_path / "data"),
+            "sync",
+            "kobo",
+            "--db",
+            str(db_path),
+            "--data-dir",
+            str(tmp_path / "data"),
         ],
     )
 

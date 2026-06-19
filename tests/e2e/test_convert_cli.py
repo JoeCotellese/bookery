@@ -60,9 +60,15 @@ class TestConvertCliSingleFile:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_epub(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
@@ -97,9 +103,15 @@ class TestConvertCliBatch:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_epub(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_dir), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_dir),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "2 converted" in result.output
@@ -117,9 +129,16 @@ class TestConvertCliForce:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_epub(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir), "--force",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                    "--force",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
@@ -141,16 +160,28 @@ class TestConvertCliSkip:
         # First run: actually converts
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_epub(tmp_path)
-            first = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            first = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
         assert first.exit_code == 0, first.output
         assert "1 converted" in first.output
 
         # Second run: should skip (output already exists, no --force)
-        second = runner.invoke(cli, [
-            "convert", str(mobi_file), "-o", str(output_dir),
-        ])
+        second = runner.invoke(
+            cli,
+            [
+                "convert",
+                str(mobi_file),
+                "-o",
+                str(output_dir),
+            ],
+        )
         assert second.exit_code == 0, second.output
         assert "1 skipped" in second.output
         assert "converted" not in second.output
@@ -168,9 +199,15 @@ class TestConvertCliErrors:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = MobiReadError("DRM protected")
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0
         assert "1 error" in result.output
@@ -195,9 +232,15 @@ class TestConvertCliErrors:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = mixed_extract
-            result = runner.invoke(cli, [
-                "convert", str(mobi_dir), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_dir),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
@@ -263,9 +306,15 @@ class TestConvertCliMobi7Metadata:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_html_with_opf(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
@@ -289,9 +338,15 @@ class TestConvertCliMobi7Metadata:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_html_with_opf(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
 
@@ -299,10 +354,7 @@ class TestConvertCliMobi7Metadata:
         assert len(epubs) == 1
         epub_path = epubs[0]
         book = epub.read_epub(str(epub_path), options={"ignore_ncx": True})
-        cover_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_COVER
-        ]
+        cover_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_COVER]
         assert len(cover_items) == 1
         assert cover_items[0].get_name() == "Images/cover.jpg"
 
@@ -320,15 +372,15 @@ def _mock_extract_to_html_with_ncx(tmp_path: Path):
 
         html_file = mobi7_dir / "book.html"
         html_file.write_text(
-            '<html><body>'
-            '<p>Book preamble</p>'
+            "<html><body>"
+            "<p>Book preamble</p>"
             '<a id="filepos000100"></a><h1>Chapter 1</h1>'
-            '<p>First chapter content.</p>'
+            "<p>First chapter content.</p>"
             '<a id="filepos000500"></a><h1>Chapter 2</h1>'
-            '<p>Second chapter content.</p>'
+            "<p>Second chapter content.</p>"
             '<a id="filepos001000"></a><h1>Chapter 3</h1>'
-            '<p>Third chapter content.</p>'
-            '</body></html>'
+            "<p>Third chapter content.</p>"
+            "</body></html>"
         )
 
         ncx_file = mobi7_dir / "toc.ncx"
@@ -389,9 +441,15 @@ class TestConvertCliNcxChapters:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_html_with_ncx(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert "1 converted" in result.output
@@ -405,12 +463,9 @@ class TestConvertCliNcxChapters:
 
         # Verify all chapter content is present
         doc_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_DOCUMENT
+            item for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
         ]
-        all_content = b"".join(
-            item.get_content() for item in doc_items
-        )
+        all_content = b"".join(item.get_content() for item in doc_items)
         assert b"First chapter content" in all_content
         assert b"Second chapter content" in all_content
         assert b"Third chapter content" in all_content
@@ -426,9 +481,15 @@ class TestConvertCliNcxChapters:
         runner = CliRunner()
         with patch("bookery.core.converter.extract_mobi") as mock_extract:
             mock_extract.side_effect = _mock_extract_to_html_with_ncx(tmp_path)
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
 
@@ -458,11 +519,20 @@ class TestConvertCliMatch:
             mock_provider = MagicMock()
             mock_provider_fn.return_value = mock_provider
             mock_match.return_value = MagicMock(
-                status="matched", output_path=tmp_path / "out.epub",
+                status="matched",
+                output_path=tmp_path / "out.epub",
             )
-            result = runner.invoke(cli, [
-                "convert", str(mobi_file), "-o", str(output_dir), "--match", "-q",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "convert",
+                    str(mobi_file),
+                    "-o",
+                    str(output_dir),
+                    "--match",
+                    "-q",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         mock_match.assert_called_once()

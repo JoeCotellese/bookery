@@ -24,9 +24,7 @@ def _add(catalog: LibraryCatalog, title: str, authors: list[str]) -> int:
 
 
 class TestAuthorForms:
-    def test_maps_each_distinct_spelling_to_book_ids(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_maps_each_distinct_spelling_to_book_ids(self, catalog: LibraryCatalog) -> None:
         a = _add(catalog, "Raise the Titanic", ["Cussler, Clive"])
         b = _add(catalog, "Sahara", ["Clive Cussler"])
         c = _add(catalog, "Crescent Dawn", ["Clive Cussler", "Dirk Cussler"])
@@ -66,9 +64,7 @@ class TestAuthorClusters:
 
 
 class TestRewriteAuthor:
-    def test_rewrites_matching_books_and_returns_count(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_rewrites_matching_books_and_returns_count(self, catalog: LibraryCatalog) -> None:
         a = _add(catalog, "Raise the Titanic", ["Cussler, Clive"])
         _add(catalog, "Unrelated", ["Brandon Sanderson"])
 
@@ -88,9 +84,7 @@ class TestRewriteAuthor:
         assert rec is not None
         assert rec.metadata.authors == ["Clive Cussler", "Dirk Cussler"]
 
-    def test_dedupes_when_target_already_present(
-        self, catalog: LibraryCatalog
-    ) -> None:
+    def test_dedupes_when_target_already_present(self, catalog: LibraryCatalog) -> None:
         book = _add(catalog, "Odd Edit", ["Cussler, Clive", "Clive Cussler"])
 
         catalog.rewrite_author("Cussler, Clive", "Clive Cussler")

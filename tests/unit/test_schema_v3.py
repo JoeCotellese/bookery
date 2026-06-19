@@ -56,9 +56,7 @@ class TestV3MigrationTables:
 
     def test_schema_version_is_3(self, conn) -> None:
         """Schema version is at least 3 after applying the v3 migration."""
-        cursor = conn.execute(
-            "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
-        )
+        cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
         assert cursor.fetchone()[0] >= 3
 
 

@@ -38,9 +38,7 @@ def _action_label(state: PruneState, *, dry_run: bool) -> str:
     return "keep"
 
 
-def _render_table(
-    candidates: list[PruneCandidate], *, dry_run: bool
-) -> Table:
+def _render_table(candidates: list[PruneCandidate], *, dry_run: bool) -> Table:
     """Build the Rich preview/result table for a prune run."""
     table = Table(title="Prune candidates")
     table.add_column("ID", style="dim", width=6, justify="right")
@@ -146,11 +144,7 @@ def prune(
         console.print(_render_table(candidates, dry_run=dry_run))
 
         orphans = [c for c in candidates if c.state is PruneState.ORPHAN]
-        warnings = [
-            c
-            for c in candidates
-            if c.state is PruneState.SOURCE_MISSING_OUTPUT_PRESENT
-        ]
+        warnings = [c for c in candidates if c.state is PruneState.SOURCE_MISSING_OUTPUT_PRESENT]
 
         for candidate in warnings:
             console.print(
@@ -172,8 +166,7 @@ def prune(
             deleted += 1
 
         console.print(
-            f"\n[green]Pruned {deleted} row(s).[/green] "
-            f"{len(warnings)} warning(s) kept."
+            f"\n[green]Pruned {deleted} row(s).[/green] {len(warnings)} warning(s) kept."
         )
     finally:
         conn.close()

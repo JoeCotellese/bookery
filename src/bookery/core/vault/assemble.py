@@ -22,6 +22,7 @@ AssembleProgressFn = Callable[[int, int, str], None]
 _NON_LETTER_BUCKET = "#"
 _NON_LETTER_BUCKET_SLUG = "hash"
 
+
 def _filing_title(display: str, frontmatter: dict | None = None) -> str:
     """Return the title used for bucket assignment and within-bucket sort.
 

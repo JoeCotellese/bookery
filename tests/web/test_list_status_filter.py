@@ -58,9 +58,7 @@ class TestStatusFilterRouting:
         assert kwargs.get("q") == "neuromancer"
         assert kwargs.get("status") == "reading"
 
-    def test_status_chip_rendered_in_active_filter_strip(
-        self, mock_catalog, client
-    ) -> None:
+    def test_status_chip_rendered_in_active_filter_strip(self, mock_catalog, client) -> None:
         # Existing _filter_chips strip displays a dismissible pill for each
         # active filter — the status filter must render with a friendly label.
         _stub_browse(mock_catalog, books=[make_book(1)], total=1)

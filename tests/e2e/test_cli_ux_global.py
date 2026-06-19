@@ -24,9 +24,7 @@ class TestGlobalDbOption:
         global_db = tmp_path / "global.db"
         sub_db = tmp_path / "sub.db"
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["--db", str(global_db), "ls", "--db", str(sub_db)]
-        )
+        result = runner.invoke(cli, ["--db", str(global_db), "ls", "--db", str(sub_db)])
         assert result.exit_code == 0, result.output
         assert sub_db.exists()
         assert not global_db.exists()
@@ -112,16 +110,12 @@ class TestThresholdDefaultFromConfig:
         result = runner.invoke(cli, ["rematch", "--help"])
         assert "matching" in result.output.lower() or "config" in result.output.lower()
 
-    def test_threshold_default_uses_config_value(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_threshold_default_uses_config_value(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         cfg_dir = tmp_path / ".bookery"
         cfg_dir.mkdir()
         (cfg_dir / "config.toml").write_text(
-            f'library_root = "{tmp_path / ".library"}"\n'
-            "[matching]\n"
-            "auto_accept_threshold = 0.73\n"
+            f'library_root = "{tmp_path / ".library"}"\n[matching]\nauto_accept_threshold = 0.73\n'
         )
         # Reload path — the help text doesn't show the numeric default,
         # but the callback resolves at invocation time. Exercise via config accessor.

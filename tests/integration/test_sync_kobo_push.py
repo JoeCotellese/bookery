@@ -143,10 +143,14 @@ def test_catalog_newer_pushes_finished_to_device(tmp_path: Path) -> None:
     assert report.read_statuses_pushed == 1
     assert report.read_status_push_failed == []
     # Device row reflects the push.
-    device_row = sqlite3.connect(str(kobo_db)).execute(
-        "SELECT ReadStatus, ___PercentRead, DateLastRead FROM content WHERE ContentID = ?",
-        ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
-    ).fetchone()
+    device_row = (
+        sqlite3.connect(str(kobo_db))
+        .execute(
+            "SELECT ReadStatus, ___PercentRead, DateLastRead FROM content WHERE ContentID = ?",
+            ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
+        )
+        .fetchone()
+    )
     assert device_row[0] == 2
     assert device_row[1] == 100.0
     # DateLastRead was stamped (just check it's no longer the seeded value).
@@ -182,9 +186,7 @@ def test_idempotent_second_sync_pushes_nothing(tmp_path: Path) -> None:
         ],
     )
     _run_sync(catalog=catalog, mount=mount, tmp_path=tmp_path / "sync1")
-    catalog.set_book_status(
-        book_id=1, status=STATUS_FINISHED, updated_at="2026-05-26T11:00:00"
-    )
+    catalog.set_book_status(book_id=1, status=STATUS_FINISHED, updated_at="2026-05-26T11:00:00")
     first = _run_sync(
         catalog=catalog,
         mount=mount,
@@ -280,10 +282,14 @@ def test_no_status_push_skips_writer_and_backup(tmp_path: Path) -> None:
     assert report.read_statuses_pushed == 0
     assert report.backup_path is None
     # Device row is untouched — still Unread.
-    device_row = sqlite3.connect(str(kobo_db)).execute(
-        "SELECT ReadStatus FROM content WHERE ContentID = ?",
-        ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
-    ).fetchone()
+    device_row = (
+        sqlite3.connect(str(kobo_db))
+        .execute(
+            "SELECT ReadStatus FROM content WHERE ContentID = ?",
+            ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
+        )
+        .fetchone()
+    )
     assert device_row[0] == 0
 
 
@@ -360,10 +366,14 @@ def test_cached_path_backfills_device_files_for_pre_p1a_book(tmp_path: Path) -> 
 
     assert report.read_statuses_pushed == 1
     assert report.read_status_push_failed == []
-    device_row = sqlite3.connect(str(kobo_db)).execute(
-        "SELECT ReadStatus FROM content WHERE ContentID = ?",
-        ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
-    ).fetchone()
+    device_row = (
+        sqlite3.connect(str(kobo_db))
+        .execute(
+            "SELECT ReadStatus FROM content WHERE ContentID = ?",
+            ("file:///mnt/onboard/Books/Asimov/Foundation/Foundation.kepub.epub",),
+        )
+        .fetchone()
+    )
     assert device_row[0] == 2
 
 
@@ -400,10 +410,14 @@ def test_reading_status_pushes_without_clobbering_percent(tmp_path: Path) -> Non
         tmp_path=tmp_path / "sync2",
         backup_root=tmp_path / "backups",
     )
-    device_row = sqlite3.connect(str(kobo_db)).execute(
-        "SELECT ReadStatus, ___PercentRead FROM content WHERE ContentID = ?",
-        ("file:///mnt/onboard/Books/Le Guin/Earthsea/Earthsea.kepub.epub",),
-    ).fetchone()
+    device_row = (
+        sqlite3.connect(str(kobo_db))
+        .execute(
+            "SELECT ReadStatus, ___PercentRead FROM content WHERE ContentID = ?",
+            ("file:///mnt/onboard/Books/Le Guin/Earthsea/Earthsea.kepub.epub",),
+        )
+        .fetchone()
+    )
     assert device_row[0] == 1
     # Percent untouched because status=reading skips that column.
     assert device_row[1] == 42.0

@@ -56,9 +56,7 @@ class TestCanonicalAuthor:
         assert canonical_author("Mikhail Sakhniuk, Adam Boduch") == (
             "Mikhail Sakhniuk, Adam Boduch"
         )
-        assert canonical_author("Patricia McConnell, Ph.D.,") == (
-            "Patricia McConnell, Ph.D.,"
-        )
+        assert canonical_author("Patricia McConnell, Ph.D.,") == ("Patricia McConnell, Ph.D.,")
 
     def test_strips_surrounding_whitespace(self) -> None:
         assert canonical_author("  Cussler,  Clive  ") == "Clive Cussler"

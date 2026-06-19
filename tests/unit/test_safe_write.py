@@ -116,9 +116,7 @@ class TestApplyMetadataSafely:
 class TestWriteBackVerification:
     """Tests for write-back verification in apply_metadata_safely."""
 
-    def test_result_contains_verified_fields(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_result_contains_verified_fields(self, sample_epub: Path, tmp_path: Path) -> None:
         """WriteResult has verification entries for written fields."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(
@@ -136,9 +134,7 @@ class TestWriteBackVerification:
         assert "authors" in field_names
         assert "language" in field_names
 
-    def test_result_includes_field_details(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_result_includes_field_details(self, sample_epub: Path, tmp_path: Path) -> None:
         """FieldVerification includes expected and actual values."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(title="Verified Title", authors=["Verified Author"])
@@ -150,9 +146,7 @@ class TestWriteBackVerification:
         assert title_field.actual == "Verified Title"
         assert title_field.passed is True
 
-    def test_write_failure_cleans_up_copy(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_write_failure_cleans_up_copy(self, sample_epub: Path, tmp_path: Path) -> None:
         """If write_epub_metadata raises, the copy is deleted."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -169,18 +163,14 @@ class TestWriteBackVerification:
         # The failed copy should be cleaned up
         assert not list(output_dir.rglob("*.epub"))
 
-    def test_verification_failure_cleans_up_copy(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_verification_failure_cleans_up_copy(self, sample_epub: Path, tmp_path: Path) -> None:
         """If read-back returns wrong title, the copy is deleted."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         metadata = BookMetadata(title="Expected Title", authors=["Author"])
 
         wrong_metadata = BookMetadata(title="Wrong Title", authors=["Author"])
-        with patch(
-            "bookery.core.pipeline.read_epub_metadata", return_value=wrong_metadata
-        ):
+        with patch("bookery.core.pipeline.read_epub_metadata", return_value=wrong_metadata):
             result = apply_metadata_safely(sample_epub, metadata, output_dir)
 
         assert result.success is False
@@ -205,9 +195,7 @@ class TestWriteBackVerification:
         assert result.path.exists()
         assert result.verified_fields == []
 
-    def test_only_written_fields_are_verified(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_only_written_fields_are_verified(self, sample_epub: Path, tmp_path: Path) -> None:
         """None fields are excluded from verification."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(
@@ -227,9 +215,7 @@ class TestWriteBackVerification:
         assert "publisher" not in field_names
         assert "description" not in field_names
 
-    def test_author_order_independence(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_author_order_independence(self, sample_epub: Path, tmp_path: Path) -> None:
         """Authors verified with sorted comparison — order doesn't matter."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(
@@ -242,9 +228,7 @@ class TestWriteBackVerification:
         authors_field = next(v for v in result.verified_fields if v.field == "authors")
         assert authors_field.passed is True
 
-    def test_language_case_insensitive(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_language_case_insensitive(self, sample_epub: Path, tmp_path: Path) -> None:
         """Language verification is case-insensitive ('EN' matches 'en')."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(title="Test", authors=["Author"], language="EN")
@@ -254,9 +238,7 @@ class TestWriteBackVerification:
         lang_field = next(v for v in result.verified_fields if v.field == "language")
         assert lang_field.passed is True
 
-    def test_author_whitespace_tolerance(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_author_whitespace_tolerance(self, sample_epub: Path, tmp_path: Path) -> None:
         """Author verification strips whitespace before comparing."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(
@@ -269,9 +251,7 @@ class TestWriteBackVerification:
         authors_field = next(v for v in result.verified_fields if v.field == "authors")
         assert authors_field.passed is True
 
-    def test_verify_readback_failure_keeps_file(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_verify_readback_failure_keeps_file(self, sample_epub: Path, tmp_path: Path) -> None:
         """If read-back fails (e.g. missing archive entry), keep the file and warn."""
         output_dir = tmp_path / "output"
         metadata = BookMetadata(title="Test", authors=["Author"])

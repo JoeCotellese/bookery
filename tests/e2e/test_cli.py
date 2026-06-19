@@ -52,19 +52,25 @@ class TestCliImport:
     """E2e tests for `bookery import`."""
 
     def test_import_scans_directory(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import command finds and catalogs EPUBs in a directory."""
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(sample_epub.parent), "--db", str(db_path)],
+            cli,
+            ["import", str(sample_epub.parent), "--db", str(db_path)],
         )
         assert result.exit_code == 0
         assert "1 added" in result.output
 
     def test_import_shows_multiple_files(
-        self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        minimal_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import command catalogs all EPUBs found in directory."""
         scan_dir = tmp_path / "scan"
@@ -75,7 +81,8 @@ class TestCliImport:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
         assert result.exit_code == 0
         assert "2 added" in result.output
@@ -88,7 +95,10 @@ class TestCliImport:
         assert "No EPUB files found" in result.output
 
     def test_import_handles_corrupt_files(
-        self, sample_epub: Path, corrupt_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        corrupt_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import command handles corrupt files without crashing."""
         scan_dir = tmp_path / "scan"
@@ -99,7 +109,8 @@ class TestCliImport:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
         assert result.exit_code == 0
         assert "could not be read" in result.output

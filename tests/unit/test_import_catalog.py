@@ -36,12 +36,12 @@ def _make_epub(path: Path, title: str, author: str | None = None) -> Path:
         book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
-        b"<html><body><h1>Chapter 1</h1>"
-        b"<p>Content for " + title.encode() + b".</p>"
-        b"</body></html>"
+        b"<html><body><h1>Chapter 1</h1><p>Content for " + title.encode() + b".</p></body></html>"
     )
     book.add_item(chapter)
     book.toc = [epub.Link("chap01.xhtml", "Chapter 1", "chap01")]
@@ -57,7 +57,10 @@ class TestImportBooks:
     """Tests for import_books function."""
 
     def test_import_single_file(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Importing a single EPUB adds one record to the catalog."""
         epub_path = _make_epub(tmp_path / "book.epub", "Test Book", "Author")
@@ -72,7 +75,10 @@ class TestImportBooks:
         assert records[0].metadata.title == "Test Book"
 
     def test_import_directory_of_files(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Importing multiple EPUBs adds all to the catalog."""
         for i in range(3):
@@ -86,7 +92,10 @@ class TestImportBooks:
         assert len(records) == 3
 
     def test_import_skips_duplicates(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Importing the same file twice adds it once and skips the second."""
         epub_path = _make_epub(tmp_path / "book.epub", "Test Book")
@@ -102,7 +111,10 @@ class TestImportBooks:
         assert len(records) == 1
 
     def test_import_records_source_path(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """source_path in the DB matches the original file location."""
         epub_path = _make_epub(tmp_path / "book.epub", "Test Book")
@@ -113,7 +125,10 @@ class TestImportBooks:
         assert records[0].source_path == epub_path
 
     def test_import_stores_file_hash(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """File hash is computed and stored in the catalog."""
         epub_path = _make_epub(tmp_path / "book.epub", "Test Book")
@@ -124,7 +139,10 @@ class TestImportBooks:
         assert len(records[0].file_hash) == 64  # SHA-256 hex
 
     def test_import_handles_corrupt_files(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Corrupt files are logged as errors; valid files still imported."""
         good = _make_epub(tmp_path / "good.epub", "Good Book")
@@ -139,7 +157,10 @@ class TestImportBooks:
         assert result.error_details[0][0] == bad
 
     def test_import_returns_result_summary(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """ImportResult has correct totals for mixed outcomes."""
         epub1 = _make_epub(tmp_path / "a.epub", "Book A")
@@ -149,7 +170,9 @@ class TestImportBooks:
 
         # First import: 2 added, 1 error
         result1 = import_books(
-            [epub1, epub2, corrupt], catalog, library_root=library_root,
+            [epub1, epub2, corrupt],
+            catalog,
+            library_root=library_root,
         )
         assert result1.added == 2
         assert result1.errors == 1
@@ -157,7 +180,9 @@ class TestImportBooks:
 
         # Second import: 0 added, 2 skipped, 1 error
         result2 = import_books(
-            [epub1, epub2, corrupt], catalog, library_root=library_root,
+            [epub1, epub2, corrupt],
+            catalog,
+            library_root=library_root,
         )
         assert result2.added == 0
         assert result2.skipped == 2
@@ -168,7 +193,10 @@ class TestImportCopyByDefault:
     """Tests for copy-by-default behavior added in #63."""
 
     def test_import_copies_to_library_root_by_default(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Import copies source into library_root and records output_path."""
         source_dir = tmp_path / "downloads"
@@ -185,7 +213,10 @@ class TestImportCopyByDefault:
         assert library_root in out.parents
 
     def test_import_preserves_source_by_default(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Source file is preserved when move is False."""
         source_dir = tmp_path / "downloads"
@@ -197,7 +228,10 @@ class TestImportCopyByDefault:
         assert epub_path.exists()
 
     def test_import_move_deletes_source_after_copy(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """With move=True, source is removed after successful catalog."""
         source_dir = tmp_path / "downloads"
@@ -205,7 +239,10 @@ class TestImportCopyByDefault:
         epub_path = _make_epub(source_dir / "book.epub", "Test Book", "Alice Adams")
 
         import_books(
-            [epub_path], catalog, library_root=library_root, move=True,
+            [epub_path],
+            catalog,
+            library_root=library_root,
+            move=True,
         )
 
         assert not epub_path.exists()
@@ -214,7 +251,9 @@ class TestImportCopyByDefault:
         assert records[0].output_path.exists()
 
     def test_import_idempotent_when_source_inside_library_root(
-        self, catalog: LibraryCatalog, library_root: Path,
+        self,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """File already inside library_root is cataloged in place, no copy."""
         author_dir = library_root / "Adams, Alice"
@@ -230,7 +269,9 @@ class TestImportCopyByDefault:
         assert len(list(library_root.rglob("*.epub"))) == 1
 
     def test_import_move_preserves_source_when_idempotent(
-        self, catalog: LibraryCatalog, library_root: Path,
+        self,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """--move on an idempotent file must NOT delete it (it's the library copy)."""
         author_dir = library_root / "Adams, Alice"
@@ -238,13 +279,19 @@ class TestImportCopyByDefault:
         epub_path = _make_epub(author_dir / "Existing.epub", "Existing", "Alice Adams")
 
         import_books(
-            [epub_path], catalog, library_root=library_root, move=True,
+            [epub_path],
+            catalog,
+            library_root=library_root,
+            move=True,
         )
 
         assert epub_path.exists()
 
     def test_import_collision_resolved_with_suffix(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """Existing file at target gets _1 suffix via resolve_collision."""
         # Pre-populate library with a file that would collide on target path
@@ -265,7 +312,10 @@ class TestImportCopyByDefault:
         assert len(epubs) == 2
 
     def test_import_match_path_not_double_copied(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
     ) -> None:
         """When match_fn returns an output_path, import_books does not recopy."""
         source_dir = tmp_path / "downloads"
@@ -281,7 +331,10 @@ class TestImportCopyByDefault:
             return MatchResult(metadata=metadata, output_path=match_copy)
 
         import_books(
-            [epub_path], catalog, library_root=library_root, match_fn=match_fn,
+            [epub_path],
+            catalog,
+            library_root=library_root,
+            match_fn=match_fn,
         )
 
         records = catalog.list_all()
@@ -290,7 +343,10 @@ class TestImportCopyByDefault:
         assert len(list(library_root.rglob("*.epub"))) == 1
 
     def test_import_copy_failure_records_error(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """OSError during copy is recorded as an error, does not crash."""
@@ -312,7 +368,10 @@ class TestImportCopyByDefault:
         assert catalog.list_all() == []
 
     def test_import_move_failure_warns_but_succeeds(
-        self, tmp_path: Path, catalog: LibraryCatalog, library_root: Path,
+        self,
+        tmp_path: Path,
+        catalog: LibraryCatalog,
+        library_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """If unlink after copy fails, book is still cataloged."""
@@ -330,7 +389,10 @@ class TestImportCopyByDefault:
         monkeypatch.setattr(Path, "unlink", failing_unlink)
 
         result = import_books(
-            [epub_path], catalog, library_root=library_root, move=True,
+            [epub_path],
+            catalog,
+            library_root=library_root,
+            move=True,
         )
 
         assert result.added == 1

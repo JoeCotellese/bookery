@@ -9,9 +9,7 @@ from bookery.core.config import get_sync_config, load_config
 
 
 @pytest.fixture
-def _isolated_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def _isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("BOOKERY_LIBRARY_ROOT", raising=False)
     return tmp_path
@@ -27,9 +25,7 @@ def test_sync_kobo_overrides_parsed(_isolated_home: Path) -> None:
     config_file = _isolated_home / ".bookery" / "config.toml"
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(
-        "[sync.kobo]\n"
-        'books_subdir = "MyBooks"\n'
-        "auto_detect = false\n",
+        '[sync.kobo]\nbooks_subdir = "MyBooks"\nauto_detect = false\n',
         encoding="utf-8",
     )
     cfg = load_config()

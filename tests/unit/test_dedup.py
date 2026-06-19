@@ -47,7 +47,8 @@ class TestFilterRedundantMobis:
         assert skipped == []
 
     def test_mobi_skipped_with_multiple_epubs_in_dir(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Multiple EPUBs + MOBI in same dir → MOBI is skipped."""
         book_dir = tmp_path / "Author" / "Title"
@@ -65,7 +66,8 @@ class TestFilterRedundantMobis:
         assert skipped == [mobi]
 
     def test_mobi_skipped_even_with_different_filename(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """MOBI filename doesn't match EPUB → still skipped (same dir)."""
         book_dir = tmp_path / "Author" / "Title"
@@ -97,7 +99,8 @@ class TestFilterRedundantMobis:
         mobi_keep.touch()
 
         to_convert, skipped = filter_redundant_mobis(
-            [mobi_skip, mobi_keep], [epub],
+            [mobi_skip, mobi_keep],
+            [epub],
         )
 
         assert to_convert == [mobi_keep]

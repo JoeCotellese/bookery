@@ -27,7 +27,9 @@ def _make_epub(
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
         b"<html><body><h1>Chapter 1</h1><p>"
@@ -57,13 +59,17 @@ def library_root(_isolate_library_root: Path) -> Path:
 
 class TestAddCommand:
     def test_add_single_file_copies_to_library(
-        self, tmp_path: Path, db_path: Path, library_root: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
+        library_root: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Foundation", "Isaac Asimov")
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
@@ -77,20 +83,25 @@ class TestAddCommand:
         conn.close()
 
     def test_add_source_preserved_by_default(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Dune", "Frank Herbert")
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
         assert source.exists(), "source should not be deleted by default"
 
     def test_add_move_deletes_source(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Neuromancer", "William Gibson")
 
@@ -104,7 +115,9 @@ class TestAddCommand:
         assert not source.exists(), "source should be deleted with --move"
 
     def test_add_move_preserves_source_when_idempotent(
-        self, db_path: Path, library_root: Path,
+        self,
+        db_path: Path,
+        library_root: Path,
     ) -> None:
         library_root.mkdir(parents=True, exist_ok=True)
         source = _make_epub(library_root / "book.epub", "Hyperion", "Dan Simmons")
@@ -119,7 +132,9 @@ class TestAddCommand:
         assert source.exists(), "source inside library_root must never be unlinked"
 
     def test_add_rejects_non_epub(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         bad = tmp_path / "notabook.txt"
         bad.write_text("hello")
@@ -131,19 +146,23 @@ class TestAddCommand:
         assert "epub" in result.output.lower() or "not" in result.output.lower()
 
     def test_add_duplicate_hash_reports_existing(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "1984", "George Orwell")
 
         runner = CliRunner()
         r1 = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
         assert r1.exit_code == 0, r1.output
 
         # Re-add same file
         r2 = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
         assert r2.exit_code == 0, r2.output
 
@@ -153,7 +172,9 @@ class TestAddCommand:
         conn.close()
 
     def test_add_idempotent_inside_library(
-        self, db_path: Path, library_root: Path,
+        self,
+        db_path: Path,
+        library_root: Path,
     ) -> None:
         library_root.mkdir(parents=True, exist_ok=True)
         author_dir = library_root / "Gibson, William"
@@ -162,7 +183,8 @@ class TestAddCommand:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
@@ -178,13 +200,16 @@ class TestAddCommand:
         conn.close()
 
     def test_add_no_match_skips_pipeline(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Solaris", "Stanislaw Lem")
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["add", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
@@ -197,7 +222,9 @@ class TestAddCommand:
         conn.close()
 
     def test_add_quiet_with_no_match_warns(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         source = _make_epub(tmp_path / "book.epub", "Roadside Picnic", "Strugatsky")
 
@@ -205,9 +232,12 @@ class TestAddCommand:
         result = runner.invoke(
             cli,
             [
-                "add", str(source),
-                "--db", str(db_path),
-                "--no-match", "--quiet",
+                "add",
+                str(source),
+                "--db",
+                str(db_path),
+                "--no-match",
+                "--quiet",
             ],
         )
 
@@ -219,7 +249,9 @@ class TestAddDispatch:
     """Dispatch behavior: `add` accepts both files and directories."""
 
     def test_add_directory_scans_and_catalogs(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`add <dir>` walks the directory and catalogs each EPUB found."""
         scan_dir = tmp_path / "scan"
@@ -229,7 +261,8 @@ class TestAddDispatch:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["add", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output
@@ -240,7 +273,9 @@ class TestAddDispatch:
         conn.close()
 
     def test_add_empty_directory_reports_nothing_found(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`add <empty-dir>` reports no EPUB files and exits 0."""
         empty = tmp_path / "empty"
@@ -248,19 +283,23 @@ class TestAddDispatch:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(empty), "--db", str(db_path)],
+            cli,
+            ["add", str(empty), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output
         assert "No EPUB files found" in result.output
 
     def test_add_missing_path_errors(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`add <missing>` errors out with a clear message."""
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["add", str(tmp_path / "nope.epub"), "--db", str(db_path)],
+            cli,
+            ["add", str(tmp_path / "nope.epub"), "--db", str(db_path)],
         )
 
         assert result.exit_code != 0
@@ -268,7 +307,9 @@ class TestAddDispatch:
         assert "not exist" in result.output.lower() or "no such" in result.output.lower()
 
     def test_add_directory_force_duplicates_flag_available(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`add <dir>` accepts --force-duplicates (preserved from import)."""
         scan_dir = tmp_path / "scan"
@@ -276,11 +317,15 @@ class TestAddDispatch:
         # Distinct bytes (different content_marker → different hash) but same
         # title+author so metadata-level dedup would normally skip the second.
         _make_epub(
-            scan_dir / "rose_v1.epub", "Dup Title", "Dup Author",
+            scan_dir / "rose_v1.epub",
+            "Dup Title",
+            "Dup Author",
             content_marker="v1",
         )
         _make_epub(
-            scan_dir / "rose_v2.epub", "Dup Title", "Dup Author",
+            scan_dir / "rose_v2.epub",
+            "Dup Title",
+            "Dup Author",
             content_marker="v2",
         )
 
@@ -288,8 +333,10 @@ class TestAddDispatch:
         result = runner.invoke(
             cli,
             [
-                "add", str(scan_dir),
-                "--db", str(db_path),
+                "add",
+                str(scan_dir),
+                "--db",
+                str(db_path),
                 "--force-duplicates",
             ],
         )
@@ -301,7 +348,9 @@ class TestAddDispatch:
         conn.close()
 
     def test_add_directory_output_dir_flag_available(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`add <dir> -o <dir>` accepts --output-dir (preserved from import)."""
         scan_dir = tmp_path / "scan"
@@ -313,9 +362,12 @@ class TestAddDispatch:
         result = runner.invoke(
             cli,
             [
-                "add", str(scan_dir),
-                "--db", str(db_path),
-                "-o", str(output_dir),
+                "add",
+                str(scan_dir),
+                "--db",
+                str(db_path),
+                "-o",
+                str(output_dir),
             ],
         )
 
@@ -327,7 +379,9 @@ class TestImportDeprecatedAlias:
     """`import` is a deprecated alias that forwards to `add`."""
 
     def test_import_file_still_works(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`import <file>` works and prints a deprecation warning."""
         reset_deprecation_state()
@@ -335,7 +389,8 @@ class TestImportDeprecatedAlias:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(source), "--db", str(db_path), "--no-match"],
+            cli,
+            ["import", str(source), "--db", str(db_path), "--no-match"],
         )
 
         assert result.exit_code == 0, result.output
@@ -349,7 +404,9 @@ class TestImportDeprecatedAlias:
         conn.close()
 
     def test_import_directory_still_works(
-        self, tmp_path: Path, db_path: Path,
+        self,
+        tmp_path: Path,
+        db_path: Path,
     ) -> None:
         """`import <dir>` works and prints a deprecation warning."""
         reset_deprecation_state()
@@ -359,7 +416,8 @@ class TestImportDeprecatedAlias:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output

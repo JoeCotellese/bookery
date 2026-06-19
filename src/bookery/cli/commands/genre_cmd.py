@@ -63,9 +63,7 @@ def genre_assign(book_id: int, genre_name: str, primary: bool, db_path: Path | N
 
     record = catalog.get_by_id(book_id)
     title = record.metadata.title if record else f"Book {book_id}"
-    console.print(
-        f"Assigned [cyan]{genre_name}[/cyan] to [bold]{title}[/bold]."
-    )
+    console.print(f"Assigned [cyan]{genre_name}[/cyan] to [bold]{title}[/bold].")
     conn.close()
 
 
@@ -142,9 +140,7 @@ def genre_auto_assign(
 
     if result.assigned and (verbose or dry_run):
         for _book_id, title, primary_genre in result.assigned:
-            console.print(
-                f"  [bold]{title}[/bold] → [cyan]{primary_genre}[/cyan]"
-            )
+            console.print(f"  [bold]{title}[/bold] → [cyan]{primary_genre}[/cyan]")
             console.print()
 
     console.print(f"[green]{len(result.assigned)}[/green] book(s) assigned genres.")

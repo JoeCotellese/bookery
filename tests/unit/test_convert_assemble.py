@@ -49,13 +49,12 @@ def test_assemble_has_chapter_files(tmp_path: Path, sample_doc: MagazineDoc) -> 
     assert len(docs) >= 3
 
 
-def test_assemble_renders_metadata_headers(
-    tmp_path: Path, sample_doc: MagazineDoc
-) -> None:
+def test_assemble_renders_metadata_headers(tmp_path: Path, sample_doc: MagazineDoc) -> None:
     path = assemble(sample_doc, tmp_path, stem="book")
     book = epub.read_epub(str(path))
     chapter_items = [
-        item for item in book.get_items()
+        item
+        for item in book.get_items()
         if item.get_type() == ITEM_DOCUMENT and "chap_001" in item.file_name
     ]
     assert chapter_items
@@ -73,10 +72,7 @@ def test_assemble_title_from_publication_and_issue(
 ) -> None:
     path = assemble(sample_doc, tmp_path, stem="raw_stem")
     book = epub.read_epub(str(path))
-    assert (
-        book.get_metadata("DC", "title")[0][0]
-        == "The New Yorker - April 13, 2026"
-    )
+    assert book.get_metadata("DC", "title")[0][0] == "The New Yorker - April 13, 2026"
 
 
 def test_assemble_title_falls_back_to_hint() -> None:
@@ -84,9 +80,7 @@ def test_assemble_title_falls_back_to_hint() -> None:
     import tempfile
 
     with tempfile.TemporaryDirectory() as td:
-        path = assemble(
-            doc, Path(td), stem="raw_stem", title_hint="My Book"
-        )
+        path = assemble(doc, Path(td), stem="raw_stem", title_hint="My Book")
         book = epub.read_epub(str(path))
         assert book.get_metadata("DC", "title")[0][0] == "My Book"
 
@@ -95,9 +89,7 @@ def test_assemble_title_humanizes_stem_when_no_hint(tmp_path: Path) -> None:
     doc = MagazineDoc(articles=[Article(title="Only", body="Body.")])
     path = assemble(doc, tmp_path, stem="The_New_Yorker-2026-04-13")
     book = epub.read_epub(str(path))
-    assert (
-        book.get_metadata("DC", "title")[0][0] == "The New Yorker 2026 04 13"
-    )
+    assert book.get_metadata("DC", "title")[0][0] == "The New Yorker 2026 04 13"
 
 
 def test_assemble_empty_doc(tmp_path: Path) -> None:
@@ -115,7 +107,8 @@ def test_assemble_body_paragraph_splitting(tmp_path: Path) -> None:
     path = assemble(doc, tmp_path, stem="book")
     book = epub.read_epub(str(path))
     chapter_items = [
-        item for item in book.get_items()
+        item
+        for item in book.get_items()
         if item.get_type() == ITEM_DOCUMENT and "chap_001" in item.file_name
     ]
     content = chapter_items[0].content.decode("utf-8")

@@ -48,9 +48,7 @@ def migrate(db_path: Path, *, dry_run: bool = False) -> int:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
-        cursor = conn.execute(
-            "SELECT id, description FROM books WHERE description IS NOT NULL"
-        )
+        cursor = conn.execute("SELECT id, description FROM books WHERE description IS NOT NULL")
         updates: list[tuple[str, int]] = []
         for row in cursor:
             cleaned = strip_html(row["description"])

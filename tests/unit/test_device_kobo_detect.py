@@ -43,7 +43,5 @@ def test_scans_volumes_directories(tmp_path: Path, monkeypatch) -> None:
     volumes.mkdir()
     _make_volume(volumes, "USB", with_marker=False)
     kobo = _make_volume(volumes, "KOBOeReader", with_marker=True)
-    monkeypatch.setattr(
-        "bookery.device.kobo._default_mount_roots", lambda: [volumes]
-    )
+    monkeypatch.setattr("bookery.device.kobo._default_mount_roots", lambda: [volumes])
     assert detect_mounted_kobo() == kobo

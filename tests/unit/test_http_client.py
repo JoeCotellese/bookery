@@ -88,9 +88,7 @@ class TestBookeryHttpClient:
             httpx.Response(200, json={"ok": True}),
         ]
         transport = FakeTransport(responses=responses)
-        client = BookeryHttpClient(
-            min_request_interval=0.0, transport=transport, retry_delay=0.01
-        )
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport, retry_delay=0.01)
 
         result = client.get("https://example.com/api")
         assert result == {"ok": True}

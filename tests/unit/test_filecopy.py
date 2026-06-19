@@ -24,6 +24,7 @@ def test_copy_file_preserves_mtime(tmp_path: Path) -> None:
     source = tmp_path / "src.txt"
     source.write_bytes(b"x")
     import os
+
     old_time = 1_500_000_000
     os.utime(source, (old_time, old_time))
     dest = tmp_path / "dest.txt"

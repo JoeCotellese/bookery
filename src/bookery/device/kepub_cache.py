@@ -89,9 +89,7 @@ class KepubCache:
             )
             conn.commit()
 
-    def get_quickcheck(
-        self, source_path: str, kepubify_version: str
-    ) -> QuickCheckEntry | None:
+    def get_quickcheck(self, source_path: str, kepubify_version: str) -> QuickCheckEntry | None:
         """Return the recorded stat snapshot for ``source_path``, if any.
 
         Returns ``None`` when no row exists or the recorded kepubify version
@@ -148,8 +146,7 @@ class KepubCache:
         """Return every cached entry (for `--prune` walks)."""
         with closing(sqlite3.connect(self.path)) as conn:
             rows = conn.execute(
-                "SELECT source_hash, kepubify_version, kepub_sha, device_path "
-                "FROM kepub_entries"
+                "SELECT source_hash, kepubify_version, kepub_sha, device_path FROM kepub_entries"
             ).fetchall()
         return [
             KepubCacheEntry(

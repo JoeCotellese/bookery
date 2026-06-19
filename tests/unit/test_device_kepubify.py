@@ -39,9 +39,7 @@ class TestRunKepubify:
         assert str(expected) in called_cmd
         assert str(epub) in called_cmd
 
-    def test_uses_explicit_output_filename_not_directory(
-        self, tmp_path: Path
-    ) -> None:
+    def test_uses_explicit_output_filename_not_directory(self, tmp_path: Path) -> None:
         """Regression: kepubify v4.0.x writes <name>_converted.kepub.epub when
         given just a directory. We pass `-o <full filename>` to bypass that.
         """

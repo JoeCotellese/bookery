@@ -31,7 +31,9 @@ def _create_provider(*, use_cache: bool = True):
 
 
 def _validate_selectors(
-    book_id: int | None, match_all: bool, tag_name: str | None,
+    book_id: int | None,
+    match_all: bool,
+    tag_name: str | None,
 ) -> None:
     """Validate that exactly one selector is specified.
 
@@ -40,9 +42,7 @@ def _validate_selectors(
     """
     count = sum([book_id is not None, match_all, tag_name is not None])
     if count != 1:
-        raise click.UsageError(
-            "Specify exactly one of: BOOK_ID, --all, or --tag."
-        )
+        raise click.UsageError("Specify exactly one of: BOOK_ID, --all, or --tag.")
 
 
 def _select_books(
@@ -125,7 +125,8 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
 @click.option("--tag", "tag_name", type=str, help="Rematch books with this tag.")
 @db_option
 @click.option(
-    "-o", "--output-dir",
+    "-o",
+    "--output-dir",
     type=click.Path(path_type=Path),
     default=None,
     help="Directory for modified copies (default: configured library_root).",
@@ -238,10 +239,7 @@ def rematch(
             result = match_one(epub_path, provider, review, output_dir)
 
             if not auto_accept and result.normalization and result.normalization.was_modified:
-                console.print(
-                    f"  [dim]Normalized:[/dim] "
-                    f"{result.normalization.normalized.title}"
-                )
+                console.print(f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}")
 
             if result.status == "matched":
                 assert result.metadata is not None

@@ -77,9 +77,7 @@ class TestFullMatchPipeline:
         # Verify original untouched
         assert sample_epub.read_bytes() == original_bytes
 
-    def test_isbn_pipeline_enriches_metadata(
-        self, sample_epub: Path, tmp_path: Path
-    ) -> None:
+    def test_isbn_pipeline_enriches_metadata(self, sample_epub: Path, tmp_path: Path) -> None:
         """ISBN pipeline enriches metadata with description and author from OL."""
         client = FakeHttpClient(
             {

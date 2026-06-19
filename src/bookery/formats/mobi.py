@@ -161,9 +161,7 @@ _XHTML_TEMPLATE = """\
 _MBP_PAGEBREAK_RE = re.compile(r"<mbp:pagebreak\s*/?>", re.IGNORECASE)
 
 
-def split_html_by_anchors(
-    html_content: str, nav_points: list[NcxNavPoint]
-) -> list[Chapter]:
+def split_html_by_anchors(html_content: str, nav_points: list[NcxNavPoint]) -> list[Chapter]:
     """Split monolithic HTML at anchor points into separate chapters.
 
     Args:
@@ -355,9 +353,7 @@ def parse_opf_metadata(opf_path: Path | None) -> BookMetadata | None:
     # ISBN from dc:identifier with opf:scheme="ISBN"
     isbn = None
     for ident_el in metadata_el.findall("dc:identifier", ns):
-        scheme = ident_el.get("scheme") or ident_el.get(
-            "{http://www.idpf.org/2007/opf}scheme"
-        )
+        scheme = ident_el.get("scheme") or ident_el.get("{http://www.idpf.org/2007/opf}scheme")
         if scheme and scheme.upper() == "ISBN" and ident_el.text:
             isbn = ident_el.text.strip()
             break
@@ -405,7 +401,7 @@ def assemble_epub_from_html(
     title = metadata.title if metadata else html_path.stem
     book.set_title(title)
 
-    language = (metadata.language if metadata and metadata.language else "en")
+    language = metadata.language if metadata and metadata.language else "en"
     book.set_language(language)
 
     if metadata and metadata.authors:
@@ -448,7 +444,9 @@ def assemble_epub_from_html(
             cover_img.content = cover_file.read_bytes()
             book.add_item(cover_img)
             book.add_metadata(
-                None, "meta", "",
+                None,
+                "meta",
+                "",
                 {"name": "cover", "content": "cover-img"},
             )
 
@@ -462,10 +460,14 @@ def assemble_epub_from_html(
 
             img_path = f"Images/{cover_file.name}"
             cover_page = epub.EpubHtml(
-                uid="cover", file_name="cover.xhtml", title="Cover",
+                uid="cover",
+                file_name="cover.xhtml",
+                title="Cover",
             )
             cover_page.add_link(
-                href="style/cover.css", rel="stylesheet", type="text/css",
+                href="style/cover.css",
+                rel="stylesheet",
+                type="text/css",
             )
             cover_page.content = (
                 b'<html xmlns="http://www.w3.org/1999/xhtml">'
@@ -488,7 +490,9 @@ def assemble_epub_from_html(
         toc_entries = []
         for ch in chapters:
             epub_ch = epub.EpubHtml(
-                title=ch.title, file_name=ch.file_name, lang=language,
+                title=ch.title,
+                file_name=ch.file_name,
+                lang=language,
             )
             epub_ch.content = ch.content
             book.add_item(epub_ch)
@@ -503,7 +507,9 @@ def assemble_epub_from_html(
         # Single-chapter fallback
         html_content = html_path.read_bytes()
         chapter = epub.EpubHtml(
-            title=title, file_name="content.xhtml", lang=language,
+            title=title,
+            file_name="content.xhtml",
+            lang=language,
         )
         chapter.content = html_content
         book.add_item(chapter)

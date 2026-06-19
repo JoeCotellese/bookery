@@ -89,9 +89,7 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
     average_rating = volume_info.get("averageRating")
     rating = float(average_rating) if isinstance(average_rating, (int, float)) else None
     ratings_count_raw = volume_info.get("ratingsCount")
-    ratings_count = (
-        int(ratings_count_raw) if isinstance(ratings_count_raw, (int, float)) else None
-    )
+    ratings_count = int(ratings_count_raw) if isinstance(ratings_count_raw, (int, float)) else None
     print_type = volume_info.get("printType") or None
     maturity_rating = volume_info.get("maturityRating") or None
 

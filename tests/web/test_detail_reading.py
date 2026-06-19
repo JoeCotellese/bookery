@@ -161,9 +161,7 @@ class TestDetailReadingSegmentedControl:
         for label in ("unread", "reading", "finished"):
             assert f'"status": "{label}"' in html
 
-    def test_queued_indicator_renders_when_catalog_reports_it(
-        self, mock_catalog, client
-    ) -> None:
+    def test_queued_indicator_renders_when_catalog_reports_it(self, mock_catalog, client) -> None:
         mock_catalog.get_by_id.return_value = make_book(1, title="Rose")
         mock_catalog.get_book_status.return_value = BookStatus(
             book_id=1, status=STATUS_READING, updated_at="t"

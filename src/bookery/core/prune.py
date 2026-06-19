@@ -33,9 +33,7 @@ class PruneCandidate:
     state: PruneState
 
 
-def classify_row(
-    record: BookRecord, *, check: CheckMode
-) -> PruneCandidate:
+def classify_row(record: BookRecord, *, check: CheckMode) -> PruneCandidate:
     """Classify a single catalog row by on-disk presence.
 
     The ``check`` flag controls which paths participate in the orphan
@@ -52,9 +50,7 @@ def classify_row(
       operator rewrite ``source_path`` instead of deleting the row.
     """
     source_exists = record.source_path is not None and record.source_path.exists()
-    output_exists = (
-        record.output_path.exists() if record.output_path is not None else False
-    )
+    output_exists = record.output_path.exists() if record.output_path is not None else False
 
     if check == "source":
         state = PruneState.HEALTHY if source_exists else PruneState.ORPHAN
@@ -79,9 +75,7 @@ def classify_row(
     )
 
 
-def classify_catalog(
-    catalog: LibraryCatalog, *, check: CheckMode
-) -> list[PruneCandidate]:
+def classify_catalog(catalog: LibraryCatalog, *, check: CheckMode) -> list[PruneCandidate]:
     """Walk every catalog row and classify each one.
 
     Healthy rows are omitted — only orphans and the source-missing

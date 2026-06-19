@@ -41,24 +41,55 @@ console = Console()
 
 
 @click.command("vault-export")
-@click.option("--vault", "vault_opt", type=click.Path(path_type=Path), default=None,
-              help="Path to the Obsidian vault.")
+@click.option(
+    "--vault",
+    "vault_opt",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the Obsidian vault.",
+)
 @deprecated_option(["--folder"], canonical="--include-folder", multiple=True)
-@click.option("--include-folder", "include_folder", multiple=True,
-              help="Top-level folder to include (repeatable). Defaults to the whole vault.")
-@click.option("-o", "--output", "output_path", type=click.Path(path_type=Path),
-              default=None,
-              help="Output EPUB path. Defaults to <library_root>/vault-export.epub "
-                   "when --catalog is enabled, otherwise ./vault.epub.")
-@click.option("--index/--no-index", "index_opt", default=None,
-              help="Append a tag index section at the end of the EPUB.")
-@click.option("--index-exclude-prefix", "index_exclude_opt", multiple=True,
-              help="Suppress tags starting with this prefix from the index (repeatable).")
-@click.option("--index-min-count", "index_min_count_opt", type=int, default=None,
-              help="Hide tags with fewer than N notes in the index.")
-@click.option("--exclude-tag", "exclude_tags_opt", multiple=True,
-              help="Skip any note whose frontmatter tags include this exact tag "
-                   "(repeatable). Overrides vault_export.exclude_tags in config.")
+@click.option(
+    "--include-folder",
+    "include_folder",
+    multiple=True,
+    help="Top-level folder to include (repeatable). Defaults to the whole vault.",
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output EPUB path. Defaults to <library_root>/vault-export.epub "
+    "when --catalog is enabled, otherwise ./vault.epub.",
+)
+@click.option(
+    "--index/--no-index",
+    "index_opt",
+    default=None,
+    help="Append a tag index section at the end of the EPUB.",
+)
+@click.option(
+    "--index-exclude-prefix",
+    "index_exclude_opt",
+    multiple=True,
+    help="Suppress tags starting with this prefix from the index (repeatable).",
+)
+@click.option(
+    "--index-min-count",
+    "index_min_count_opt",
+    type=int,
+    default=None,
+    help="Hide tags with fewer than N notes in the index.",
+)
+@click.option(
+    "--exclude-tag",
+    "exclude_tags_opt",
+    multiple=True,
+    help="Skip any note whose frontmatter tags include this exact tag "
+    "(repeatable). Overrides vault_export.exclude_tags in config.",
+)
 @click.option("--title", "title_opt", default=None, help="EPUB title metadata.")
 @click.option("--author", "author_opt", default=None, help="EPUB author metadata.")
 @deprecated_option(
@@ -67,15 +98,28 @@ console = Console()
     type=click.Choice(["stable", "random"], case_sensitive=False),
     transform=lambda v: {"random_ids": v.lower() == "random"} if v is not None else {},
 )
-@click.option("--random-ids", "random_ids", is_flag=True, default=False,
-              help="Generate a fresh random UUID identifier for the EPUB instead "
-                   "of the stable, vault-path-derived one. Off by default — the "
-                   "stable identifier lets Kobo update the book in place on re-sync.")
-@click.option("--version-label", "version_label_opt", default=None,
-              help="Version label injected into the EPUB title (default: today's date).")
-@click.option("--catalog/--no-catalog", "catalog_opt", default=None,
-              help="Add the exported EPUB to the bookery library so it syncs on the "
-                   "next `sync kobo`. Overrides vault_export.catalog in config.")
+@click.option(
+    "--random-ids",
+    "random_ids",
+    is_flag=True,
+    default=False,
+    help="Generate a fresh random UUID identifier for the EPUB instead "
+    "of the stable, vault-path-derived one. Off by default — the "
+    "stable identifier lets Kobo update the book in place on re-sync.",
+)
+@click.option(
+    "--version-label",
+    "version_label_opt",
+    default=None,
+    help="Version label injected into the EPUB title (default: today's date).",
+)
+@click.option(
+    "--catalog/--no-catalog",
+    "catalog_opt",
+    default=None,
+    help="Add the exported EPUB to the bookery library so it syncs on the "
+    "next `sync kobo`. Overrides vault_export.catalog in config.",
+)
 @db_option
 def vault_export(
     vault_opt: Path | None,
@@ -129,11 +173,7 @@ def vault_export(
         # library so `sync kobo` picks it up. Without --catalog there is no
         # library entry to anchor on, so fall back to a cwd-local filename.
         filename = f"{title}.epub"
-        output_path = (
-            get_library_root() / filename
-            if do_catalog
-            else Path(filename)
-        )
+        output_path = get_library_root() / filename if do_catalog else Path(filename)
     output_path = Path(output_path).expanduser().resolve()
 
     console.print(f"Exporting vault: [bold]{vault_path}[/bold]")
@@ -208,9 +248,7 @@ def vault_export(
             raise click.ClickException(str(exc)) from exc
 
     size = output_path.stat().st_size if output_path.exists() else 0
-    console.print(
-        f"[green]✓[/green] wrote [bold]{output_path}[/bold] ({size:,} bytes)"
-    )
+    console.print(f"[green]✓[/green] wrote [bold]{output_path}[/bold] ({size:,} bytes)")
     console.print(
         f"notes={len(notes)}  images={len(assembled.asset_paths)}  "
         f"broken_links={assembled.broken_link_count}  "
@@ -225,9 +263,7 @@ def vault_export(
 
     if do_catalog:
         library_root = get_library_root()
-        console.print(
-            f"Cataloging into [bold]{library_root}[/bold]…"
-        )
+        console.print(f"Cataloging into [bold]{library_root}[/bold]…")
         conn = open_library(resolve_db_path(db_path))
         try:
             catalog = LibraryCatalog(conn)
@@ -277,9 +313,7 @@ def vault_export(
                     catalog.delete_book(record.id)
                     removed += 1
             if removed:
-                console.print(
-                    f"[dim]replaced {removed} prior vault export(s)[/dim]"
-                )
+                console.print(f"[dim]replaced {removed} prior vault export(s)[/dim]")
         finally:
             conn.close()
 

@@ -69,9 +69,7 @@ def _seed_catalog(db_path: Path, library: Path) -> int:
     try:
         catalog = LibraryCatalog(conn)
         book_id = catalog.add_book(
-            BookMetadata(
-                title="Some Title", authors=["Some Author"], source_path=epub
-            ),
+            BookMetadata(title="Some Title", authors=["Some Author"], source_path=epub),
             file_hash="seed-hash",
             output_path=epub,
         )
@@ -99,10 +97,14 @@ def test_push_renders_in_cli_output(tmp_path: Path) -> None:
 
     # First sync populates device_files so the resolver can match next time.
     first = _run_cli(
-        "sync", "kobo",
-        "--target", str(target),
-        "--db", str(db_path),
-        "--data-dir", str(tmp_path / "data"),
+        "sync",
+        "kobo",
+        "--target",
+        str(target),
+        "--db",
+        str(db_path),
+        "--data-dir",
+        str(tmp_path / "data"),
     )
     assert first.exit_code == 0, first.output
 
@@ -119,19 +121,27 @@ def test_push_renders_in_cli_output(tmp_path: Path) -> None:
         conn.close()
 
     second = _run_cli(
-        "sync", "kobo",
-        "--target", str(target),
-        "--db", str(db_path),
-        "--data-dir", str(tmp_path / "data"),
+        "sync",
+        "kobo",
+        "--target",
+        str(target),
+        "--db",
+        str(db_path),
+        "--data-dir",
+        str(tmp_path / "data"),
     )
     assert second.exit_code == 0, second.output
     assert "Pushed 1 read-status update" in second.output
     assert "Backup:" in second.output
     # Device row actually changed.
-    row = sqlite3.connect(str(target / ".kobo" / "KoboReader.sqlite")).execute(
-        "SELECT ReadStatus FROM content WHERE ContentID = ?",
-        (f"file://{content_id}",),
-    ).fetchone()
+    row = (
+        sqlite3.connect(str(target / ".kobo" / "KoboReader.sqlite"))
+        .execute(
+            "SELECT ReadStatus FROM content WHERE ContentID = ?",
+            (f"file://{content_id}",),
+        )
+        .fetchone()
+    )
     assert row[0] == 2
 
 
@@ -144,10 +154,14 @@ def test_no_status_push_flag_skips_writer(tmp_path: Path) -> None:
     _seed_kobo_db(target / ".kobo" / "KoboReader.sqlite", f"file://{content_id}")
 
     _run_cli(
-        "sync", "kobo",
-        "--target", str(target),
-        "--db", str(db_path),
-        "--data-dir", str(tmp_path / "data"),
+        "sync",
+        "kobo",
+        "--target",
+        str(target),
+        "--db",
+        str(db_path),
+        "--data-dir",
+        str(tmp_path / "data"),
     )
     conn = open_library(db_path)
     try:
@@ -161,18 +175,26 @@ def test_no_status_push_flag_skips_writer(tmp_path: Path) -> None:
         conn.close()
 
     result = _run_cli(
-        "sync", "kobo",
-        "--target", str(target),
-        "--db", str(db_path),
-        "--data-dir", str(tmp_path / "data"),
+        "sync",
+        "kobo",
+        "--target",
+        str(target),
+        "--db",
+        str(db_path),
+        "--data-dir",
+        str(tmp_path / "data"),
         "--no-status-push",
     )
     assert result.exit_code == 0, result.output
     assert "Pushed" not in result.output
     assert "Backup" not in result.output
     # Device row is unchanged — still Unread.
-    row = sqlite3.connect(str(target / ".kobo" / "KoboReader.sqlite")).execute(
-        "SELECT ReadStatus FROM content WHERE ContentID = ?",
-        (f"file://{content_id}",),
-    ).fetchone()
+    row = (
+        sqlite3.connect(str(target / ".kobo" / "KoboReader.sqlite"))
+        .execute(
+            "SELECT ReadStatus FROM content WHERE ContentID = ?",
+            (f"file://{content_id}",),
+        )
+        .fetchone()
+    )
     assert row[0] == 0

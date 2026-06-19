@@ -11,17 +11,13 @@ import pytest
 from bookery.db.connection import open_library
 
 _SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "scripts"
-    / "migrate_strip_description_html.py"
+    Path(__file__).resolve().parents[2] / "scripts" / "migrate_strip_description_html.py"
 )
 
 
 def _load_script_module():
     """Import the standalone script as a module for direct function calls."""
-    spec = importlib.util.spec_from_file_location(
-        "_migrate_strip_description_html", _SCRIPT_PATH
-    )
+    spec = importlib.util.spec_from_file_location("_migrate_strip_description_html", _SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -41,8 +37,7 @@ def db_path(tmp_path):
     # open_library applies all schema migrations against a fresh sqlite file.
     conn = open_library(path, check_same_thread=False)
     conn.executemany(
-        "INSERT INTO books (title, source_path, file_hash, description) "
-        "VALUES (?, ?, ?, ?)",
+        "INSERT INTO books (title, source_path, file_hash, description) VALUES (?, ?, ?, ?)",
         [
             ("With HTML", "/books/1.epub", "hash1", '<p class="description">A &amp; B</p>'),
             ("Plain Text", "/books/2.epub", "hash2", "Already clean."),

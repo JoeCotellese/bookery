@@ -86,9 +86,7 @@ class TestPruneDryRun:
         open_library(db_path).close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["prune", "--dry-run", "-y", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["prune", "--dry-run", "-y", "--db", str(db_path)])
 
         assert result.exit_code != 0
         out_lower = result.output.lower()
@@ -112,9 +110,7 @@ class TestPruneSourceMissingOutputPresent:
         )
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["prune", "--check", "both", "-y", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["prune", "--check", "both", "-y", "--db", str(db_path)])
 
         assert result.exit_code == 0, result.output
         out_lower = result.output.lower()
@@ -147,36 +143,52 @@ class TestPruneDelete:
         catalog.add_tag(book_id, "favorites")
         catalog.add_genre(book_id, "Fantasy")
         catalog.update_book(book_id, source="user", publisher="Acme")
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_tags WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] == 1
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_genres WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] == 1
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_field_provenance WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] >= 1
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_tags WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_genres WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_field_provenance WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            >= 1
+        )
         conn.close()
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["prune", "--check", "both", "-y", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["prune", "--check", "both", "-y", "--db", str(db_path)])
 
         assert result.exit_code == 0, result.output
 
         conn = open_library(db_path)
         catalog = LibraryCatalog(conn)
         assert catalog.get_by_id(book_id) is None
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_tags WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_genres WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM book_field_provenance WHERE book_id = ?", (book_id,)
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_tags WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_genres WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM book_field_provenance WHERE book_id = ?", (book_id,)
+            ).fetchone()[0]
+            == 0
+        )
         conn.close()
 
     def test_summary_line_reports_deletion_count(self, tmp_path: Path) -> None:
@@ -200,9 +212,7 @@ class TestPruneDelete:
         )
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["prune", "--check", "both", "-y", "--db", str(db_path)]
-        )
+        result = runner.invoke(cli, ["prune", "--check", "both", "-y", "--db", str(db_path)])
 
         assert result.exit_code == 0, result.output
         assert "2" in result.output

@@ -43,9 +43,7 @@ def test_config_file_value_is_honored(isolated_home):
 def test_env_var_beats_config_file(isolated_home, monkeypatch, tmp_path):
     config_dir = isolated_home / ".bookery"
     config_dir.mkdir()
-    (config_dir / "config.toml").write_text(
-        f'library_root = "{isolated_home / "from-file"}"\n'
-    )
+    (config_dir / "config.toml").write_text(f'library_root = "{isolated_home / "from-file"}"\n')
     env_target = tmp_path / "from-env"
     monkeypatch.setenv("BOOKERY_LIBRARY_ROOT", str(env_target))
 

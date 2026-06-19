@@ -194,9 +194,7 @@ class TestMigrations:
         conn.execute(
             "INSERT INTO collections (name, description) VALUES ('Test Collection', 'Test')"
         )
-        conn.execute(
-            "INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)"
-        )
+        conn.execute("INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)")
         conn.commit()
 
         conn.execute("DELETE FROM collections WHERE id = 1")
@@ -224,9 +222,7 @@ class TestMigrations:
         conn.execute(
             "INSERT INTO collections (name, description) VALUES ('Test Collection', 'Test')"
         )
-        conn.execute(
-            "INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)"
-        )
+        conn.execute("INSERT INTO collection_books (collection_id, book_id) VALUES (1, 1)")
         conn.commit()
 
         conn.execute("DELETE FROM books WHERE id = 1")

@@ -178,9 +178,7 @@ class TestConvertOneHtmlPath:
         mobi7_dir = extract_dir / "mobi7"
         mobi7_dir.mkdir(parents=True)
         html_file = mobi7_dir / "book.html"
-        html_file.write_text(
-            '<html><body><img src="Images/cover.jpg"/></body></html>'
-        )
+        html_file.write_text('<html><body><img src="Images/cover.jpg"/></body></html>')
         images_dir = mobi7_dir / "Images"
         images_dir.mkdir()
         (images_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpg")
@@ -203,10 +201,7 @@ class TestConvertOneHtmlPath:
         from ebooklib import epub
 
         book = epub.read_epub(str(result.epub_path), options={"ignore_ncx": True})
-        cover_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_COVER
-        ]
+        cover_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_COVER]
         assert len(cover_items) == 1
         assert cover_items[0].get_name() == "Images/cover.jpg"
 
@@ -224,10 +219,10 @@ class TestConvertOneHtmlPath:
         mobi7_dir.mkdir(parents=True)
         html_file = mobi7_dir / "book.html"
         html_file.write_text(
-            '<html><body>'
+            "<html><body>"
             '<a id="filepos000100"></a><h1>Chapter 1</h1><p>Content one</p>'
             '<a id="filepos000500"></a><h1>Chapter 2</h1><p>Content two</p>'
-            '</body></html>'
+            "</body></html>"
         )
         ncx_file = mobi7_dir / "toc.ncx"
         ncx_file.write_text("""\
@@ -266,8 +261,7 @@ class TestConvertOneHtmlPath:
 
         # Verify chapter content is present
         doc_items = [
-            item for item in book.get_items()
-            if item.get_type() == ebooklib.ITEM_DOCUMENT
+            item for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
         ]
         doc_names = [item.get_name() for item in doc_items]
         assert "ch001.xhtml" in doc_names
@@ -349,7 +343,9 @@ class TestConvertOneSkipAndForce:
         assert result.skipped is True
 
     def test_skips_existing_returns_epub_path(
-        self, tmp_path: Path, _mock_epub_extraction,
+        self,
+        tmp_path: Path,
+        _mock_epub_extraction,
     ) -> None:
         """Manifest-hit returns stored epub_path instead of None."""
         mobi_file = tmp_path / "book.mobi"
@@ -369,7 +365,9 @@ class TestConvertOneSkipAndForce:
         assert result.epub_path == epub_path
 
     def test_normal_conversion_not_skipped(
-        self, tmp_path: Path, _mock_epub_extraction,
+        self,
+        tmp_path: Path,
+        _mock_epub_extraction,
     ) -> None:
         """Normal conversion sets skipped=False."""
         mobi_file = tmp_path / "book.mobi"

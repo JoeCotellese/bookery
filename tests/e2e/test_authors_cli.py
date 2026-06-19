@@ -60,18 +60,12 @@ class TestAuthorsFixSort:
         epub_path = tmp_path / "way_of_kings.epub"
         _make_epub(epub_path, "The Way of Kings", ["Sanderson, Brandon"])
         db_path = tmp_path / "lib.db"
-        book_id = _seed(
-            db_path, "The Way of Kings", ["Sanderson, Brandon"], epub_path
-        )
+        book_id = _seed(db_path, "The Way of Kings", ["Sanderson, Brandon"], epub_path)
 
-        result = CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
-        )
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
 
         assert result.exit_code == 0, result.output
-        assert read_creator_file_as(epub_path) == [
-            ("Sanderson, Brandon", "Sanderson, Brandon")
-        ]
+        assert read_creator_file_as(epub_path) == [("Sanderson, Brandon", "Sanderson, Brandon")]
         conn = open_library(db_path)
         record = LibraryCatalog(conn).get_by_id(book_id)
         conn.close()
@@ -86,20 +80,14 @@ class TestAuthorsFixSort:
         runner = CliRunner()
 
         runner.invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
-        second = runner.invoke(
-            cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
-        )
+        second = runner.invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
 
         assert second.exit_code == 0, second.output
         # Nothing left to fix on the second pass.
         assert "Always Be Testing" not in second.output
-        assert read_creator_file_as(epub_path) == [
-            ("Eisenberg, Bryan", "Eisenberg, Bryan")
-        ]
+        assert read_creator_file_as(epub_path) == [("Eisenberg, Bryan", "Eisenberg, Bryan")]
 
-    def test_one_failed_book_does_not_abort_the_batch(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_one_failed_book_does_not_abort_the_batch(self, tmp_path: Path, monkeypatch) -> None:
         """A single book raising during apply is reported; others still process."""
         from bookery.cli.commands import authors_cmd
         from bookery.formats.epub import EpubReadError
@@ -121,16 +109,12 @@ class TestAuthorsFixSort:
 
         monkeypatch.setattr(authors_cmd, "_apply_fix", flaky)
 
-        result = CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
-        )
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
 
         assert result.exit_code == 0, result.output
         assert "failed:" in result.output and "Bad Book" in result.output
         # The healthy book was still fixed despite the other's failure.
-        assert read_creator_file_as(good) == [
-            ("Brandon Sanderson", "Sanderson, Brandon")
-        ]
+        assert read_creator_file_as(good) == [("Brandon Sanderson", "Sanderson, Brandon")]
 
     def test_coauthors_left_intact(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "barbarians.epub"
@@ -138,9 +122,7 @@ class TestAuthorsFixSort:
         db_path = tmp_path / "lib.db"
         _seed(db_path, "Barbarians", ["Bryan Burrough", "John Helyar"], epub_path)
 
-        CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
-        )
+        CliRunner().invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
 
         assert read_creator_file_as(epub_path) == [
             ("Bryan Burrough", "Burrough, Bryan"),
@@ -168,17 +150,13 @@ def _authors_of(db_path: Path, book_id: int) -> list[str]:
 
 
 class TestAuthorsList:
-    def test_duplicates_clusters_dupes_and_omits_distinct(
-        self, tmp_path: Path
-    ) -> None:
+    def test_duplicates_clusters_dupes_and_omits_distinct(self, tmp_path: Path) -> None:
         db_path = tmp_path / "lib.db"
         _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
         _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
         _seed_db_only(db_path, "The Navigator", ["Dirk Cussler"])
 
-        result = CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "list", "--duplicates"]
-        )
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "list", "--duplicates"])
 
         assert result.exit_code == 0, result.output
         assert "Cussler, Clive" in result.output
@@ -225,9 +203,7 @@ class TestAuthorsList:
         db_path = tmp_path / "lib.db"
         _seed_db_only(db_path, "Elantris", ["Brandon Sanderson"])
 
-        result = CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "list", "--duplicates"]
-        )
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "list", "--duplicates"])
 
         assert result.exit_code == 0, result.output
         assert "No duplicate author spellings found" in result.output
@@ -256,16 +232,12 @@ class TestAuthorsNormalize:
         assert "Clive Cussler" in result.output
         assert _authors_of(db_path, book) == ["Cussler, Clive"]
 
-    def test_apply_rewrites_collision_confirmed_and_backs_up(
-        self, tmp_path: Path
-    ) -> None:
+    def test_apply_rewrites_collision_confirmed_and_backs_up(self, tmp_path: Path) -> None:
         db_path = tmp_path / "lib.db"
         book = _seed_db_only(db_path, "Raise the Titanic", ["Cussler, Clive"])
         _seed_db_only(db_path, "Sahara", ["Clive Cussler"])
 
-        result = CliRunner().invoke(
-            cli, ["--db", str(db_path), "authors", "normalize", "--apply"]
-        )
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "normalize", "--apply"])
 
         assert result.exit_code == 0, result.output
         assert _authors_of(db_path, book) == ["Clive Cussler"]
@@ -280,9 +252,7 @@ class TestAuthorsNormalize:
         runner = CliRunner()
 
         runner.invoke(cli, ["--db", str(db_path), "authors", "normalize", "--apply"])
-        second = runner.invoke(
-            cli, ["--db", str(db_path), "authors", "normalize", "--apply"]
-        )
+        second = runner.invoke(cli, ["--db", str(db_path), "authors", "normalize", "--apply"])
 
         assert second.exit_code == 0, second.output
         assert "Cussler, Clive" not in second.output
@@ -327,8 +297,14 @@ class TestAuthorsMerge:
         result = CliRunner().invoke(
             cli,
             [
-                "--db", str(db_path), "authors", "merge",
-                "Steven King", "--into", "Stephen King", "--apply",
+                "--db",
+                str(db_path),
+                "authors",
+                "merge",
+                "Steven King",
+                "--into",
+                "Stephen King",
+                "--apply",
             ],
         )
 
@@ -349,9 +325,7 @@ class TestAuthorsMerge:
         assert result.exit_code == 0, result.output
         assert _authors_of(db_path, b) == ["Steven King"]
 
-    def test_merge_prompts_for_canonical_when_into_omitted(
-        self, tmp_path: Path
-    ) -> None:
+    def test_merge_prompts_for_canonical_when_into_omitted(self, tmp_path: Path) -> None:
         db_path = tmp_path / "lib.db"
         a = _seed_db_only(db_path, "Book A", ["Stephen King"])
         b = _seed_db_only(db_path, "Book B", ["Steven King"])
@@ -359,8 +333,7 @@ class TestAuthorsMerge:
         # Pick option 1 ("Stephen King") at the prompt, then apply.
         result = CliRunner().invoke(
             cli,
-            ["--db", str(db_path), "authors", "merge",
-             "Stephen King", "Steven King", "--apply"],
+            ["--db", str(db_path), "authors", "merge", "Stephen King", "Steven King", "--apply"],
             input="1\n",
         )
 
@@ -374,8 +347,16 @@ class TestAuthorsMerge:
 
         result = CliRunner().invoke(
             cli,
-            ["--db", str(db_path), "authors", "merge",
-             "Stephen King", "--into", "Stephen King", "--apply"],
+            [
+                "--db",
+                str(db_path),
+                "authors",
+                "merge",
+                "Stephen King",
+                "--into",
+                "Stephen King",
+                "--apply",
+            ],
         )
 
         assert result.exit_code == 0, result.output

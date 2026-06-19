@@ -52,9 +52,7 @@ def _normalize_for_vote(field_name: str, value: Any) -> Any:
         return value.strip().casefold() or None
     if isinstance(value, list):
         return tuple(
-            item.strip().casefold()
-            for item in value
-            if isinstance(item, str) and item.strip()
+            item.strip().casefold() for item in value if isinstance(item, str) and item.strip()
         )
     return value
 
@@ -142,8 +140,7 @@ def _merge(
     kwargs: dict[str, Any] = {"identifiers": merged_identifiers}
 
     title_values = [
-        (p, m.title if m.title and m.title != "Unknown" else None)
-        for p, m in per_provider
+        (p, m.title if m.title and m.title != "Unknown" else None) for p, m in per_provider
     ]
     kwargs["title"] = _pick_scalar("title", title_values, provenance) or per_provider[0][1].title
 
@@ -195,17 +192,13 @@ class ConsensusProvider:
         return "consensus:" + "+".join(p.name for p in self._providers)
 
     def search_by_isbn(self, isbn: str) -> list[MetadataCandidate]:
-        per_provider = self._run_parallel(
-            lambda p: p.search_by_isbn(isbn)
-        )
+        per_provider = self._run_parallel(lambda p: p.search_by_isbn(isbn))
         return self._merge_top(per_provider)
 
     def search_by_title_author(
         self, title: str, author: str | None = None
     ) -> list[MetadataCandidate]:
-        per_provider = self._run_parallel(
-            lambda p: p.search_by_title_author(title, author)
-        )
+        per_provider = self._run_parallel(lambda p: p.search_by_title_author(title, author))
         return self._merge_top(per_provider)
 
     def lookup_by_url(self, url: str) -> MetadataCandidate | None:
@@ -225,18 +218,14 @@ class ConsensusProvider:
 
         results: list[tuple[str, list[MetadataCandidate]]] = []
         with ThreadPoolExecutor(max_workers=len(self._providers)) as executor:
-            futures = {
-                executor.submit(fn, provider): provider for provider in self._providers
-            }
+            futures = {executor.submit(fn, provider): provider for provider in self._providers}
             # Preserve priority order rather than completion order.
             provider_to_result: dict[str, list[MetadataCandidate]] = {}
             for future, provider in futures.items():
                 try:
                     provider_to_result[provider.name] = future.result()
                 except Exception as exc:
-                    logger.warning(
-                        "Provider %s failed: %s", provider.name, exc
-                    )
+                    logger.warning("Provider %s failed: %s", provider.name, exc)
                     provider_to_result[provider.name] = []
             for provider in self._providers:
                 results.append((provider.name, provider_to_result.get(provider.name, [])))
@@ -291,8 +280,7 @@ class ConsensusProvider:
                 confidence=confidence,
                 source=self.name,
                 source_id=(
-                    merged.isbn
-                    or top[0][1].identifiers.get("openlibrary_work", "consensus")
+                    merged.isbn or top[0][1].identifiers.get("openlibrary_work", "consensus")
                 ),
             )
         ]

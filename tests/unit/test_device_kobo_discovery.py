@@ -26,9 +26,7 @@ class _StubCatalog:
         )
 
 
-def _record(
-    *, rec_id: int, title: str, author: str, output_path: Path | None
-) -> BookRecord:
+def _record(*, rec_id: int, title: str, author: str, output_path: Path | None) -> BookRecord:
     metadata = BookMetadata(title=title, authors=[author] if author else [])
     return BookRecord(
         id=rec_id,
@@ -86,13 +84,9 @@ def test_upserts_device_file_for_each_existing_book(tmp_path: Path) -> None:
     assert len(catalog.upsert_calls) == 2
     by_book = {call["book_id"]: call for call in catalog.upsert_calls}
     assert (
-        by_book[1]["remote_path"]
-        == "/mnt/onboard/Bookery/Asimov/Foundation/Foundation.kepub.epub"
+        by_book[1]["remote_path"] == "/mnt/onboard/Bookery/Asimov/Foundation/Foundation.kepub.epub"
     )
-    assert (
-        by_book[2]["remote_path"]
-        == "/mnt/onboard/Bookery/Le Guin/Earthsea/Earthsea.kepub.epub"
-    )
+    assert by_book[2]["remote_path"] == "/mnt/onboard/Bookery/Le Guin/Earthsea/Earthsea.kepub.epub"
     assert all(call["device_id"] == 7 for call in catalog.upsert_calls)
     assert all(call["now"] == "2026-05-26T16:30:00" for call in catalog.upsert_calls)
 

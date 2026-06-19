@@ -178,9 +178,7 @@ def parse_search_results(data: dict[str, Any]) -> list[BookMetadata]:
 
         author_keys = doc.get("author_key", [])
         if author_keys:
-            identifiers["openlibrary_author_keys"] = ",".join(
-                f"/authors/{k}" for k in author_keys
-            )
+            identifiers["openlibrary_author_keys"] = ",".join(f"/authors/{k}" for k in author_keys)
 
         first_year = doc.get("first_publish_year")
         original_publication_date = str(first_year) if first_year else None

@@ -24,10 +24,10 @@ DEFAULT_MAX_TOKENS = 0  # 0 = don't send max_tokens; let the server decide
 
 @dataclass(frozen=True, slots=True)
 class SemanticConfig:
-    provider: str = DEFAULT_PROVIDER          # "lm-studio" | "openai" | "anthropic"
+    provider: str = DEFAULT_PROVIDER  # "lm-studio" | "openai" | "anthropic"
     model: str = DEFAULT_MODEL
     base_url: str = DEFAULT_BASE_URL
-    api_key_env: str = DEFAULT_API_KEY_ENV    # env var name; "" for local
+    api_key_env: str = DEFAULT_API_KEY_ENV  # env var name; "" for local
     prompt_version: int = DEFAULT_PROMPT_VERSION
     llm_max_retries: int = DEFAULT_LLM_MAX_RETRIES
     max_tokens: int = DEFAULT_MAX_TOKENS
@@ -228,9 +228,7 @@ def load_config() -> Config:
         library_root = library_root.resolve()
 
     raw_data_dir = data.get("data_dir")
-    data_dir = (
-        Path(raw_data_dir).expanduser() if raw_data_dir else _default_data_dir()
-    )
+    data_dir = Path(raw_data_dir).expanduser() if raw_data_dir else _default_data_dir()
     if not data_dir.is_absolute():
         data_dir = data_dir.resolve()
 

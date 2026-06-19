@@ -9,9 +9,7 @@ from ebooklib import epub
 
 from bookery.core.vault.epub import EpubMetadata, PandocMissingError, render_epub, stable_uuid
 
-pandoc_required = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="pandoc not installed"
-)
+pandoc_required = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc not installed")
 
 
 def test_pandoc_missing_raises(monkeypatch, tmp_path: Path):

@@ -141,9 +141,7 @@ class TestDetailView:
         console = Console(file=StringIO())
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["v1", "a"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["v1", "a"]):
             result = session.review(extracted, candidates)
 
         assert result is not None
@@ -160,9 +158,7 @@ class TestDetailView:
         console = Console(file=StringIO())
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["v1", "b", "1"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["v1", "b", "1"]):
             result = session.review(extracted, candidates)
 
         assert result is not None
@@ -177,9 +173,7 @@ class TestDetailView:
         console = Console(file=StringIO())
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["v1", "b", "s"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["v1", "b", "s"]):
             result = session.review(extracted, candidates)
 
         assert result is None
@@ -207,9 +201,7 @@ class TestDetailView:
         console = Console(file=output, force_terminal=True, width=120)
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["v1", "a"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["v1", "a"]):
             session.review(extracted, candidates)
 
         rendered = output.getvalue()
@@ -227,9 +219,7 @@ class TestDetailView:
         console = Console(file=StringIO())
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["v99", "s"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["v99", "s"]):
             result = session.review(extracted, candidates)
 
         assert result is None
@@ -242,9 +232,7 @@ class TestUrlLookup:
         """User enters u, pastes URL, lookup returns candidate, user accepts."""
         extracted = BookMetadata(title="Old Title")
         candidates = [_make_candidate("First", "Author A", 0.9)]
-        url_candidate = _make_candidate(
-            "From URL", "URL Author", 1.0, isbn="9780000000001"
-        )
+        url_candidate = _make_candidate("From URL", "URL Author", 1.0, isbn="9780000000001")
 
         def fake_lookup(url: str) -> MetadataCandidate | None:
             return url_candidate
@@ -292,9 +280,7 @@ class TestUrlLookup:
         console = Console(file=output, force_terminal=True, width=120)
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", return_value="s"
-        ) as mock_prompt:
+        with patch("bookery.cli.review.click.prompt", return_value="s") as mock_prompt:
             session.review(extracted, candidates)
 
         # The prompt text should NOT contain [u]
@@ -312,9 +298,7 @@ class TestUrlLookup:
         console = Console(file=StringIO())
         session = ReviewSession(console=console, lookup_fn=dummy_lookup)
 
-        with patch(
-            "bookery.cli.review.click.prompt", return_value="s"
-        ) as mock_prompt:
+        with patch("bookery.cli.review.click.prompt", return_value="s") as mock_prompt:
             session.review(extracted, candidates)
 
         prompt_text = mock_prompt.call_args[0][0]
@@ -377,9 +361,7 @@ class TestBatchShortcuts:
         console = Console(file=StringIO())
         session = ReviewSession(console=console)
 
-        with patch(
-            "bookery.cli.review.click.prompt", return_value="s"
-        ) as mock_prompt:
+        with patch("bookery.cli.review.click.prompt", return_value="s") as mock_prompt:
             session.review(extracted, candidates)
 
         prompt_text = mock_prompt.call_args[0][0]
@@ -395,9 +377,7 @@ class TestBatchShortcuts:
 
         # Lowercase 'a' is not a valid prompt option, should reprompt
         # Eventually user enters 's' to skip
-        with patch(
-            "bookery.cli.review.click.prompt", side_effect=["a", "s"]
-        ):
+        with patch("bookery.cli.review.click.prompt", side_effect=["a", "s"]):
             result = session.review(extracted, candidates)
 
         assert result is None

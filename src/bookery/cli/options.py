@@ -46,7 +46,9 @@ db_option = click.option(
 
 
 def _deprecated_quiet_callback(
-    _ctx: click.Context, _param: click.Parameter, value: bool,
+    _ctx: click.Context,
+    _param: click.Parameter,
+    value: bool,
 ) -> bool:
     if value:
         click.echo(
@@ -86,6 +88,7 @@ def auto_accept_option(func: Callable[..., Any]) -> Callable[..., Any]:
 
 def _resolve_threshold_default() -> float:
     from bookery.core.config import get_matching_config
+
     return get_matching_config().auto_accept_threshold
 
 

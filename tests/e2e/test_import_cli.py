@@ -15,7 +15,11 @@ from bookery.db.connection import open_library
 
 
 def _make_epub_unique(
-    path: Path, title: str, author: str, *, content_marker: str = "",
+    path: Path,
+    title: str,
+    author: str,
+    *,
+    content_marker: str = "",
 ) -> Path:
     """Create a minimal EPUB with unique content to produce distinct hashes."""
     book = epub.EpubBook()
@@ -25,7 +29,9 @@ def _make_epub_unique(
     book.add_author(author)
 
     chapter = epub.EpubHtml(
-        title="Chapter 1", file_name="chap01.xhtml", lang="en",
+        title="Chapter 1",
+        file_name="chap01.xhtml",
+        lang="en",
     )
     chapter.content = (
         b"<html><body><h1>Chapter 1</h1>"
@@ -46,7 +52,9 @@ class TestImportCommand:
     """E2E tests for the bookery import command."""
 
     def test_import_creates_db(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import creates a database file and catalogs the EPUB."""
         scan_dir = tmp_path / "scan"
@@ -56,7 +64,8 @@ class TestImportCommand:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
@@ -70,7 +79,10 @@ class TestImportCommand:
         conn.close()
 
     def test_import_shows_summary(
-        self, sample_epub: Path, minimal_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        minimal_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import output shows added count."""
         scan_dir = tmp_path / "scan"
@@ -81,7 +93,8 @@ class TestImportCommand:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
@@ -89,7 +102,9 @@ class TestImportCommand:
         assert "added" in result.output.lower()
 
     def test_import_reimport_shows_skipped(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Second import of same files shows skipped count."""
         scan_dir = tmp_path / "scan"
@@ -101,7 +116,8 @@ class TestImportCommand:
 
         runner.invoke(cli, ["import", str(scan_dir), "--db", str(db_path)])
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
@@ -112,14 +128,18 @@ class TestImportCommand:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(tmp_path), "--db", str(db_path)],
+            cli,
+            ["import", str(tmp_path), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
         assert "No EPUB files found" in result.output
 
     def test_import_handles_corrupt_files(
-        self, sample_epub: Path, corrupt_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        corrupt_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Import handles corrupt files without crashing."""
         scan_dir = tmp_path / "scan"
@@ -130,7 +150,8 @@ class TestImportCommand:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
@@ -144,7 +165,9 @@ class TestImportCommand:
         conn.close()
 
     def test_import_with_convert_catalogs_mobis(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """MOBI file + --convert → converted EPUB is cataloged in DB."""
         scan_dir = tmp_path / "scan"
@@ -184,7 +207,8 @@ class TestImportCommand:
         conn.close()
 
     def test_import_without_convert_ignores_mobis(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """MOBI-only directory without --convert → 'No EPUB files found'."""
         scan_dir = tmp_path / "scan"
@@ -194,14 +218,17 @@ class TestImportCommand:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0
         assert "No EPUB files found" in result.output
 
     def test_import_convert_rerun_skips_already_converted(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """Re-running --convert shows 'skipped' for already-processed MOBIs."""
         scan_dir = tmp_path / "scan"
@@ -232,9 +259,13 @@ class TestImportCommand:
             result = runner.invoke(
                 cli,
                 [
-                    "import", str(scan_dir), "--convert",
-                    "--db", str(db_path),
-                    "-o", str(output_dir),
+                    "import",
+                    str(scan_dir),
+                    "--convert",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
                 ],
             )
 
@@ -243,7 +274,9 @@ class TestImportCommand:
         assert "rose.mobi" in result.output
 
     def test_import_convert_skips_mobi_when_epub_exists(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """MOBI + EPUB in same dir + --convert → MOBI not converted, skip reported."""
         scan_dir = tmp_path / "scan"
@@ -270,7 +303,9 @@ class TestImportCommand:
         conn.close()
 
     def test_import_convert_processes_mobi_without_epub(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """MOBI alone in dir + --convert → MOBI converted normally."""
         scan_dir = tmp_path / "scan"
@@ -307,7 +342,10 @@ class TestImportCopyByDefaultCli:
     """E2E tests for copy-by-default import behavior (#63)."""
 
     def test_cli_import_copies_into_library_root(
-        self, sample_epub: Path, tmp_path: Path, _isolate_library_root: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
+        _isolate_library_root: Path,
     ) -> None:
         """import (no flags) copies source into library_root."""
         scan_dir = tmp_path / "scan"
@@ -318,7 +356,8 @@ class TestImportCopyByDefaultCli:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output
@@ -327,7 +366,10 @@ class TestImportCopyByDefaultCli:
         assert len(library_copies) == 1
 
     def test_cli_import_move_removes_source(
-        self, sample_epub: Path, tmp_path: Path, _isolate_library_root: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
+        _isolate_library_root: Path,
     ) -> None:
         """--move deletes source after successful copy."""
         scan_dir = tmp_path / "scan"
@@ -352,7 +394,8 @@ class TestImportCopyByDefaultCli:
         scan_dir.mkdir()
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--in-place"],
+            cli,
+            ["import", str(scan_dir), "--in-place"],
         )
         assert result.exit_code != 0
         assert "no such option" in result.output.lower()
@@ -366,18 +409,23 @@ class TestImportMetadataDedupCli:
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         _make_epub_unique(
-            scan_dir / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v1",
+            scan_dir / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v1",
         )
         _make_epub_unique(
-            scan_dir / "rose_v2.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v2",
+            scan_dir / "rose_v2.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v2",
         )
 
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output
@@ -390,19 +438,27 @@ class TestImportMetadataDedupCli:
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         _make_epub_unique(
-            scan_dir / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v1",
+            scan_dir / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v1",
         )
         _make_epub_unique(
-            scan_dir / "rose_v2.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v2",
+            scan_dir / "rose_v2.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v2",
         )
 
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, [
-                "import", str(scan_dir), "--db", str(db_path),
+            cli,
+            [
+                "import",
+                str(scan_dir),
+                "--db",
+                str(db_path),
                 "--force-duplicates",
             ],
         )
@@ -422,12 +478,16 @@ class TestImportMetadataDedupCli:
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         epub1 = _make_epub_unique(
-            scan_dir / "rose_v1.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v1",
+            scan_dir / "rose_v1.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v1",
         )
         _make_epub_unique(
-            scan_dir / "rose_v2.epub", "The Name of the Rose",
-            "Umberto Eco", content_marker="v2",
+            scan_dir / "rose_v2.epub",
+            "The Name of the Rose",
+            "Umberto Eco",
+            content_marker="v2",
         )
         # Byte-identical copy → hash dup
         shutil.copy(epub1, scan_dir / "rose_copy.epub")
@@ -435,7 +495,8 @@ class TestImportMetadataDedupCli:
         db_path = tmp_path / "test.db"
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["import", str(scan_dir), "--db", str(db_path)],
+            cli,
+            ["import", str(scan_dir), "--db", str(db_path)],
         )
 
         assert result.exit_code == 0, result.output
@@ -456,7 +517,9 @@ class TestImporterOutputPath:
     """
 
     def test_unmatched_import_cli_populates_output_path(
-        self, sample_epub: Path, tmp_path: Path,
+        self,
+        sample_epub: Path,
+        tmp_path: Path,
     ) -> None:
         """`bookery import` (no --match) records output_path under library_root."""
         scan_dir = tmp_path / "scan"
@@ -468,10 +531,14 @@ class TestImporterOutputPath:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, [
-                "import", str(scan_dir),
-                "--db", str(db_path),
-                "-o", str(library_root),
+            cli,
+            [
+                "import",
+                str(scan_dir),
+                "--db",
+                str(db_path),
+                "-o",
+                str(library_root),
             ],
         )
 

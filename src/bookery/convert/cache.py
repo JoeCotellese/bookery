@@ -35,9 +35,7 @@ class LLMCache:
 
     def get(self, key: str) -> str | None:
         with closing(sqlite3.connect(self.path)) as conn:
-            row = conn.execute(
-                "SELECT value FROM llm_cache WHERE key = ?", (key,)
-            ).fetchone()
+            row = conn.execute("SELECT value FROM llm_cache WHERE key = ?", (key,)).fetchone()
         return row[0] if row else None
 
     def put(self, key: str, value: str) -> None:

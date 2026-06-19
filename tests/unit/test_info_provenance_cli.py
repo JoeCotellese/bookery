@@ -29,9 +29,7 @@ def _seed(tmp_path: Path) -> Path:
 def test_info_provenance_shows_table(tmp_path: Path) -> None:
     db_path = _seed(tmp_path)
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["info", "1", "--db", str(db_path), "--provenance"]
-    )
+    result = runner.invoke(cli, ["info", "1", "--db", str(db_path), "--provenance"])
     assert result.exit_code == 0, result.output
     assert "Provenance" in result.output
     assert "title" in result.output
@@ -65,9 +63,14 @@ def test_info_set_and_lock_combined(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "info", "1", "--db", str(db_path),
-            "--set", "title=My Dune",
-            "--lock", "title",
+            "info",
+            "1",
+            "--db",
+            str(db_path),
+            "--set",
+            "title=My Dune",
+            "--lock",
+            "title",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -86,8 +89,12 @@ def test_info_set_allows_value_containing_equals(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "info", "1", "--db", str(db_path),
-            "--set", "description=a=b",
+            "info",
+            "1",
+            "--db",
+            str(db_path),
+            "--set",
+            "description=a=b",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -123,8 +130,12 @@ def test_info_set_rejects_unknown_field(tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
         [
-            "info", "1", "--db", str(db_path),
-            "--set", "bogus=x",
+            "info",
+            "1",
+            "--db",
+            str(db_path),
+            "--set",
+            "bogus=x",
         ],
     )
     assert result.exit_code != 0
