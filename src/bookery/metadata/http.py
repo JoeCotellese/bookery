@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
+# Cap on Retry-After so a hostile or huge header value can't hang the CLI.
+_MAX_RETRY_AFTER = 60.0
+
 
 class MetadataFetchError(Exception):
     """Raised when an HTTP request to a metadata provider fails."""
@@ -88,7 +91,9 @@ class BookeryHttpClient:
                 )
 
             if attempt < attempts - 1:
-                delay = self._retry_delay * (2**attempt)
+                delay = self._retry_after(response)
+                if delay is None:
+                    delay = self._retry_delay * (2**attempt)
                 logger.warning(
                     "HTTP %d from %s, retrying in %.1fs (attempt %d/%d)",
                     response.status_code,
@@ -100,6 +105,23 @@ class BookeryHttpClient:
                 time.sleep(delay)
 
         raise MetadataFetchError(f"HTTP {last_status} from {url} after {attempts} attempts")
+
+    @staticmethod
+    def _retry_after(response: httpx.Response) -> float | None:
+        """Seconds to wait per the Retry-After header, capped.
+
+        Returns None when the header is absent or not the integer-seconds form
+        (e.g. an HTTP-date), so the caller falls back to exponential backoff.
+        """
+        raw = response.headers.get("Retry-After")
+        if not raw:
+            return None
+        try:
+            secs = float(raw)
+        except ValueError:
+            # ponytail: HTTP-date form unsupported; falls back to backoff.
+            return None
+        return min(max(secs, 0.0), _MAX_RETRY_AFTER)
 
     def _rate_limit(self) -> None:
         """Sleep if needed to maintain minimum interval between requests."""

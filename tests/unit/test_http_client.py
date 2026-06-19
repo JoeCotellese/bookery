@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from bookery.metadata.http import (
+    _MAX_RETRY_AFTER,
     BookeryHttpClient,
     HttpClient,
     MetadataFetchError,
@@ -109,3 +110,64 @@ class TestBookeryHttpClient:
         with pytest.raises(MetadataFetchError, match="500"):
             client.get("https://example.com/api")
         assert transport.call_count == 4  # 1 initial + 3 retries
+
+    def test_retry_after_header_honored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A 429 with Retry-After waits exactly that many seconds before retrying."""
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", slept.append)
+        responses = [
+            httpx.Response(429, headers={"Retry-After": "5"}, json={}),
+            httpx.Response(200, json={"ok": True}),
+        ]
+        transport = FakeTransport(responses=responses)
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport)
+
+        result = client.get("https://example.com/api")
+        assert result == {"ok": True}
+        assert slept == [5.0]
+
+    def test_retry_after_capped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A huge Retry-After is capped at _MAX_RETRY_AFTER so the CLI can't hang."""
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", slept.append)
+        responses = [
+            httpx.Response(429, headers={"Retry-After": "9999"}, json={}),
+            httpx.Response(200, json={"ok": True}),
+        ]
+        transport = FakeTransport(responses=responses)
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport)
+
+        client.get("https://example.com/api")
+        assert slept == [_MAX_RETRY_AFTER]
+
+    def test_retry_after_non_numeric_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An HTTP-date Retry-After (unparseable here) falls back to backoff."""
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", slept.append)
+        responses = [
+            httpx.Response(
+                429,
+                headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+                json={},
+            ),
+            httpx.Response(200, json={"ok": True}),
+        ]
+        transport = FakeTransport(responses=responses)
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport, retry_delay=0.01)
+
+        client.get("https://example.com/api")
+        assert slept == [0.01]  # retry_delay * 2**0
+
+    def test_retry_after_absent_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A 429 without Retry-After uses the existing exponential backoff."""
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", slept.append)
+        responses = [
+            httpx.Response(429, json={}),
+            httpx.Response(200, json={"ok": True}),
+        ]
+        transport = FakeTransport(responses=responses)
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport, retry_delay=0.01)
+
+        client.get("https://example.com/api")
+        assert slept == [0.01]

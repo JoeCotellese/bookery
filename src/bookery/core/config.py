@@ -67,6 +67,10 @@ class MatchingConfig:
     auto_accept_threshold: float = DEFAULT_AUTO_ACCEPT_THRESHOLD
     cache_ttl_days: int = 30
     providers: tuple[str, ...] = ("openlibrary",)
+    # Minimum seconds between provider HTTP requests. Default matches the
+    # BookeryHttpClient default; raise it to throttle a bulk rematch below the
+    # anonymous Google Books limit without editing code (#267).
+    min_request_interval: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -163,6 +167,7 @@ def _parse_matching(section: dict[str, Any] | None) -> MatchingConfig:
         ),
         cache_ttl_days=int(section.get("cache_ttl_days", 30)),
         providers=providers,
+        min_request_interval=float(section.get("min_request_interval", 0.1)),
     )
 
 
