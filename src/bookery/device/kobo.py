@@ -18,6 +18,7 @@ from bookery.core.pathformat import sanitize_component
 from bookery.db.hashing import compute_file_hash
 from bookery.db.mapping import BookRecord
 from bookery.db.status import PushCandidate
+from bookery.device.kepub_cache import QuickCheckEntry
 from bookery.device.kobo_backup import backup_kobo_db
 from bookery.device.kobo_reader import pull_read_state, read_kobo_serial
 from bookery.device.kobo_writer import (
@@ -200,6 +201,22 @@ class _CacheProto(Protocol):
         device_path: Path,
     ) -> None: ...
 
+    def get_quickcheck(
+        self, source_path: str, kepubify_version: str
+    ) -> QuickCheckEntry | None: ...
+
+    def record_quickcheck(
+        self,
+        *,
+        source_path: str,
+        kepubify_version: str,
+        source_size: int,
+        source_mtime: float,
+        dest_path: str,
+        dest_size: int,
+        dest_mtime: float,
+    ) -> None: ...
+
 
 ProgressCallback = Callable[[int, int, BookRecord], None]
 StageCallback = Callable[[str], None]
@@ -307,6 +324,58 @@ def _sync_record(
     dest = _compute_device_dest(target, books_subdir, record)
     dest_dir = dest.parent
 
+    def stamp_device_file() -> None:
+        # Re-stamp device_files on every skip/copy path; otherwise books that
+        # pre-date P1a (#180) — or any book that's been on the device long
+        # enough to skip conversion — stay invisible to ``list_push_candidates``
+        # and the read-status push silently no-ops (#188). Idempotent.
+        if device_id is not None:
+            catalog.upsert_device_file(
+                device_id=device_id,
+                book_id=record.id,
+                remote_path=_to_device_path(dest, target),
+                now=now,
+            )
+
+    def record_quickcheck() -> None:
+        # Best-effort: a missing snapshot just costs a hash next sync.
+        try:
+            s = source.stat()
+            d = dest.stat()
+        except OSError:
+            return
+        cache.record_quickcheck(
+            source_path=str(source),
+            kepubify_version=version,
+            source_size=s.st_size,
+            source_mtime=s.st_mtime,
+            dest_path=str(dest),
+            dest_size=d.st_size,
+            dest_mtime=d.st_mtime,
+        )
+
+    # Quick-skip: if size+mtime of both the source and the on-device file match
+    # what we recorded last sync, nothing changed — skip both hashes (the dest
+    # hash is a full read back over USB, the dominant resync cost). Any mismatch
+    # falls through to the hash path below, which re-records the snapshot.
+    qc = cache.get_quickcheck(str(source), version)
+    if qc is not None and qc.dest_path == dest and dest.exists():
+        try:
+            s_stat = source.stat()
+            d_stat = dest.stat()
+        except OSError:
+            s_stat = d_stat = None
+        if (
+            s_stat is not None
+            and d_stat is not None
+            and (s_stat.st_size, s_stat.st_mtime) == (qc.source_size, qc.source_mtime)
+            and (d_stat.st_size, d_stat.st_mtime) == (qc.dest_size, qc.dest_mtime)
+        ):
+            stage("cached")
+            report.skipped.append((dest, "already up to date"))
+            stamp_device_file()
+            return
+
     stage("hash")
     try:
         source_hash = compute_file_hash(source)
@@ -320,18 +389,10 @@ def _sync_record(
             if compute_file_hash(dest) == cached_kepub_sha:
                 stage("cached")
                 report.skipped.append((dest, "already up to date"))
-                # Re-stamp device_files even on the cached path; otherwise
-                # books that pre-date P1a (#180) — or any book that's been on
-                # the device long enough to hit this branch — stay invisible
-                # to ``list_push_candidates`` and the read-status push
-                # silently no-ops (#188). The upsert is idempotent.
-                if device_id is not None:
-                    catalog.upsert_device_file(
-                        device_id=device_id,
-                        book_id=record.id,
-                        remote_path=_to_device_path(dest, target),
-                        now=now,
-                    )
+                # Record the stat snapshot so the next sync quick-skips this
+                # book without reading either file.
+                record_quickcheck()
+                stamp_device_file()
                 return
         except OSError:
             pass  # fall through to re-convert
@@ -354,15 +415,10 @@ def _sync_record(
         return
 
     cache.put(source_hash, version, kepub_sha, dest)
+    record_quickcheck()
     stage("done")
     report.copied.append(dest)
-    if device_id is not None:
-        catalog.upsert_device_file(
-            device_id=device_id,
-            book_id=record.id,
-            remote_path=_to_device_path(dest, target),
-            now=now,
-        )
+    stamp_device_file()
 
 
 def _build_push_updates(candidates: list[PushCandidate]) -> list[ReadStatusUpdate]:

@@ -1,6 +1,7 @@
 # ABOUTME: Unit tests for sync_library_to_kobo — orchestrates kepubify + cache + copy.
 # ABOUTME: Stubs the kepubify wrapper and uses a real KepubCache + tmp filesystem.
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,22 @@ class StubCatalog:
     def list_push_candidates(self, *, device_id: int) -> list:
         # Stub catalog never produces push candidates; the push phase
         # short-circuits without touching the device DB.
+        return []
+
+    def upsert_device_shelf_state(self, **kwargs) -> None:
+        pass
+
+    def get_collection_shelf_state(
+        self, device_id: int, collection_id: int
+    ) -> dict | None:
+        return None
+
+    def list_collection_shelf_candidates(self, *, device_id: int) -> list:
+        return []
+
+    def list_collection_device_paths(
+        self, *, collection_id: int, device_id: int
+    ) -> list[str]:
         return []
 
 
@@ -402,7 +419,148 @@ def test_on_stage_emits_cached_when_skipping(tmp_path: Path) -> None:
         on_stage=stages.append,
     )
 
+    # Quick-skip fires on an unchanged resync: stats match the recorded
+    # snapshot, so neither the source nor the on-device file is hashed.
+    assert stages == ["cached"]
+
+
+def test_source_mtime_change_falls_through_to_hash(tmp_path: Path) -> None:
+    # A changed source mtime invalidates the quick-check, so sync falls back
+    # to the hash path. The content is unchanged, so the conversion cache
+    # still hits and the book is reported cached (not re-converted).
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+    catalog = StubCatalog(records=[record])
+
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+    )
+    first_calls = len(env["kepubify"].calls)
+
+    # Bump the source mtime without changing bytes.
+    st = epub.stat()
+    os.utime(epub, (st.st_atime, st.st_mtime + 100))
+
+    stages: list[str] = []
+    report = sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_stage=stages.append,
+    )
+
     assert stages == ["hash", "cached"]
+    assert len(env["kepubify"].calls) == first_calls
+    assert len(report.skipped) == 1
+    assert len(report.copied) == 0
+
+
+def test_dest_change_falls_through_and_reconverts(tmp_path: Path) -> None:
+    # A changed on-device file invalidates the quick-check; the hash path then
+    # sees the dest hash differs and re-converts to restore the canonical kepub.
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+    catalog = StubCatalog(records=[record])
+
+    first = sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+    )
+    dest = first.copied[0]
+    first_calls = len(env["kepubify"].calls)
+
+    # Tamper with the on-device file (different size and content).
+    dest.write_bytes(b"CORRUPTED-ON-DEVICE-CONTENT")
+
+    report = sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+    )
+
+    assert len(env["kepubify"].calls) == first_calls + 1
+    assert len(report.copied) == 1
+    assert dest.read_bytes() == env["kepubify"].payload
+
+
+def test_missing_quickcheck_row_falls_through_then_repopulates(tmp_path: Path) -> None:
+    # A cache from before this feature has content-hash rows but no quick-check
+    # snapshot. The first sync after upgrade must fall through to the hash path
+    # (cached, not re-converted) and record a snapshot so the next sync skips.
+    import sqlite3
+
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+    catalog = StubCatalog(records=[record])
+
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+    )
+    first_calls = len(env["kepubify"].calls)
+
+    # Simulate a pre-feature cache: drop the recorded snapshot, keep content rows.
+    with sqlite3.connect(env["cache"].path) as conn:
+        conn.execute("DELETE FROM quickcheck_entries")
+        conn.commit()
+
+    legacy_stages: list[str] = []
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_stage=legacy_stages.append,
+    )
+    assert legacy_stages == ["hash", "cached"]
+    assert len(env["kepubify"].calls) == first_calls
+
+    # Snapshot is now repopulated, so a third sync quick-skips.
+    repeat_stages: list[str] = []
+    sync_library_to_kobo(
+        catalog=catalog,
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        on_stage=repeat_stages.append,
+    )
+    assert repeat_stages == ["cached"]
 
 
 def test_on_progress_callback_invoked_per_record(tmp_path: Path) -> None:
