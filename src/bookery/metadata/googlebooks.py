@@ -141,12 +141,22 @@ class GoogleBooksProvider:
     pageCount, and cover thumbnails that Open Library routinely lacks.
     """
 
-    def __init__(self, http_client: HttpClient) -> None:
+    def __init__(self, http_client: HttpClient, api_key: str | None = None) -> None:
         self._http = http_client
+        # Normalize "" (unset env var resolves to empty) to None so we never
+        # send key="". With a key, Google Books lifts the low anonymous per-IP
+        # quota that otherwise 429s a full-library rematch (#267).
+        self._api_key = api_key or None
 
     @property
     def name(self) -> str:
         return "googlebooks"
+
+    def _get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        merged = dict(params or {})
+        if self._api_key:
+            merged["key"] = self._api_key
+        return self._http.get(url, params=merged or None)
 
     def search_by_isbn(self, isbn: str) -> list[MetadataCandidate]:
         """Look up a book by ISBN via Google Books.
@@ -155,7 +165,7 @@ class GoogleBooksProvider:
         """
         clean_isbn = re.sub(r"[\s-]", "", isbn)
         try:
-            data = self._http.get(_GB_BASE, params={"q": f"isbn:{clean_isbn}"})
+            data = self._get(_GB_BASE, params={"q": f"isbn:{clean_isbn}"})
         except MetadataFetchError as exc:
             logger.warning("ISBN lookup failed for %s: %s", isbn, exc)
             return []
@@ -188,7 +198,7 @@ class GoogleBooksProvider:
         query = " ".join(query_parts)
 
         try:
-            data = self._http.get(
+            data = self._get(
                 _GB_BASE,
                 params={"q": query, "maxResults": str(_SEARCH_LIMIT)},
             )
@@ -234,7 +244,7 @@ class GoogleBooksProvider:
         if not volume_id:
             return None
         try:
-            data = self._http.get(f"{_GB_BASE}/{volume_id}")
+            data = self._get(f"{_GB_BASE}/{volume_id}")
         except MetadataFetchError as exc:
             logger.warning("URL lookup failed for %s: %s", url, exc)
             return None

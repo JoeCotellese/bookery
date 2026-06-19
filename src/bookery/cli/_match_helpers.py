@@ -1,6 +1,7 @@
 # ABOUTME: Shared helpers for building match and progress callbacks.
 # ABOUTME: Used by both `import` and `add` commands so behavior stays in one place.
 
+import os
 from pathlib import Path
 
 from rich.console import Console
@@ -55,7 +56,10 @@ def build_active_providers(*, use_cache: bool = True) -> dict[str, MetadataProvi
         if name == "openlibrary":
             providers[name] = OpenLibraryProvider(http_client=_http_for("openlibrary"))  # type: ignore[arg-type]
         elif name == "googlebooks":
-            providers[name] = GoogleBooksProvider(http_client=_http_for("googlebooks"))  # type: ignore[arg-type]
+            providers[name] = GoogleBooksProvider(
+                http_client=_http_for("googlebooks"),  # type: ignore[arg-type]
+                api_key=os.environ.get("GOOGLE_BOOKS_API_KEY"),
+            )
         else:
             import logging
 

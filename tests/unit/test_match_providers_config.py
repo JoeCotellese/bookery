@@ -4,6 +4,7 @@
 from pathlib import Path
 
 from bookery.cli._match_helpers import build_metadata_provider
+from bookery.metadata.googlebooks import GoogleBooksProvider
 
 
 def _install_config(home: Path, body: str | None) -> None:
@@ -42,6 +43,22 @@ def test_googlebooks_only_config(monkeypatch, tmp_path) -> None:
     _isolate(monkeypatch, tmp_path, body='[matching]\nproviders = ["googlebooks"]\n')
     provider = build_metadata_provider(use_cache=False)
     assert type(provider).__name__ == "GoogleBooksProvider"
+
+
+def test_googlebooks_reads_api_key_from_env(monkeypatch, tmp_path) -> None:
+    _isolate(monkeypatch, tmp_path, body='[matching]\nproviders = ["googlebooks"]\n')
+    monkeypatch.setenv("GOOGLE_BOOKS_API_KEY", "env-key-123")
+    provider = build_metadata_provider(use_cache=False)
+    assert isinstance(provider, GoogleBooksProvider)
+    assert provider._api_key == "env-key-123"
+
+
+def test_googlebooks_without_api_key_env_is_none(monkeypatch, tmp_path) -> None:
+    _isolate(monkeypatch, tmp_path, body='[matching]\nproviders = ["googlebooks"]\n')
+    monkeypatch.delenv("GOOGLE_BOOKS_API_KEY", raising=False)
+    provider = build_metadata_provider(use_cache=False)
+    assert isinstance(provider, GoogleBooksProvider)
+    assert provider._api_key is None
 
 
 def test_unknown_provider_is_skipped(monkeypatch, tmp_path) -> None:
