@@ -134,6 +134,46 @@ def test_subtitle_is_kept_separate_from_title() -> None:
     assert candidates[0].metadata.subtitle == "A Novel"
 
 
+def test_api_key_injected_into_isbn_search() -> None:
+    http = FakeHttpClient({"volumes": {"items": [_volume()]}})
+    provider = GoogleBooksProvider(http_client=http, api_key="SECRET")
+    provider.search_by_isbn("9780441013593")
+    assert http.last_params == {"q": "isbn:9780441013593", "key": "SECRET"}
+
+
+def test_api_key_injected_into_title_author_search() -> None:
+    http = FakeHttpClient({"volumes": {"items": [_volume()]}})
+    provider = GoogleBooksProvider(http_client=http, api_key="SECRET")
+    provider.search_by_title_author("Dune", "Frank Herbert")
+    assert http.last_params == {
+        "q": "intitle:Dune inauthor:Frank Herbert",
+        "maxResults": "5",
+        "key": "SECRET",
+    }
+
+
+def test_api_key_injected_into_url_lookup() -> None:
+    http = FakeHttpClient({"VOL1": _volume()})
+    provider = GoogleBooksProvider(http_client=http, api_key="SECRET")
+    provider.lookup_by_url("https://books.google.com/books?id=VOL1")
+    assert http.last_params == {"key": "SECRET"}
+
+
+def test_no_api_key_omits_key_param() -> None:
+    http = FakeHttpClient({"volumes": {"items": [_volume()]}})
+    provider = GoogleBooksProvider(http_client=http)
+    provider.search_by_isbn("9780441013593")
+    assert http.last_params == {"q": "isbn:9780441013593"}
+
+
+def test_empty_api_key_treated_as_absent() -> None:
+    # An unset env var resolves to "" upstream; that must not send key="".
+    http = FakeHttpClient({"volumes": {"items": [_volume()]}})
+    provider = GoogleBooksProvider(http_client=http, api_key="")
+    provider.search_by_isbn("9780441013593")
+    assert http.last_params == {"q": "isbn:9780441013593"}
+
+
 def test_parses_rating_ratings_count_print_type_and_maturity() -> None:
     vol = _volume(title="Dune")
     vol["volumeInfo"]["averageRating"] = 4.3
