@@ -3,7 +3,8 @@
 
 from pathlib import Path
 
-from bookery.cli._match_helpers import build_metadata_provider
+from bookery.cli._match_helpers import build_active_providers, build_metadata_provider
+from bookery.core.config import get_matching_config
 from bookery.metadata.googlebooks import GoogleBooksProvider
 
 
@@ -59,6 +60,33 @@ def test_googlebooks_without_api_key_env_is_none(monkeypatch, tmp_path) -> None:
     provider = build_metadata_provider(use_cache=False)
     assert isinstance(provider, GoogleBooksProvider)
     assert provider._api_key is None
+
+
+def test_matching_config_parses_min_request_interval(monkeypatch, tmp_path) -> None:
+    _isolate(monkeypatch, tmp_path, body="[matching]\nmin_request_interval = 0.5\n")
+    assert get_matching_config().min_request_interval == 0.5
+
+
+def test_matching_config_min_request_interval_defaults(monkeypatch, tmp_path) -> None:
+    _isolate(monkeypatch, tmp_path, body=None)
+    assert get_matching_config().min_request_interval == 0.1
+
+
+def test_http_client_uses_configured_interval(monkeypatch, tmp_path) -> None:
+    _isolate(
+        monkeypatch,
+        tmp_path,
+        body='[matching]\nproviders = ["openlibrary"]\nmin_request_interval = 2.0\n',
+    )
+    captured: list[float] = []
+
+    class _CapturingClient:
+        def __init__(self, *, min_request_interval: float = 0.1, **_: object) -> None:
+            captured.append(min_request_interval)
+
+    monkeypatch.setattr("bookery.metadata.http.BookeryHttpClient", _CapturingClient)
+    build_active_providers(use_cache=False)
+    assert captured == [2.0]
 
 
 def test_unknown_provider_is_skipped(monkeypatch, tmp_path) -> None:

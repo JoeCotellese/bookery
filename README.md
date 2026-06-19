@@ -134,11 +134,13 @@ bookery info 42
   auto_accept_threshold = 0.85
   cache_ttl_days = 30        # metadata response cache TTL (default 30)
   providers = ["openlibrary", "googlebooks"]   # priority order; default ["openlibrary"]
+  min_request_interval = 0.1 # seconds between provider HTTP requests (default 0.1)
   ```
 
 - **`--no-cache`** on `match`/`rematch` bypasses the on-disk metadata response cache and forces fresh provider lookups. Cached responses live at `{data_dir}/metadata_cache.db` and expire after `[matching].cache_ttl_days`.
 - **`[matching].providers`** selects and orders metadata sources. With a single entry the named provider is used directly; with two or more, results are merged by a consensus step that prefers values agreed on by ≥2 providers and falls back to the priority order otherwise. Supported: `openlibrary`, `googlebooks`.
 - **Google Books API key** — set the `GOOGLE_BOOKS_API_KEY` environment variable to authenticate Google Books requests. Without it, requests use the shared anonymous per-IP quota, which a full-library `rematch` exhausts quickly (HTTP 429). Create a free key in the [Google Cloud Console](https://console.cloud.google.com/): create/select a project, enable the **Books API**, then **Credentials → Create credentials → API key**. Then `export GOOGLE_BOOKS_API_KEY=AIza...`. The key is read from the environment only — never written to config.
+- **`[matching].min_request_interval`** is the minimum seconds between provider HTTP requests (default `0.1`). Raise it to throttle a bulk `rematch` below a provider's rate limit; on a `429` the client also honors the response's `Retry-After` header (capped at 60s) before retrying.
 - **Per-field provenance** is recorded for every cataloged book in the `book_field_provenance` table. Use `bookery info <id> --provenance` to see which source supplied each field and when it was fetched. Use `bookery info <id> --set field=value` to hand-edit a value (it's stamped as `user` and locked against overwrite), and `--lock field` / `--unlock field` to gate fields against `rematch`.
 
 ## Commands
