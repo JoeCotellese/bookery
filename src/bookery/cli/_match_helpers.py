@@ -44,9 +44,7 @@ def build_active_providers(*, use_cache: bool = True) -> dict[str, MetadataProvi
     def _http_for(provider_name: str):
         # ponytail: one library-wide interval for every provider, not per-provider
         # config — both providers want the same throttle today (#267).
-        client: object = BookeryHttpClient(
-            min_request_interval=matching.min_request_interval
-        )
+        client: object = BookeryHttpClient(min_request_interval=matching.min_request_interval)
         if cache is not None:
             client = CachingHttpClient(
                 client,  # type: ignore[arg-type]
