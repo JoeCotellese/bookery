@@ -45,7 +45,7 @@ intentionally uses `pdfplumber` (MIT) and `pypdf` (BSD-3) instead of
 
 ### Style
 
-- **Ruff** is the linter and formatter. Run `uv run ruff check src/ tests/` before committing.
+- **Ruff** is the linter and formatter. Run `uv run ruff check src/ tests/` and `uv run ruff format src/ tests/` before committing.
 - **Pyright** is the type checker. Run `uv run pyright src/` to check types.
 - Both run automatically on staged files via the pre-commit hook (see Getting Started).
 - Python 3.12+ features are encouraged (type unions with `|`, etc.).
