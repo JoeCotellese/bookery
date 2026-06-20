@@ -12,6 +12,24 @@
     --color-destructive: #dc2626;
 }
 
+/* Map Bookery's palette onto Pico's light-scheme theme vars so the framework
+   baseline (links, primary buttons, focus rings, form controls) renders in our
+   colors. <html data-theme="light"> pins Pico to light — dark mode is out of
+   scope (#273). Selector matches Pico's own light-scheme specificity; style.css
+   loads after pico.min.css, so source order wins. */
+:root:not([data-theme=dark]) {
+    --pico-background-color: var(--color-bg);
+    --pico-color: var(--color-text);
+    --pico-primary: var(--color-link);
+    --pico-primary-background: var(--color-link);
+    --pico-primary-border: var(--color-link);
+    --pico-primary-hover: #1d4ed8;
+    --pico-primary-hover-background: #1d4ed8;
+    --pico-primary-hover-border: #1d4ed8;
+    --pico-primary-focus: rgba(37, 99, 235, 0.25);
+    --pico-primary-inverse: #fff;
+}
+
 /* Skip link — visually hidden until focused. */
 .skip-link {
     position: absolute;
@@ -45,17 +63,14 @@ textarea:focus-visible {
     outline-offset: 2px;
 }
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
+/* ponytail: no universal margin/padding reset — Pico owns box-sizing and the
+   typographic rhythm now. Re-add a reset only if a layout actually needs it. */
 
+/* Keep the centered reading column and warm background; cede font-family and
+   line-height to Pico's typography baseline. */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--color-bg);
     color: var(--color-text);
-    line-height: 1.6;
     max-width: 960px;
     margin: 0 auto;
     padding: 1rem 2rem;
@@ -306,13 +321,24 @@ header .logo {
     margin-top: 1.5rem;
 }
 
-.btn {
+/* Color modifiers carry the base button chrome too, so a bare
+   `class="btn-primary"` on an <a> (e.g. "New collection") renders as a button
+   without also needing `.btn`. inline-block + no underline make anchors match
+   real <button>s. */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-destructive {
+    display: inline-block;
+    width: auto; /* override Pico's full-width button default */
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
+    line-height: 1.4;
     border: 1px solid var(--color-border);
     border-radius: 4px;
     cursor: pointer;
     font-family: inherit;
+    text-decoration: none;
 }
 
 .btn-primary {
@@ -350,6 +376,45 @@ header .logo {
     cursor: not-allowed;
 }
 
+/* Small inline action (collection add/remove). width:auto + own chrome since
+   these carry no `.btn` base and Pico would otherwise render a full-width
+   primary button. */
+.btn-small {
+    display: inline-block;
+    width: auto;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--color-text);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn-small:hover {
+    background: var(--color-hover);
+}
+
+/* Quiet/secondary action (e.g. skip in enrich). Pairs with `.btn` for chrome;
+   only overrides Pico's primary fill with a muted look. */
+.btn-muted {
+    background: #fff;
+    color: var(--color-muted);
+}
+
+.btn-muted:hover {
+    background: var(--color-hover);
+}
+
+/* Pico forces `button[type=submit]` to width:100%; the app's buttons are
+   content-width. This matches that specificity (element + class) and wins on
+   load order. The inline-block `width:auto` above covers anchor buttons. */
+button:is(.btn, .btn-primary, .btn-secondary, .btn-destructive, .btn-small, .btn-muted) {
+    width: auto;
+}
+
 /* Sections (issue #112) */
 
 .section {
@@ -360,6 +425,18 @@ header .logo {
 
 .section:last-child {
     border-bottom: none;
+}
+
+/* The app uses chips, cards, and plain rows — never bulleted lists. Pico marks
+   every list item (`ul li { list-style: square }`) and indents lists, so opt
+   content lists out wholesale at the item level (the marker lives on the <li>,
+   not the <ul>). Matches Pico's specificity; style.css loads later, so it wins. */
+main :is(ul, ol) {
+    padding-left: 0;
+}
+
+main li {
+    list-style: none;
 }
 
 .book-collections .collection-memberships {
