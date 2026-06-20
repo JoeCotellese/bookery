@@ -128,6 +128,8 @@ def mock_catalog():
     catalog.get_book_status.return_value = None
     catalog.get_device_read_state_for_book.return_value = None
     catalog.is_status_queued_for_push.return_value = False
+    catalog.count_books.return_value = 0
+    catalog.count_collections.return_value = 0
     return catalog
 
 

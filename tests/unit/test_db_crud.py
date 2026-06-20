@@ -469,3 +469,22 @@ class TestListMethodsArticleStrippedOrder:
             catalog.add_genre(book_id, "Literary Fiction")
         rows = catalog.get_books_by_genre("Literary Fiction")
         assert [r.metadata.title for r in rows] == self._STRIPPED_ORDER
+
+
+class TestCounts:
+    """Lightweight counts used by the web nav masthead."""
+
+    def test_count_books_empty(self, catalog: LibraryCatalog) -> None:
+        assert catalog.count_books() == 0
+
+    def test_count_books_reflects_adds(
+        self, catalog: LibraryCatalog, sample_metadata: BookMetadata
+    ) -> None:
+        catalog.add_book(sample_metadata, file_hash="hash1")
+        assert catalog.count_books() == 1
+
+    def test_count_collections(self, catalog: LibraryCatalog) -> None:
+        assert catalog.count_collections() == 0
+        catalog.create_collection("Favorites")
+        catalog.create_collection("To Read", query='status:"unread"')
+        assert catalog.count_collections() == 2
