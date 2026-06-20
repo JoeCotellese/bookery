@@ -126,6 +126,17 @@ class TestDeleteConfirmGet:
         response = client.get("/books/999/delete")
         assert response.status_code == 404
 
+    def test_in_dialog_cancel_closes_dialog(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1)
+        mock_catalog._conn.execute.return_value.fetchone.return_value = (0,)
+
+        html = client.get("/books/1/delete?in_dialog=1").data.decode()
+
+        # Loaded into the list dialog: Cancel closes it rather than swapping
+        # back to a #book-content region that doesn't exist there.
+        assert "dialog').close()" in html
+        assert "#book-content" not in html
+
 
 class TestDeleteConfirmFilePathNone:
     def test_renders_when_no_output_path(self, mock_catalog, client):

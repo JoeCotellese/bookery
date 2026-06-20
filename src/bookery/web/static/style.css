@@ -1078,6 +1078,88 @@ body:has(input[form="bulk-status-form"]:checked) .bulk-status-actions {
     z-index: 1;
 }
 
+/* Per-row action menu — a plain native <details>, styled locally so it reads
+   as a compact kebab button + popover (Pico's .dropdown is select-shaped and
+   not what we want here). */
+.book-table th.book-row-actions,
+.book-table td.book-row-actions {
+    width: 2.25rem;
+    text-align: right;
+    padding-left: 0;
+}
+.row-actions {
+    position: relative;
+    margin: 0;
+}
+.row-actions > summary {
+    list-style: none;                /* drop the disclosure triangle */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 5px;
+    color: var(--color-muted);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+}
+.row-actions > summary::-webkit-details-marker {
+    display: none;
+}
+.row-actions > summary::after {
+    display: none;                   /* drop Pico's accordion chevron */
+}
+.row-actions > summary:hover,
+.row-actions[open] > summary {
+    background: var(--color-hover);
+    color: var(--color-text);
+}
+/* Popover anchored to the trigger's right edge — the actions column is the
+   table's last column, so a left-anchored menu would spill off-screen. */
+.row-actions > ul {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 20;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem;
+    min-width: 9rem;
+    list-style: none;
+    text-align: left;                /* the table cell is right-aligned */
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.row-actions > ul li {
+    margin: 0;
+    list-style: none;
+}
+.row-actions > ul a {
+    display: block;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    color: var(--color-text);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.row-actions > ul a:hover {
+    background: var(--color-hover);
+}
+.row-actions > ul a.row-action-delete {
+    color: var(--color-destructive);
+}
+
+/* Row-action delete reuses the shared confirm panel inside a plain dialog. */
+#row-dialog {
+    max-width: 32rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
 /* === "Card Catalog" editorial layer (#275) =============================== */
 
 @font-face {

@@ -43,10 +43,18 @@
                 class="btn btn-destructive"
                 name="keep_file"
                 value="1">Delete row only</button>
+        {% if in_dialog %}
+        {# Loaded into the list page's #row-dialog — no #book-content to swap
+           back to, so Cancel just closes the dialog. #}
+        <button type="button"
+                class="btn btn-secondary"
+                onclick="this.closest('dialog').close()">Cancel</button>
+        {% else %}
         <button type="button"
                 class="btn btn-secondary"
                 hx-get="{{ url_for('web.book_detail', book_id=book.id) }}"
                 hx-target="#book-content"
                 hx-swap="innerHTML">Cancel</button>
+        {% endif %}
     </form>
 </section>

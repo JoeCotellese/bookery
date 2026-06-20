@@ -25,4 +25,20 @@
 <div id="book-list">
     {% include "_book_list.html" %}
 </div>
+
+{# Row-action Delete loads the confirm partial here, then the dialog opens
+   itself on swap. Esc / backdrop close it; the confirm's Cancel button does
+   too (in_dialog mode). On success the POST sends HX-Redirect to /books. #}
+<dialog id="row-dialog" hx-on::after-swap="this.showModal()"></dialog>
+
+<script>
+    // Select-all toggles every row checkbox in the table. Delegated on
+    // document so it survives htmx swaps of #book-list.
+    document.addEventListener("change", function (e) {
+        if (!e.target.matches?.(".select-all")) return;
+        document
+            .querySelectorAll(".book-table input[name='ids']")
+            .forEach(function (cb) { cb.checked = e.target.checked; });
+    });
+</script>
 {% endblock %}
