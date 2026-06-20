@@ -1,6 +1,31 @@
 /* ABOUTME: Stylesheet for the Bookery web UI. */
 /* ABOUTME: Defines layout and typography for book list, detail, and search. */
 
+/* =========================================================================
+   DESIGN SYSTEM — "The Card Catalog" (#275)
+   -------------------------------------------------------------------------
+   A warm, literary library aesthetic. The `:root` token block below is the
+   source of truth; read it first. Conventions, so new work stays cohesive:
+
+   1. ONE accent. `--color-link` (pine-teal "library ink") is the only accent —
+      links, primary buttons, focus rings, active states. Do not introduce a
+      second brand color.
+   2. DESTRUCTIVE stays distinct. `--color-destructive` (warm brick) must read
+      clearly apart from the ink; that's why the ink is teal, not oxblood. Keep
+      them from converging.
+   3. TWO type roles. Display = `--font-display` (Fraunces, vendored locally in
+      static/fonts/) for the wordmark, page/book titles, and italic bylines.
+      Body = Pico's system stack, for density and legibility. No third font.
+   4. SECTION HEADERS are small-caps catalog labels (uppercase, letterspaced,
+      muted) — drawer fronts, not big headings. See `.section > h2`.
+   5. LAYER over Pico, don't fight it. pico.min.css loads first; this file
+      overrides via load order (and matched specificity where Pico is specific,
+      e.g. `button[type=submit]`). Map palette onto `--pico-*` vars, not by
+      restyling Pico's internals.
+
+   Lists carry no markers (chips/cards/plain rows); see `main li`.
+   ========================================================================= */
+
 :root {
     /* "Card Catalog" palette (#275): warm paper stock, library-ink accent,
        botanical green, warm brick for destructive — kept clearly clear of the
