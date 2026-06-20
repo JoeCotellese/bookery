@@ -38,7 +38,14 @@ from bookery.db.status import STATUS_FINISHED, STATUS_READING, STATUS_UNREAD
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
 from bookery.util.text import strip_html
-from bookery.web.browse import BrowsePage, from_request_args
+from bookery.web.browse import (
+    DEFAULT_VISIBLE_COLUMNS,
+    TOGGLEABLE_COLUMNS,
+    BrowsePage,
+    coerce_columns,
+    from_request_args,
+    parse_columns_cookie,
+)
 from bookery.web.candidate_payload import deserialize_candidate, serialize_candidate
 from bookery.web.covers import get_or_extract_cover, invalidate_cover
 from bookery.web.diff import metadata_diff
@@ -50,6 +57,29 @@ _STATUS_FROM_FORM: dict[str, int] = {
     "reading": STATUS_READING,
     "finished": STATUS_FINISHED,
 }
+
+# Per-browser persistence for the configurable /books columns (#198). UI view
+# state, not catalog data, so it lives in a cookie rather than the DB or the
+# user config file. One-year max-age so the choice survives normal browsing.
+COLUMNS_COOKIE = "book_columns"
+_COLUMNS_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def _resolve_columns() -> tuple[set[str], str | None]:
+    """Resolve the visible /books columns for this request.
+
+    The columns control submits ``cols_set=1`` plus zero or more ``cols``
+    values — that's a write: the (possibly empty) selection becomes the new
+    visible set and the second tuple element is the cookie string to persist.
+    Any other request reads the existing cookie, falling back to
+    ``DEFAULT_VISIBLE_COLUMNS`` only when the cookie is truly absent. A read
+    returns ``None`` for the cookie string so the caller sets no header.
+    """
+    if request.args.get("cols_set"):
+        visible = coerce_columns(request.args.getlist("cols"))
+        return visible, ",".join(sorted(visible))
+    parsed = parse_columns_cookie(request.cookies.get(COLUMNS_COOKIE))
+    return (parsed if parsed is not None else set(DEFAULT_VISIBLE_COLUMNS)), None
 
 
 def _parse_status(value: str | None) -> int | None:
@@ -242,22 +272,39 @@ def books():
     # edit / diff back-links can return to this exact view (filters, page,
     # sort all preserved). Same value on both htmx and full-page paths.
     list_url = _current_list_url()
+    visible_columns, cookie_to_set = _resolve_columns()
     if request.headers.get("HX-Request"):
-        return render_template(
-            "_book_list.html",
-            page=page,
-            query=query,
-            list_url=list_url,
-            book_statuses=book_statuses,
+        response = make_response(
+            render_template(
+                "_book_list.html",
+                page=page,
+                query=query,
+                list_url=list_url,
+                book_statuses=book_statuses,
+                visible_columns=visible_columns,
+            )
+        )
+    else:
+        response = make_response(
+            render_template(
+                "list.html",
+                page=page,
+                query=query,
+                list_url=list_url,
+                book_statuses=book_statuses,
+                visible_columns=visible_columns,
+                toggleable_columns=TOGGLEABLE_COLUMNS,
+            )
         )
 
-    return render_template(
-        "list.html",
-        page=page,
-        query=query,
-        list_url=list_url,
-        book_statuses=book_statuses,
-    )
+    if cookie_to_set is not None:
+        response.set_cookie(
+            COLUMNS_COOKIE,
+            cookie_to_set,
+            max_age=_COLUMNS_COOKIE_MAX_AGE,
+            samesite="Lax",
+        )
+    return response
 
 
 @bp.route("/books/<int:book_id>")
@@ -350,12 +397,14 @@ def bulk_update_status():
     )
     book_statuses = catalog.get_book_statuses([b.id for b in books_page]) if books_page else {}
     list_url = _current_list_url()
+    visible_columns, _ = _resolve_columns()
     return render_template(
         "_book_list.html",
         page=page,
         query=query,
         list_url=list_url,
         book_statuses=book_statuses,
+        visible_columns=visible_columns,
     )
 
 

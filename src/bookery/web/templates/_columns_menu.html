@@ -1,0 +1,35 @@
+{# ABOUTME: #198 column-visibility control for the /books table. #}
+{# Native <details> disclosure wrapping a GET form of checkboxes. With JS htmx
+   swaps #book-list in place; without JS the form does a normal GET reload. The
+   server reads cols_set + cols, persists the book_columns cookie, and renders
+   the chosen columns either way. Hidden inputs carry the current browse state so
+   toggling columns preserves the user's search / sort / page / filters. #}
+<details class="columns-menu">
+    <summary>Columns</summary>
+    <form class="columns-form"
+          method="get"
+          action="{{ url_for('web.books') }}"
+          hx-get="{{ url_for('web.books') }}"
+          hx-target="#book-list"
+          hx-swap="innerHTML"
+          hx-push-url="false">
+        <input type="hidden" name="cols_set" value="1">
+        <input type="hidden" name="q" value="{{ query.q }}">
+        <input type="hidden" name="sort" value="{{ query.sort }}">
+        <input type="hidden" name="dir" value="{{ query.dir }}">
+        <input type="hidden" name="page" value="{{ page.page }}">
+        {% for key, value in query.filters.items() %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endfor %}
+        <fieldset>
+            <legend>Show columns</legend>
+            {% for key, label in toggleable_columns %}
+            <label>
+                <input type="checkbox" name="cols" value="{{ key }}"{% if key in visible_columns %} checked{% endif %}>
+                {{ label }}
+            </label>
+            {% endfor %}
+        </fieldset>
+        <button type="submit">Apply</button>
+    </form>
+</details>

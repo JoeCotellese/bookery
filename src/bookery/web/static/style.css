@@ -1160,6 +1160,66 @@ body:has(input[form="bulk-status-form"]:checked) .bulk-status-actions {
     padding: 1.25rem;
 }
 
+/* Columns control (#198) — native <details> popover holding the visibility
+   checkboxes. Mirrors the row-actions popover so the two read as one family. */
+.columns-menu {
+    position: relative;
+    margin: 0 0 1rem;
+    display: inline-block;
+}
+.columns-menu > summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-text);
+    cursor: pointer;
+    user-select: none;
+}
+.columns-menu > summary::-webkit-details-marker {
+    display: none;
+}
+.columns-menu > summary::after {
+    display: none;
+}
+.columns-menu > summary:hover,
+.columns-menu[open] > summary {
+    background: var(--color-hover);
+}
+.columns-form {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 20;
+    margin: 0.25rem 0 0;
+    padding: 0.75rem;
+    min-width: 12rem;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.columns-form fieldset {
+    margin: 0 0 0.5rem;
+    padding: 0;
+    border: 0;
+}
+.columns-form legend {
+    padding: 0;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+.columns-form label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    white-space: nowrap;
+}
+
 /* === "Card Catalog" editorial layer (#275) =============================== */
 
 @font-face {

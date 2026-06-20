@@ -49,11 +49,11 @@
                 <th class="book-row-cover" aria-label="Cover"></th>
                 <th>{{ sort_link('Title', 'title') }}</th>
                 <th>{{ sort_link('Author', 'author') }}</th>
-                <th>ISBN</th>
-                <th>Language</th>
-                <th>Publisher</th>
-                <th>{{ sort_link('Added', 'added') }}</th>
-                <th>Enriched</th>
+                {% if 'isbn' in visible_columns %}<th class="col-isbn">ISBN</th>{% endif %}
+                {% if 'language' in visible_columns %}<th class="col-language">Language</th>{% endif %}
+                {% if 'publisher' in visible_columns %}<th class="col-publisher">Publisher</th>{% endif %}
+                {% if 'added' in visible_columns %}<th class="col-added">{{ sort_link('Added', 'added') }}</th>{% endif %}
+                {% if 'enriched' in visible_columns %}<th class="col-enriched">Enriched</th>{% endif %}
                 <th class="book-row-actions" aria-label="Actions"></th>
             </tr>
         </thead>
@@ -88,11 +88,11 @@
                     <a href="{{ url_for('web.book_detail', book_id=book.id, return_to=list_url or none) }}">{{ book.metadata.title }}</a>
                 </td>
                 <td>{{ book.metadata.author }}</td>
-                <td>{{ book.metadata.isbn or '' }}</td>
-                <td>{{ book.metadata.language or '' }}</td>
-                <td>{{ book.metadata.publisher or '' }}</td>
-                <td>{{ book.date_added or '' }}</td>
-                <td>{% if book.metadata_matched_at %}&#10003;{% endif %}</td>
+                {% if 'isbn' in visible_columns %}<td class="col-isbn">{{ book.metadata.isbn or '' }}</td>{% endif %}
+                {% if 'language' in visible_columns %}<td class="col-language">{{ book.metadata.language or '' }}</td>{% endif %}
+                {% if 'publisher' in visible_columns %}<td class="col-publisher">{{ book.metadata.publisher or '' }}</td>{% endif %}
+                {% if 'added' in visible_columns %}<td class="col-added">{{ book.date_added or '' }}</td>{% endif %}
+                {% if 'enriched' in visible_columns %}<td class="col-enriched">{% if book.metadata_matched_at %}&#10003;{% endif %}</td>{% endif %}
                 <td class="book-row-actions">
                     {# Native <details> menu, styled locally (not Pico's .dropdown,
                        which is select-shaped). Edit and Enrich are plain navigations
