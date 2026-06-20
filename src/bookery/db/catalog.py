@@ -389,6 +389,24 @@ class LibraryCatalog:
         )
         return [row_to_record(row) for row in cursor.fetchall()]
 
+    def count_books(self) -> int:
+        """Total number of books in the catalog.
+
+        A cheap ``COUNT(*)`` for surfaces (e.g. the web nav masthead) that want
+        the catalog size without materializing every row via ``list_all``.
+        """
+        row = self._conn.execute("SELECT COUNT(*) FROM books").fetchone()
+        return int(row[0]) if row else 0
+
+    def count_collections(self) -> int:
+        """Total number of collections (not their resolved membership).
+
+        Distinct from ``len(list_collections())``: this avoids resolving
+        rule-based membership, returning just the number of collection rows.
+        """
+        row = self._conn.execute("SELECT COUNT(*) FROM collections").fetchone()
+        return int(row[0]) if row else 0
+
     def list_all_by_author(self) -> list[BookRecord]:
         """Return all books in the catalog, ordered by author then title.
 

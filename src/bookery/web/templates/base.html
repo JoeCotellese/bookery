@@ -10,11 +10,20 @@
 </head>
 <body>
     <a class="skip-link" href="#main">Skip to main content</a>
-    <header>
+    {%- set _endpoint = request.endpoint or '' -%}
+    {%- set _collections_active = 'collection' in _endpoint -%}
+    {%- set _counts = nav_counts() -%}
+    <header class="masthead">
         <a class="logo" href="{{ url_for('web.books') }}">Bookery</a>
         <nav class="site-nav" aria-label="Primary">
-            <a href="{{ url_for('web.books') }}">Books</a>
-            <a href="{{ url_for('web.collections_list') }}">Collections</a>
+            <a href="{{ url_for('web.books') }}"
+               {% if not _collections_active %}aria-current="page"{% endif %}>
+                Books <span class="nav-count">{{ _counts.books }}</span>
+            </a>
+            <a href="{{ url_for('web.collections_list') }}"
+               {% if _collections_active %}aria-current="page"{% endif %}>
+                Collections <span class="nav-count">{{ _counts.collections }}</span>
+            </a>
         </nav>
     </header>
     <main id="main">

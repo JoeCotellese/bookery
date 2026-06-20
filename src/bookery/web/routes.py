@@ -157,6 +157,25 @@ bp = Blueprint(
 )
 
 
+@bp.app_context_processor
+def _inject_nav_counts() -> dict:
+    """Expose a lazy ``nav_counts()`` to every template for the masthead.
+
+    The callable defers the COUNT queries until the masthead actually renders
+    them. htmx partial swaps render fragment templates that never draw the
+    masthead, so they don't call it and pay nothing for counts they don't show.
+    """
+
+    def nav_counts() -> dict[str, int]:
+        catalog = current_app.config["CATALOG"]
+        return {
+            "books": catalog.count_books(),
+            "collections": catalog.count_collections(),
+        }
+
+    return {"nav_counts": nav_counts}
+
+
 @bp.route("/")
 def index():
     """Redirect root to book list."""
