@@ -222,6 +222,14 @@ In the web edit form these conversions are gated — when a static collection wi
 hand-picked books gains a rule, or any rule is cleared, the form warns with the
 exact count of books affected and requires a second confirm before writing.
 
+From the web UI (`bookery serve`), reach collections via the **Collections** link
+in the header. A book's detail page has a **Collections** section that lists the
+static collections it belongs to (each with a **Remove**), an **Add to
+collection** picker (static collections only — rule-based membership is derived),
+and a **New collection from this book** link that seeds a rule from the book's
+series or author. Deleting a collection from its detail page asks for
+confirmation first; your books are never deleted.
+
 #### Rule query language
 
 A rule query is a [Lucene](https://lucene.apache.org/)-style expression over a

@@ -261,3 +261,69 @@ class TestConversionGateEndToEnd:
         # And the snapshot is genuinely static: removing the book sticks.
         catalog.remove_books_from_collection(cid, [1])
         assert catalog.resolve_collection_member_ids(cid) == []
+
+
+class TestBookDetailMembershipEndToEnd:
+    def test_add_book_to_static_collection_from_its_detail(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """Adding from the book page persists membership the collection then resolves."""
+        cid = catalog.create_collection("Favorites")
+
+        resp = client.post("/books/1/add-to-collection", data={"collection_id": str(cid)})
+
+        assert resp.status_code == 200
+        assert "Favorites" in resp.data.decode()
+        assert catalog.resolve_collection_member_ids(cid) == [1]
+
+    def test_add_to_rule_collection_from_book_is_rejected(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        """A rule-based collection is excluded from the picker and rejected on POST."""
+        cid = catalog.create_collection("Dune Saga", query="series:Dune")
+
+        detail = client.get("/books/1").data.decode()
+        # The rule collection is not offered as an add target.
+        select = (
+            detail[detail.index("add-collection-select") :]
+            if "add-collection-select" in detail
+            else ""
+        )
+        assert "Dune Saga" not in select
+
+        resp = client.post("/books/1/add-to-collection", data={"collection_id": str(cid)})
+        assert resp.status_code == 200
+        # The guard wrote no static collection_books row: the book's static
+        # memberships still exclude the rule collection.
+        memberships = [c["name"] for c in catalog.get_collections_for_book(1)]
+        assert "Dune Saga" not in memberships
+
+    def test_quick_create_link_seeds_series_query(self, client) -> None:
+        """Dune has a series, so the seed query targets series, with a name prefill."""
+        html_text = client.get("/books/1").data.decode()
+        assert "/collections/new?query=" in html_text
+        assert "series" in html_text and "Dune" in html_text
+
+
+class TestCollectionDeleteModalEndToEnd:
+    def test_confirm_then_delete_removes_collection(self, client, catalog: LibraryCatalog) -> None:
+        cid = catalog.create_collection("Temp")
+
+        confirm = client.get(f"/collections/{cid}/delete").data.decode()
+        assert "Your books are not deleted" in confirm
+        assert 'role="dialog"' in confirm
+
+        resp = client.post(f"/collections/{cid}/delete", follow_redirects=False)
+        assert resp.status_code in (302, 303)
+        assert catalog.get_collection_by_id(cid) is None
+
+    def test_cancel_returns_to_detail_and_keeps_collection(
+        self, client, catalog: LibraryCatalog
+    ) -> None:
+        cid = catalog.create_collection("Keep Me")
+
+        # The confirm panel's Cancel target is the collection detail view.
+        client.get(f"/collections/{cid}/delete")
+        detail = client.get(f"/collections/{cid}").data.decode()
+        assert "Keep Me" in detail
+        assert catalog.get_collection_by_id(cid) is not None

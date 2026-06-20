@@ -140,6 +140,15 @@ def _format_size(num_bytes: int) -> str:
     return f"{size:.1f} GB"
 
 
+def _static_collections(catalog) -> list[dict[str, object]]:
+    """Static collections only (no query) — the only ones you can add a book to.
+
+    Rule-based membership is derived from the query, so manual add/remove is
+    meaningless for them.
+    """
+    return [c for c in catalog.list_collections() if c["query"] is None]
+
+
 bp = Blueprint(
     "web",
     __name__,
@@ -249,32 +258,23 @@ def book_detail(book_id):
     device_read_state = catalog.get_device_read_state_for_book(book_id)
     queued_for_push = catalog.is_status_queued_for_push(book_id)
 
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "_detail.html",
-            book=book,
-            tags=tags,
-            genres=genres,
-            collections=collections,
-            file_info=file_info,
-            return_to=return_to,
-            book_status=book_status,
-            device_read_state=device_read_state,
-            queued_for_push=queued_for_push,
-        )
-
-    return render_template(
-        "detail.html",
+    context = dict(
         book=book,
         tags=tags,
         genres=genres,
         collections=collections,
+        static_collections=_static_collections(catalog),
         file_info=file_info,
         return_to=return_to,
         book_status=book_status,
         device_read_state=device_read_state,
         queued_for_push=queued_for_push,
     )
+
+    if request.headers.get("HX-Request"):
+        return render_template("_detail.html", **context)
+
+    return render_template("detail.html", **context)
 
 
 @bp.route("/books/bulk-status", methods=["POST"])
@@ -775,6 +775,42 @@ def delete_book(book_id):
     return response
 
 
+@bp.route("/books/<int:book_id>/add-to-collection", methods=["POST"])
+def book_add_to_collection(book_id):
+    """Add a book to a chosen static collection from its detail page.
+
+    Re-renders the book-detail Collections section (outer-swap). Adding to a
+    rule-based collection is rejected — its membership is derived, not manual.
+    """
+    catalog = current_app.config["CATALOG"]
+    book = catalog.get_by_id(book_id)
+    if book is None:
+        abort(404)
+
+    raw_id = request.form.get("collection_id", "")
+    collection = None
+    if raw_id.isdigit():
+        collection = catalog.get_collection_by_id(int(raw_id))
+
+    if collection is None:
+        flash("Choose a collection to add this book to.", "warning")
+    elif collection["query"] is not None:
+        flash("Rule-based collections fill themselves; pick a manual one.", "error")
+    else:
+        try:
+            catalog.add_books_to_collection(int(raw_id), [book_id])
+            flash(f'Added to "{collection["name"]}".', "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+
+    return render_template(
+        "_detail_collections.html",
+        book=book,
+        collections=catalog.get_collections_for_book(book_id),
+        static_collections=_static_collections(catalog),
+    )
+
+
 def _hx_redirect(target_url: str) -> Response:
     """Empty 200 carrying an ``HX-Redirect`` so the htmx client navigates the browser.
 
@@ -1090,6 +1126,10 @@ def collection_add_books(collection_id):
     if collection is None:
         abort(404)
 
+    if collection["query"] is not None:
+        flash("Rule-based collections fill themselves; books can't be added by hand.", "error")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
     raw_ids = request.form.getlist("book_ids")
     if not raw_ids:
         flash("No books selected.", "warning")
@@ -1321,7 +1361,7 @@ def collection_new_form():
     "New collection from this book" link (PR 5) can seed a starting rule.
     """
     form = {
-        "name": "",
+        "name": request.args.get("name", ""),
         "description": "",
         "query": request.args.get("query", ""),
     }
@@ -1477,6 +1517,18 @@ def collection_update(collection_id):
 
     flash(f'Updated collection "{name}".', "success")
     return _redirect_after_save(url_for("web.collection_detail", collection_id=collection_id))
+
+
+@bp.route("/collections/<int:collection_id>/delete", methods=["GET"])
+def collection_delete_confirm(collection_id):
+    """Render the delete-confirmation panel (htmx swap into #collection-content)."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    return render_template("_collection_delete_confirm.html", collection=collection)
 
 
 @bp.route("/collections/<int:collection_id>/delete", methods=["POST"])

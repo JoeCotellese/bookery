@@ -60,6 +60,7 @@ def mock_catalog():
     catalog.get_tags_for_book.return_value = []
     catalog.get_genres_for_book.return_value = []
     catalog.get_collections_for_book.return_value = []
+    catalog.list_collections.return_value = []
     catalog.get_book_statuses.return_value = {}
     catalog.get_book_status.return_value = None
     catalog.get_device_read_state_for_book.return_value = None

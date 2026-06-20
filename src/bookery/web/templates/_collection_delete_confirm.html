@@ -1,0 +1,23 @@
+{# ABOUTME: Collection delete-confirmation panel — swapped into #collection-content. #}
+{# ABOUTME: Reassures that book rows/files survive; Cancel is the focused default. #}
+<section class="section delete-confirm" role="dialog" aria-modal="true"
+         aria-labelledby="collection-delete-heading">
+    <h2 id="collection-delete-heading">Delete this collection?</h2>
+
+    <p>
+        Delete &ldquo;{{ collection.name }}&rdquo;? This removes the collection.
+        Your books are not deleted.
+    </p>
+
+    <form action="{{ url_for('web.collection_delete', collection_id=collection.id) }}"
+          method="post"
+          class="delete-actions">
+        <button type="button"
+                class="btn btn-secondary"
+                autofocus
+                hx-get="{{ url_for('web.collection_detail', collection_id=collection.id) }}"
+                hx-target="#collection-content"
+                hx-swap="innerHTML">Cancel</button>
+        <button type="submit" class="btn btn-destructive">Delete collection</button>
+    </form>
+</section>

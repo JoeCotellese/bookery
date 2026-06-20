@@ -14,6 +14,10 @@
            hx-get="{{ url_for('web.collection_edit_form', collection_id=collection.id) }}"
            hx-target="#collection-content"
            class="btn-secondary">Edit</a>
+        <a href="{{ url_for('web.collection_delete_confirm', collection_id=collection.id) }}"
+           hx-get="{{ url_for('web.collection_delete_confirm', collection_id=collection.id) }}"
+           hx-target="#collection-content"
+           class="btn-destructive">Delete</a>
     </p>
 </header>
 
