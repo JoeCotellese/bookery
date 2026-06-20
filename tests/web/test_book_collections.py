@@ -91,3 +91,19 @@ class TestAddBookToCollection:
         mock_catalog.get_by_id.return_value = None
         resp = client.post("/books/99/add-to-collection", data={"collection_id": "7"})
         assert resp.status_code == 404
+
+
+class TestCollectionAddBooksGuard:
+    def test_add_books_to_rule_collection_rejected(self, mock_catalog, client):
+        mock_catalog.get_collection_by_id.return_value = _collection(
+            8, "Sci-Fi", query="genre:scifi"
+        )
+
+        resp = client.post(
+            "/collections/8/add-books",
+            data={"book_ids": ["1"]},
+            follow_redirects=False,
+        )
+
+        assert resp.status_code in (302, 303)
+        mock_catalog.add_books_to_collection.assert_not_called()

@@ -1126,6 +1126,10 @@ def collection_add_books(collection_id):
     if collection is None:
         abort(404)
 
+    if collection["query"] is not None:
+        flash("Rule-based collections fill themselves; books can't be added by hand.", "error")
+        return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
     raw_ids = request.form.getlist("book_ids")
     if not raw_ids:
         flash("No books selected.", "warning")
