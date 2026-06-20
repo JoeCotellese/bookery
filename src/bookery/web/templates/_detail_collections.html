@@ -1,0 +1,55 @@
+{# ABOUTME: Book-detail Collections section — membership, add-to-static, quick-create. #}
+{# ABOUTME: Outer-swapped by book_add_to_collection; rule collections are excluded. #}
+{% set seed_query = ('series:"%s"' % book.metadata.series) if book.metadata.series
+   else ('author:"%s"' % (book.metadata.authors[0] if book.metadata.authors else '')) %}
+{% set seed_name = book.metadata.series if book.metadata.series
+   else (book.metadata.authors[0] if book.metadata.authors else '') %}
+<section id="book-collections" class="section book-collections"
+         aria-labelledby="book-collections-heading" aria-live="polite">
+    <h2 id="book-collections-heading">Collections</h2>
+
+    {% if collections %}
+    <ul class="collection-memberships">
+        {% for collection in collections %}
+        <li>
+            <a href="{{ url_for('web.collection_detail', collection_id=collection.id) }}">
+                {{ collection.name }}
+            </a>
+            <form method="POST"
+                  action="{{ url_for('web.collection_remove_book', collection_id=collection.id, book_id=book.id) }}"
+                  hx-post="{{ url_for('web.collection_remove_book', collection_id=collection.id, book_id=book.id) }}"
+                  hx-target="#book-collections"
+                  hx-swap="outerHTML"
+                  class="inline-form">
+                <button type="submit" class="btn-small">Remove</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">Not in any collection yet.</p>
+    {% endif %}
+
+    {% if static_collections %}
+    <form method="POST"
+          action="{{ url_for('web.book_add_to_collection', book_id=book.id) }}"
+          hx-post="{{ url_for('web.book_add_to_collection', book_id=book.id) }}"
+          hx-target="#book-collections"
+          hx-swap="outerHTML"
+          class="add-to-collection">
+        <label for="add-collection-select">Add to collection</label>
+        <select id="add-collection-select" name="collection_id">
+            {% for collection in static_collections %}
+            <option value="{{ collection.id }}">{{ collection.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-small">Add</button>
+    </form>
+    {% endif %}
+
+    <p class="quick-create">
+        <a href="{{ url_for('web.collection_new_form') }}?query={{ seed_query | urlencode }}{% if seed_name %}&amp;name={{ seed_name | urlencode }}{% endif %}">
+            New collection from this book&hellip;
+        </a>
+    </p>
+</section>
