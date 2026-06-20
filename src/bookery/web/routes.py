@@ -1519,6 +1519,18 @@ def collection_update(collection_id):
     return _redirect_after_save(url_for("web.collection_detail", collection_id=collection_id))
 
 
+@bp.route("/collections/<int:collection_id>/delete", methods=["GET"])
+def collection_delete_confirm(collection_id):
+    """Render the delete-confirmation panel (htmx swap into #collection-content)."""
+    catalog = current_app.config["CATALOG"]
+
+    collection = catalog.get_collection_by_id(collection_id)
+    if collection is None:
+        abort(404)
+
+    return render_template("_collection_delete_confirm.html", collection=collection)
+
+
 @bp.route("/collections/<int:collection_id>/delete", methods=["POST"])
 def collection_delete(collection_id):
     """Delete a collection."""

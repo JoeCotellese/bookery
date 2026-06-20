@@ -362,6 +362,26 @@ header .logo {
     border-bottom: none;
 }
 
+.book-collections .collection-memberships {
+    list-style: none;
+    padding: 0;
+}
+
+.book-collections .collection-memberships li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+.book-collections .add-to-collection {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
 .section h3 {
     font-size: 1rem;
     text-transform: uppercase;
