@@ -161,6 +161,9 @@ class TestBookList:
         )
         mock_catalog.browse.return_value = ([book], 1)
 
+        # ISBN / Language / Publisher are hidden by default since #198, so opt
+        # them in via the columns cookie to verify the cells still render.
+        client.set_cookie("book_columns", "isbn,language,publisher,added,enriched")
         response = client.get("/books")
         html = response.data.decode()
         assert "The Great Gatsby" in html
