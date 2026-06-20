@@ -226,6 +226,45 @@ class TestBooksRoutePagination:
         assert "Showing 1&ndash;1 of 1" in html
 
 
+class TestListRowActions:
+    """Per-row dropdown (Edit/Enrich/Delete) and the select-all control."""
+
+    def test_renders_select_all_checkbox(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        html = client.get("/books").data.decode()
+        assert 'class="select-all"' in html
+
+    def test_row_dropdown_links_to_edit_and_enrich(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(7)], total=1)
+
+        html = client.get("/books").data.decode()
+        assert "/books/7/edit" in html
+        assert "/books/7/enrich" in html
+
+    def test_row_delete_loads_confirm_into_dialog(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(7)], total=1)
+
+        html = client.get("/books").data.decode()
+        assert "/books/7/delete?in_dialog=1" in html
+        assert 'hx-target="#row-dialog"' in html
+
+    def test_full_page_carries_dialog_and_select_all_script(self, mock_catalog, client):
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        html = client.get("/books").data.decode()
+        assert 'id="row-dialog"' in html
+        assert ".select-all" in html  # the toggle script
+
+    def test_partial_swap_omits_dialog_chrome(self, mock_catalog, client):
+        # The dialog + script live in the full-page wrapper, not the swapped
+        # partial — an htmx refresh must not duplicate them.
+        _stub_browse(mock_catalog, books=[make_book(1)], total=1)
+
+        html = client.get("/books", headers={"HX-Request": "true"}).data.decode()
+        assert 'id="row-dialog"' not in html
+
+
 # --- /books route: sortable columns ---
 
 

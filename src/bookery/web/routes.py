@@ -760,6 +760,7 @@ def delete_confirm(book_id):
         tag_count=len(tags),
         genre_count=len(genres),
         duplicate_count=duplicate_count,
+        in_dialog=bool(request.args.get("in_dialog")),
     )
 
 

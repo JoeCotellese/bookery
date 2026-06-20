@@ -43,3 +43,6 @@ uv.lock
 # Bookery runtime
 *.db
 bookery-output/
+
+# Playwright MCP screenshot/snapshot cache
+.playwright-mcp/

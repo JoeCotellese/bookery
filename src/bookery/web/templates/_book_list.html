@@ -41,7 +41,11 @@
     <table class="book-table">
         <thead>
             <tr>
-                <th class="book-row-select" aria-label="Select"></th>
+                <th class="book-row-select">
+                    <input type="checkbox"
+                           class="select-all"
+                           aria-label="Select all books on this page">
+                </th>
                 <th class="book-row-cover" aria-label="Cover"></th>
                 <th>{{ sort_link('Title', 'title') }}</th>
                 <th>{{ sort_link('Author', 'author') }}</th>
@@ -50,6 +54,7 @@
                 <th>Publisher</th>
                 <th>{{ sort_link('Added', 'added') }}</th>
                 <th>Enriched</th>
+                <th class="book-row-actions" aria-label="Actions"></th>
             </tr>
         </thead>
         <tbody>
@@ -88,6 +93,24 @@
                 <td>{{ book.metadata.publisher or '' }}</td>
                 <td>{{ book.date_added or '' }}</td>
                 <td>{% if book.metadata_matched_at %}&#10003;{% endif %}</td>
+                <td class="book-row-actions">
+                    {# Native <details> menu, styled locally (not Pico's .dropdown,
+                       which is select-shaped). Edit and Enrich are plain navigations
+                       to their full pages; Delete loads the shared confirm partial
+                       into the page-level #row-dialog. #}
+                    <details class="row-actions">
+                        <summary aria-label="Actions for {{ book.metadata.title }}">&#8942;</summary>
+                        <ul>
+                            <li><a href="{{ url_for('web.edit_form', book_id=book.id, return_to=list_url or none) }}">Edit</a></li>
+                            <li><a href="{{ url_for('web.enrich_form', book_id=book.id, return_to=list_url or none) }}">Enrich</a></li>
+                            <li><a href="#"
+                                   class="row-action-delete"
+                                   hx-get="{{ url_for('web.delete_confirm', book_id=book.id, in_dialog=1) }}"
+                                   hx-target="#row-dialog"
+                                   hx-swap="innerHTML">Delete&hellip;</a></li>
+                        </ul>
+                    </details>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
