@@ -70,6 +70,21 @@ header .logo {
     text-decoration: none;
 }
 
+.site-nav {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.site-nav a {
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+.site-nav a:hover {
+    text-decoration: underline;
+}
+
 .page-title {
     font-size: 1.75rem;
     margin: 0 0 1rem;
