@@ -1,10 +1,51 @@
 # ABOUTME: BrowseQuery + BrowsePage view models for the /books list controller.
 # ABOUTME: Single source of truth for URL-driven browse state (q, page, sort, filters).
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 DEFAULT_PAGE_SIZE = 50
+
+# Toggleable /books table columns as (key, header label) pairs, in display order.
+# Select / Cover / Title / Author / Actions are structural and never toggle, so
+# they're absent here. Bumping this set is a behavior change and needs the
+# template's conditional cells and the columns control updated in lock-step.
+TOGGLEABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("isbn", "ISBN"),
+    ("language", "Language"),
+    ("publisher", "Publisher"),
+    ("added", "Added"),
+    ("enriched", "Enriched"),
+)
+TOGGLEABLE_KEYS: frozenset[str] = frozenset(key for key, _ in TOGGLEABLE_COLUMNS)
+
+# What a first-time visitor (no cookie) sees: a lean browse view. ISBN /
+# Language / Publisher are reference data, hidden until asked for (#198).
+DEFAULT_VISIBLE_COLUMNS: frozenset[str] = frozenset({"added", "enriched"})
+
+
+def coerce_columns(values: Iterable[str]) -> set[str]:
+    """Filter an iterable of column keys down to the known toggleable set.
+
+    Anything not in ``TOGGLEABLE_KEYS`` is dropped silently — a tampered or
+    stale cookie / form post shouldn't smuggle unexpected column names into
+    the template.
+    """
+    return {value for value in values if value in TOGGLEABLE_KEYS}
+
+
+def parse_columns_cookie(value: str | None) -> set[str] | None:
+    """Parse the ``book_columns`` cookie into a visible-column set.
+
+    Returns ``None`` when the cookie is absent so the caller can fall back to
+    ``DEFAULT_VISIBLE_COLUMNS``. An empty string (cookie present but the user
+    unchecked every column) yields an empty set — a real "show none of the
+    optional columns" choice, distinct from "never chose".
+    """
+    if value is None:
+        return None
+    return coerce_columns(part.strip() for part in value.split(","))
+
 
 # Allowed sort keys for the /books list controller. Anything else falls back
 # to ``DEFAULT_SORT`` silently — we never 400 the front door on a malformed
