@@ -2,14 +2,20 @@
 /* ABOUTME: Defines layout and typography for book list, detail, and search. */
 
 :root {
-    --color-bg: #fafaf8;
-    --color-text: #333;
-    --color-link: #2563eb;
-    --color-border: #e5e5e5;
-    --color-hover: #f5f5f0;
-    --color-badge: #16a34a;
-    --color-muted: #666;
-    --color-destructive: #dc2626;
+    /* "Card Catalog" palette (#275): warm paper stock, library-ink accent,
+       botanical green, warm brick for destructive — kept clearly clear of the
+       teal ink so primary vs destructive stay distinct. */
+    --color-bg: #faf8f3;
+    --color-text: #2b2926;
+    --color-link: #1b5e57;
+    --color-link-hover: #123f3a;
+    --color-border: #e5e1d8;
+    --color-rule: #ded9cd;
+    --color-hover: #f2efe6;
+    --color-badge: #4f7a3f;
+    --color-muted: #6b6760;
+    --color-destructive: #b3402f;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
 /* Map Bookery's palette onto Pico's light-scheme theme vars so the framework
@@ -23,10 +29,10 @@
     --pico-primary: var(--color-link);
     --pico-primary-background: var(--color-link);
     --pico-primary-border: var(--color-link);
-    --pico-primary-hover: #1d4ed8;
-    --pico-primary-hover-background: #1d4ed8;
-    --pico-primary-hover-border: #1d4ed8;
-    --pico-primary-focus: rgba(37, 99, 235, 0.25);
+    --pico-primary-hover: var(--color-link-hover);
+    --pico-primary-hover-background: var(--color-link-hover);
+    --pico-primary-hover-border: var(--color-link-hover);
+    --pico-primary-focus: rgba(27, 94, 87, 0.28);
     --pico-primary-inverse: #fff;
 }
 
@@ -76,28 +82,66 @@ body {
     padding: 1rem 2rem;
 }
 
-header .logo {
-    display: inline-block;
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin-bottom: 1.5rem;
+/* Masthead — one row: literary wordmark left, catalog-label nav right, on a
+   hairline rule like a card-catalog drawer front. */
+.masthead {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem 2rem;
+    flex-wrap: wrap;
+    padding: 0.25rem 0 0.9rem;
+    margin-bottom: 1.75rem;
+    border-bottom: 1px solid var(--color-rule);
+}
+
+.masthead .logo {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: 1.65rem;
+    letter-spacing: -0.01em;
     color: var(--color-text);
     text-decoration: none;
 }
 
 .site-nav {
     display: flex;
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
+    align-items: baseline;
+    gap: 1.75rem;
+    /* override Pico's nav justify-content:space-between and pin the group to
+       the right edge of the masthead */
+    justify-content: flex-start;
+    margin: 0 0 0 auto;
 }
 
 .site-nav a {
-    color: var(--color-text);
+    display: inline-block;
+    color: var(--color-muted);
     text-decoration: none;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding-bottom: 0.2rem;
+    border-bottom: 2px solid transparent;
+    transition: color 120ms ease, border-color 120ms ease;
 }
 
 .site-nav a:hover {
-    text-decoration: underline;
+    color: var(--color-text);
+}
+
+.site-nav a[aria-current="page"] {
+    color: var(--color-text);
+    border-bottom-color: var(--color-link);
+}
+
+.nav-count {
+    margin-left: 0.2em;
+    font-size: 0.82em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-link);
 }
 
 .page-title {
@@ -1007,4 +1051,110 @@ body:has(input[form="bulk-status-form"]:checked) .bulk-status-actions {
     top: 0.6rem;
     left: 0.6rem;
     z-index: 1;
+}
+
+/* === "Card Catalog" editorial layer (#275) =============================== */
+
+@font-face {
+    font-family: "Fraunces";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/fraunces-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+    font-family: "Fraunces";
+    font-style: italic;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/fraunces-latin-wght-italic.woff2") format("woff2-variations");
+}
+
+/* Literary serif for the page-level voice; body stays on Pico's system stack
+   for density and legibility. */
+main h1 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.12;
+}
+
+.page-title {
+    font-size: 2rem;
+    margin: 0 0 1.25rem;
+}
+
+/* Book titles read in the serif too — the whole point of a library. */
+.book-row-title a,
+.book-card-title,
+.collection-list li a {
+    font-family: var(--font-display);
+}
+
+/* Bylines in italic serif, editorial-style. */
+.byline,
+.book-card-author,
+.book-list li .authors {
+    font-style: italic;
+}
+
+/* Section fronts become little catalog-drawer labels (the spec-sheet feel),
+   not big headings. */
+.section > h2,
+.books-in-collection > h2 {
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-muted);
+    margin-bottom: 0.6rem;
+}
+
+/* Collections as a card grid with cover-less drawer cards. */
+.collection-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
+.collection-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.85rem 1rem;
+    background: #fff;
+    border: 1px solid var(--color-rule);
+    border-radius: 6px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.collection-list li:hover {
+    border-color: var(--color-link);
+    box-shadow: 0 2px 6px rgba(43, 41, 38, 0.06);
+}
+
+.collection-list li a {
+    font-size: 1.1rem;
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+.collection-list li a:hover {
+    color: var(--color-link);
+}
+
+.collection-list .description {
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--color-muted);
+}
+
+.collection-list .count {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
 }
