@@ -1,7 +1,6 @@
 # ABOUTME: Shared helpers for building match and progress callbacks.
 # ABOUTME: Used by both `import` and `add` commands so behavior stays in one place.
 
-import os
 from pathlib import Path
 
 from rich.console import Console
@@ -27,9 +26,8 @@ def build_active_providers(*, use_cache: bool = True) -> dict[str, MetadataProvi
     """
     from bookery.core.config import get_data_dir, get_matching_config
     from bookery.metadata.cache import MetadataCache
-    from bookery.metadata.googlebooks import GoogleBooksProvider
     from bookery.metadata.http import BookeryHttpClient, CachingHttpClient
-    from bookery.metadata.openlibrary import OpenLibraryProvider
+    from bookery.metadata.registry import PROVIDER_FACTORIES, ProviderContext
 
     matching = get_matching_config()
     provider_names = matching.providers or ("openlibrary",)
@@ -53,24 +51,20 @@ def build_active_providers(*, use_cache: bool = True) -> dict[str, MetadataProvi
             )
         return client
 
+    ctx = ProviderContext(http_client_for=_http_for)
+
     providers: dict[str, MetadataProvider] = {}
     for name in provider_names:
-        if name == "openlibrary":
-            providers[name] = OpenLibraryProvider(http_client=_http_for("openlibrary"))  # type: ignore[arg-type]
-        elif name == "googlebooks":
-            providers[name] = GoogleBooksProvider(
-                http_client=_http_for("googlebooks"),  # type: ignore[arg-type]
-                api_key=os.environ.get("GOOGLE_BOOKS_API_KEY"),
-            )
-        else:
+        factory = PROVIDER_FACTORIES.get(name)
+        if factory is None:
             import logging
 
             logging.getLogger(__name__).warning("Unknown metadata provider %r; skipping", name)
+            continue
+        providers[name] = factory(ctx)
 
     if not providers:
-        providers["openlibrary"] = OpenLibraryProvider(
-            http_client=_http_for("openlibrary")  # type: ignore[arg-type]
-        )
+        providers["openlibrary"] = PROVIDER_FACTORIES["openlibrary"](ctx)
 
     return providers
 
