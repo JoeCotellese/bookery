@@ -507,3 +507,51 @@ class TestRematchSummary:
         assert result.exit_code == 0, result.output
         assert "1 matched" in result.output
         assert "1 skipped" in result.output
+
+
+class TestRematchCoverFetch:
+    """E2E test for --no-covers on rematch (issue #285)."""
+
+    def test_rematch_no_covers_skips_fetch(self, sample_epub: Path, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        output_dir = tmp_path / "output"
+        book_id = _import_book(sample_epub, db_path)
+
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(
+                title="Il Nome della Rosa",
+                authors=["Umberto Eco"],
+                language="en",
+                cover_url="https://example/cover.jpg",
+            ),
+            confidence=0.95,
+            source="openlibrary",
+            source_id="test-cover",
+        )
+
+        with (
+            patch("bookery.cli.commands.rematch_cmd._create_provider") as mock_fn,
+            patch("bookery.core.pipeline.fetch_cover_image") as mock_fetch,
+        ):
+            mock_provider = MagicMock()
+            mock_provider.search_by_isbn.return_value = []
+            mock_provider.search_by_title_author.return_value = [candidate]
+            mock_fn.return_value = mock_provider
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "rematch",
+                    str(book_id),
+                    "-q",
+                    "--no-covers",
+                    "--db",
+                    str(db_path),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_fetch.assert_not_called()

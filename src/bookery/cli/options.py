@@ -92,6 +92,26 @@ def _resolve_threshold_default() -> float:
     return get_matching_config().auto_accept_threshold
 
 
+no_covers_option = click.option(
+    "--no-covers",
+    "no_covers",
+    is_flag=True,
+    default=False,
+    help="Skip downloading candidate cover images (see [matching].fetch_covers).",
+)
+
+
+def resolve_fetch_covers(no_covers: bool) -> bool:
+    """Effective cover-fetch setting: config default, disabled by --no-covers.
+
+    The flag can only disable; it cannot re-enable covers over a config-level
+    fetch_covers = false.
+    """
+    from bookery.core.config import get_matching_config
+
+    return get_matching_config().fetch_covers and not no_covers
+
+
 threshold_option = click.option(
     "-t",
     "--threshold",

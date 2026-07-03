@@ -71,6 +71,8 @@ class MatchingConfig:
     # BookeryHttpClient default; raise it to throttle a bulk rematch below the
     # anonymous Google Books limit without editing code (#267).
     min_request_interval: float = 0.1
+    # Whether the match pipeline downloads and embeds candidate covers (#285).
+    fetch_covers: bool = True
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,7 @@ def _parse_matching(section: dict[str, Any] | None) -> MatchingConfig:
         cache_ttl_days=int(section.get("cache_ttl_days", 30)),
         providers=providers,
         min_request_interval=float(section.get("min_request_interval", 0.1)),
+        fetch_covers=section.get("fetch_covers", True) is not False,
     )
 
 

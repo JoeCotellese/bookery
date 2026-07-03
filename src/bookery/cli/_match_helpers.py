@@ -98,6 +98,7 @@ def build_match_fn(
     threshold: float,
     *,
     use_cache: bool = True,
+    fetch_covers: bool = True,
 ) -> MatchFn:
     """Build a match callback that runs the full metadata pipeline.
 
@@ -120,7 +121,13 @@ def build_match_fn(
         epub_path: Path,
     ) -> MatchResult | None:
         del _extracted  # signature required by MatchFn protocol
-        result = match_one(epub_path, provider, review, output_dir)
+        result = match_one(epub_path, provider, review, output_dir, fetch_covers=fetch_covers)
+
+        if result.cover_skipped:
+            console.print(
+                "  [yellow]warning:[/yellow] cover fetch failed; "
+                "applied text metadata without cover"
+            )
 
         if not quiet and result.normalization and result.normalization.was_modified:
             console.print(f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}")

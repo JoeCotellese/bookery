@@ -17,7 +17,9 @@ from bookery.cli._pdf_support import convert_pdf_to_epub
 from bookery.cli.options import (
     auto_accept_option,
     db_option,
+    no_covers_option,
     resolve_db_path,
+    resolve_fetch_covers,
     threshold_option,
 )
 from bookery.convert.errors import ConvertError
@@ -171,6 +173,7 @@ def _add_file(
     do_match: bool | None,
     auto_accept: bool,
     threshold: float,
+    fetch_covers: bool = True,
 ) -> None:
     """Single-file ingest path. --match defaults to True when unset."""
     if do_match is None:
@@ -202,6 +205,7 @@ def _add_file(
             output_dir=library_root,
             quiet=auto_accept,
             threshold=threshold,
+            fetch_covers=fetch_covers,
         )
 
     on_progress = build_progress_fn(console)
@@ -263,6 +267,7 @@ def _add_directory(
     do_convert: bool,
     force_duplicates: bool,
     do_move: bool,
+    fetch_covers: bool = True,
 ) -> None:
     """Directory ingest path. --match defaults to False when unset."""
     if do_match is None:
@@ -325,6 +330,7 @@ def _add_directory(
             output_dir=library_root,
             quiet=auto_accept,
             threshold=threshold,
+            fetch_covers=fetch_covers,
         )
 
     on_progress = build_progress_fn(console)
@@ -401,6 +407,7 @@ def _add_directory(
 )
 @auto_accept_option
 @threshold_option
+@no_covers_option
 @click.pass_context
 def add_command(
     ctx: click.Context,
@@ -413,6 +420,7 @@ def add_command(
     force_duplicates: bool,
     auto_accept: bool,
     threshold: float,
+    no_covers: bool,
 ) -> None:
     """Add a single EPUB or a directory of EPUBs to the library.
 
@@ -438,6 +446,7 @@ def add_command(
             do_convert=do_convert,
             force_duplicates=force_duplicates,
             do_move=do_move,
+            fetch_covers=resolve_fetch_covers(no_covers),
         )
         return
 
@@ -456,4 +465,5 @@ def add_command(
         do_match=do_match,
         auto_accept=auto_accept,
         threshold=threshold,
+        fetch_covers=resolve_fetch_covers(no_covers),
     )

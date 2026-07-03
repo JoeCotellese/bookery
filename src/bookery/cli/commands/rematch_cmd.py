@@ -11,7 +11,9 @@ from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import (
     auto_accept_option,
     db_option,
+    no_covers_option,
     resolve_db_path,
+    resolve_fetch_covers,
     threshold_option,
 )
 from bookery.cli.review import ReviewSession
@@ -144,6 +146,7 @@ def _metadata_to_update_fields(metadata: BookMetadata) -> dict:
     is_flag=True,
     help="Skip the metadata response cache and force fresh provider lookups.",
 )
+@no_covers_option
 def rematch(
     book_id: int | None,
     match_all: bool,
@@ -154,9 +157,11 @@ def rematch(
     threshold: float,
     resume: bool,
     no_cache: bool,
+    no_covers: bool,
 ) -> None:
     """Re-run metadata matching on cataloged books and update the database."""
     console = Console()
+    fetch_covers = resolve_fetch_covers(no_covers)
 
     _validate_selectors(book_id, match_all, tag_name)
 
@@ -236,7 +241,13 @@ def rematch(
                 errors += 1
                 continue
 
-            result = match_one(epub_path, provider, review, output_dir)
+            result = match_one(epub_path, provider, review, output_dir, fetch_covers=fetch_covers)
+
+            if result.cover_skipped:
+                console.print(
+                    "  [yellow]warning:[/yellow] cover fetch failed; "
+                    "applied text metadata without cover"
+                )
 
             if not auto_accept and result.normalization and result.normalization.was_modified:
                 console.print(f"  [dim]Normalized:[/dim] {result.normalization.normalized.title}")

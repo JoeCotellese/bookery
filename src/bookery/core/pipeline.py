@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from bookery.core.coverfetch import fetch_cover_image
 from bookery.core.filecopy import copy_file
 from bookery.core.pathformat import build_output_path, record_processed, resolve_collision
 from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
@@ -205,6 +206,7 @@ class MatchOneResult:
     output_path: Path | None = None
     error: str | None = None
     normalization: NormalizationResult | None = None
+    cover_skipped: bool = False
 
 
 def match_one(
@@ -212,17 +214,23 @@ def match_one(
     provider: MetadataProvider,
     review_session: object,
     output_dir: Path,
+    *,
+    fetch_covers: bool = True,
 ) -> MatchOneResult:
     """Run the full match pipeline on a single EPUB.
 
     Pipeline: read -> normalize -> search (ISBN first, then title/author)
-    -> review -> write -> verify.
+    -> review -> fetch cover -> write -> verify.
 
     Args:
         epub_path: Path to the EPUB file.
         provider: MetadataProvider for candidate search.
         review_session: ReviewSession (or mock) with a .review(extracted, candidates) method.
         output_dir: Directory for modified copies.
+        fetch_covers: When True (default), download the accepted candidate's
+            cover_url and embed it in the same write as the text fields. A
+            failed fetch is non-fatal: text metadata still applies and
+            ``cover_skipped`` is set on the result.
 
     Returns:
         MatchOneResult with status, metadata, output_path, and error details.
@@ -284,8 +292,24 @@ def match_one(
         epub_path.name,
     )
 
+    # Fetch the candidate's cover so it lands in the same write as the text
+    # fields — parity with the web enrich-apply path (#285). Non-fatal on
+    # failure. ponytail: no consecutive-failure circuit breaker for batch
+    # runs; add one if offline bulk matching gets slow.
+    cover_image: bytes | None = None
+    cover_skipped = False
+    if fetch_covers and selected.cover_url and selected.cover_image is None:
+        cover_image = fetch_cover_image(selected.cover_url)
+        if cover_image is None:
+            cover_skipped = True
+            logger.warning(
+                "match_one: cover fetch failed for %s from %s",
+                epub_path.name,
+                selected.cover_url,
+            )
+
     # Write the selected metadata to a copy
-    write_result = apply_metadata_safely(epub_path, selected, output_dir)
+    write_result = apply_metadata_safely(epub_path, selected, output_dir, cover_image=cover_image)
     if write_result.success:
         logger.info("match_one: written %s", write_result.path)
         return MatchOneResult(
@@ -293,6 +317,7 @@ def match_one(
             metadata=selected,
             output_path=write_result.path,
             normalization=norm_result,
+            cover_skipped=cover_skipped,
         )
 
     logger.error("match_one: write failed %s: %s", epub_path.name, write_result.error)
