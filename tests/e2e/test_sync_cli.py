@@ -251,3 +251,36 @@ def test_no_target_and_no_detection_fails(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 1, result.output
     assert "kobo" in result.output.lower()
+
+
+def test_no_kepub_copies_plain_epub_without_kepubify(tmp_path: Path) -> None:
+    # The whole point of --no-kepub: send plain EPUBs, and don't require the
+    # kepubify binary to be installed at all.
+    db_path = tmp_path / "lib.db"
+    library = tmp_path / "library"
+    _seed(db_path, library)
+    target = _make_kobo_root(tmp_path)
+
+    runner = CliRunner()
+    with patch("bookery.device.kepubify.shutil.which", return_value=None):
+        result = runner.invoke(
+            cli,
+            [
+                "sync",
+                "kobo",
+                "--no-kepub",
+                "--target",
+                str(target),
+                "--db",
+                str(db_path),
+                "--data-dir",
+                str(tmp_path / "data"),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    book_dir = target / "Bookery" / "Some Author" / "Some Title"
+    plain = book_dir / "Some Title.epub"
+    assert plain.exists()
+    assert plain.read_bytes() == b"FAKE-EPUB"
+    assert not (book_dir / "Some Title.kepub.epub").exists()

@@ -107,6 +107,13 @@ def sync() -> None:
     help="Skip writing read-status back to the device — pulls and copies still run.",
 )
 @click.option(
+    "--kepub/--no-kepub",
+    "kepub",
+    default=None,
+    help="Convert to .kepub.epub (default) or send plain EPUBs untouched. "
+    "Overrides the [sync.kobo] kepub config default.",
+)
+@click.option(
     "--data-dir",
     "data_dir_override",
     type=click.Path(path_type=Path),
@@ -118,11 +125,17 @@ def sync_kobo(
     target: Path | None,
     dry_run: bool,
     no_status_push: bool,
+    kepub: bool | None,
     data_dir_override: Path | None,
     db_path: Path | None,
 ) -> None:
-    """Convert library EPUBs to .kepub.epub and copy to a mounted Kobo."""
+    """Copy the library to a mounted Kobo.
+
+    By default each EPUB is converted to .kepub.epub; pass --no-kepub to send
+    plain EPUBs untouched (which also skips the kepubify dependency entirely).
+    """
     sync_cfg = get_sync_config()
+    use_kepub = kepub if kepub is not None else sync_cfg.kobo.kepub
 
     resolved_target = target
     if resolved_target is None:
@@ -211,6 +224,7 @@ def sync_kobo(
                     on_stage=_on_stage,
                     backup_root=backup_root,
                     status_push_enabled=not no_status_push,
+                    kepub=use_kepub,
                 )
                 overall.update(overall_task, completed=overall.tasks[0].total or 0)
             except DeviceError as exc:
