@@ -198,6 +198,32 @@ class TestEnrichCandidateGet:
         assert "Dune Old" in html
         assert "Dune" in html
 
+    def test_subjects_row_renders_with_apply_checkbox(self, mock_catalog, client, open_library):
+        """The diff panel surfaces a Subjects row with its own apply checkbox
+        when the candidate's subjects differ (#290)."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", subjects=[])
+        candidate = make_candidate(
+            title="Dune",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Science Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+
+        html = response.data.decode()
+        assert "Subjects" in html
+        assert 'name="apply_fields" value="subjects"' in html
+        assert "Science Fiction; Fantasy" in html
+
     def test_changed_field_has_changed_class(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1, title="Old Title")
         candidate = make_candidate(
