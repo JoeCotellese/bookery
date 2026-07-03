@@ -17,7 +17,12 @@ from rich.progress import (
 )
 
 from bookery.cli._match_helpers import build_metadata_provider
-from bookery.cli.options import auto_accept_option, threshold_option
+from bookery.cli.options import (
+    auto_accept_option,
+    no_covers_option,
+    resolve_fetch_covers,
+    threshold_option,
+)
 from bookery.cli.review import ReviewSession
 from bookery.core.config import get_library_root
 from bookery.core.pathformat import is_processed
@@ -88,6 +93,7 @@ def _make_progress(console: Console) -> Progress:
     is_flag=True,
     help="Skip the metadata response cache and force fresh provider lookups.",
 )
+@no_covers_option
 def match(
     path: Path,
     output_dir: Path | None,
@@ -95,6 +101,7 @@ def match(
     threshold: float,
     resume: bool,
     no_cache: bool,
+    no_covers: bool,
 ) -> None:
     """Match metadata for loose EPUB files (not yet in the catalog).
 
@@ -107,6 +114,7 @@ def match(
     if output_dir is None:
         output_dir = get_library_root()
 
+    fetch_covers = resolve_fetch_covers(no_covers)
     provider = _create_provider(use_cache=not no_cache)
     review = ReviewSession(
         console=console,
@@ -154,7 +162,13 @@ def match(
                 f"Processing:[/bold] {epub_path.name}"
             )
 
-        result = match_one(epub_path, provider, review, output_dir)
+        result = match_one(epub_path, provider, review, output_dir, fetch_covers=fetch_covers)
+
+        if result.cover_skipped:
+            console.print(
+                "  [yellow]warning:[/yellow] cover fetch failed; "
+                "applied text metadata without cover"
+            )
 
         # Display normalization info in interactive mode
         if not auto_accept and result.normalization and result.normalization.was_modified:

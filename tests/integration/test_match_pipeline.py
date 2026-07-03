@@ -165,3 +165,52 @@ class TestFullMatchPipeline:
 
         assert result is not None
         assert result.title == "Matched"
+
+
+class TestMatchPipelineCoverFetch:
+    """match_one embeds a fetched cover in the rewritten copy (issue #285)."""
+
+    def test_cover_lands_in_matched_copy(self, sample_epub: Path, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from bookery.core.pipeline import match_one
+
+        jpeg = b"\xff\xd8\xff\xe0" + b"integration-cover" * 8
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(
+                title="Il Nome della Rosa",
+                authors=["Umberto Eco"],
+                language="en",
+                cover_url="https://covers.example/rosa.jpg",
+            ),
+            confidence=0.95,
+            source="openlibrary",
+            source_id="/works/OL27448W",
+        )
+
+        class OneCandidateProvider:
+            name = "openlibrary"
+
+            def search_by_isbn(self, isbn: str) -> list[MetadataCandidate]:
+                return []
+
+            def search_by_title_author(
+                self, title: str, author: str | None = None
+            ) -> list[MetadataCandidate]:
+                return [candidate]
+
+            def lookup_by_url(self, url: str) -> MetadataCandidate | None:
+                return None
+
+        review = ReviewSession(quiet=True, threshold=0.8)
+        output_dir = tmp_path / "output"
+
+        with patch("bookery.core.pipeline.fetch_cover_image", return_value=jpeg) as mock_fetch:
+            result = match_one(sample_epub, OneCandidateProvider(), review, output_dir)
+
+        assert result.status == "matched"
+        mock_fetch.assert_called_once_with("https://covers.example/rosa.jpg")
+        assert result.output_path is not None
+        re_read = read_epub_metadata(result.output_path)
+        assert re_read.title == "Il Nome della Rosa"
+        assert re_read.cover_image == jpeg

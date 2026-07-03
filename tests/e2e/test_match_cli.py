@@ -638,3 +638,94 @@ class TestBatchModeEndToEnd:
         # No files should be written
         if output_dir.exists():
             assert len(list(output_dir.rglob("*.epub"))) == 0
+
+
+_COVER_JPEG = b"\xff\xd8\xff\xe0" + b"cli-cover" * 16
+
+
+class TestMatchCliCoverFetch:
+    """E2E tests for cover fetching in the match command (issue #285)."""
+
+    def _mock_provider(self, cover_url: str | None) -> MagicMock:
+        candidate = MetadataCandidate(
+            metadata=BookMetadata(
+                title="Il Nome della Rosa",
+                authors=["Umberto Eco"],
+                language="en",
+                cover_url=cover_url,
+            ),
+            confidence=0.95,
+            source="openlibrary",
+            source_id="test-cover",
+        )
+        provider = MagicMock()
+        provider.search_by_isbn.return_value = []
+        provider.search_by_title_author.return_value = [candidate]
+        return provider
+
+    def test_match_embeds_candidate_cover(self, sample_epub: Path, tmp_path: Path) -> None:
+        """The accepted candidate's cover is fetched and embedded in the copy."""
+        output_dir = tmp_path / "output"
+
+        with (
+            patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn,
+            patch("bookery.core.pipeline.fetch_cover_image") as mock_fetch,
+        ):
+            mock_fn.return_value = self._mock_provider("https://example/cover.jpg")
+            mock_fetch.return_value = _COVER_JPEG
+
+            runner = CliRunner()
+            result = runner.invoke(cli, ["match", str(sample_epub), "-q", "-o", str(output_dir)])
+
+        assert result.exit_code == 0, result.output
+        mock_fetch.assert_called_once_with("https://example/cover.jpg")
+        outputs = list(output_dir.rglob("*.epub"))
+        assert len(outputs) == 1
+        assert read_epub_metadata(outputs[0]).cover_image == _COVER_JPEG
+
+    def test_no_covers_flag_skips_fetch(self, sample_epub: Path, tmp_path: Path) -> None:
+        """--no-covers never calls the cover fetch helper."""
+        output_dir = tmp_path / "output"
+
+        with (
+            patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn,
+            patch("bookery.core.pipeline.fetch_cover_image") as mock_fetch,
+        ):
+            mock_fn.return_value = self._mock_provider("https://example/cover.jpg")
+            mock_fetch.return_value = _COVER_JPEG
+
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["match", str(sample_epub), "-q", "--no-covers", "-o", str(output_dir)],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_fetch.assert_not_called()
+        outputs = list(output_dir.rglob("*.epub"))
+        assert len(outputs) == 1
+        assert read_epub_metadata(outputs[0]).cover_image is None
+
+    def test_cover_fetch_failure_warns_and_applies_text(
+        self, sample_epub: Path, tmp_path: Path
+    ) -> None:
+        """A failed fetch still writes text metadata and prints a warning line."""
+        output_dir = tmp_path / "output"
+
+        with (
+            patch("bookery.cli.commands.match_cmd._create_provider") as mock_fn,
+            patch("bookery.core.pipeline.fetch_cover_image") as mock_fetch,
+        ):
+            mock_fn.return_value = self._mock_provider("https://example/cover.jpg")
+            mock_fetch.return_value = None
+
+            runner = CliRunner()
+            result = runner.invoke(cli, ["match", str(sample_epub), "-q", "-o", str(output_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert "cover fetch failed" in result.output
+        outputs = list(output_dir.rglob("*.epub"))
+        assert len(outputs) == 1
+        meta = read_epub_metadata(outputs[0])
+        assert meta.title == "Il Nome della Rosa"
+        assert meta.cover_image is None
