@@ -41,14 +41,28 @@ welcome.
 
 Requires Python 3.12+.
 
+### Install it (to use bookery)
+
 ```bash
-# Clone and install with uv
+uv tool install git+https://github.com/joecotellese/bookery.git
+```
+
+`uv tool install` puts `bookery` in its own isolated environment and drops a
+`bookery` command on your `PATH` (in `~/.local/bin`) — no virtualenv to create
+or activate. Just run `bookery` from anywhere. If the command isn't found after
+install, run `uv tool update-shell` once and restart your shell.
+
+Upgrade later with `uv tool upgrade bookery`; remove with `uv tool uninstall bookery`.
+
+### Develop it (to hack on bookery)
+
+```bash
 git clone https://github.com/joecotellese/bookery.git
 cd bookery
 uv sync
 ```
 
-`uv sync` installs `bookery` into the project's `.venv`. Run it with
+`uv sync` installs into the project's `.venv`. Run the CLI with
 `uv run bookery ...`, or activate the venv first
 (`source .venv/bin/activate`) and call `bookery` directly.
 
