@@ -48,6 +48,10 @@ cd bookery
 uv sync
 ```
 
+`uv sync` installs `bookery` into the project's `.venv`. Run it with
+`uv run bookery ...`, or activate the venv first
+(`source .venv/bin/activate`) and call `bookery` directly.
+
 ### Optional: PDF conversion
 
 The PDF path in `bookery add` routes the document
