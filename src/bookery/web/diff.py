@@ -39,12 +39,17 @@ _FIELDS: tuple[str, ...] = (
     "series",
     "series_index",
     "description",
+    "subjects",
 )
 
+# Fields stored as ordered string lists — compared and formatted as lists
+# rather than scalars (authors, and subjects for genre enrichment #290).
+_LIST_FIELDS: frozenset[str] = frozenset({"authors", "subjects"})
 
-def _format_authors(authors: list[str]) -> str:
-    """Join an author list for display; empty list renders as empty string."""
-    return "; ".join(authors)
+
+def _format_str_list(values: list[str]) -> str:
+    """Join a string list for display; empty list renders as empty string."""
+    return "; ".join(values)
 
 
 def _format_scalar(value: object) -> str:
@@ -61,8 +66,8 @@ def _scalar_changed(current: object, proposed: object) -> bool:
     return cur != prop
 
 
-def _authors_changed(current: list[str], proposed: list[str]) -> bool:
-    """True when ordered author lists differ."""
+def _str_list_changed(current: list[str], proposed: list[str]) -> bool:
+    """True when ordered string lists differ."""
     return list(current) != list(proposed)
 
 
@@ -78,16 +83,16 @@ def metadata_diff(current: BookMetadata, proposed: BookMetadata) -> list[FieldDi
     """
     diffs: list[FieldDiff] = []
     for field in _FIELDS:
-        if field == "authors":
-            cur_list = current.authors or []
-            prop_list = proposed.authors or []
-            changed = _authors_changed(cur_list, prop_list)
+        if field in _LIST_FIELDS:
+            cur_list = getattr(current, field) or []
+            prop_list = getattr(proposed, field) or []
+            changed = _str_list_changed(cur_list, prop_list)
             skip_clear = changed and not prop_list and bool(cur_list)
             diffs.append(
                 FieldDiff(
                     field=field,
-                    current=_format_authors(cur_list),
-                    proposed=_format_authors(prop_list),
+                    current=_format_str_list(cur_list),
+                    proposed=_format_str_list(prop_list),
                     changed=changed,
                     skip_clear=skip_clear,
                 )

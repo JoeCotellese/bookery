@@ -110,7 +110,42 @@ class TestMetadataDiff:
             "series",
             "series_index",
             "description",
+            "subjects",
         }
+
+    def test_subjects_compared_as_ordered_list(self):
+        current = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+        proposed = BookMetadata(title="X", subjects=["Fantasy", "Fiction"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+
+    def test_subjects_same_order_marked_unchanged(self):
+        current = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+        proposed = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is False
+
+    def test_subjects_changed_shows_joined_values(self):
+        current = BookMetadata(title="X", subjects=[])
+        proposed = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+        assert subj_diff.proposed == "Fiction; Fantasy"
+
+    def test_subjects_empty_proposed_flags_skip_clear(self):
+        current = BookMetadata(title="X", subjects=["Fiction"])
+        proposed = BookMetadata(title="X", subjects=[])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+        assert subj_diff.skip_clear is True
 
     def test_series_index_changed(self):
         current = BookMetadata(title="X", series_index=1.0)
@@ -162,6 +197,32 @@ class TestEnrichCandidateGet:
         # Field rows present
         assert "Dune Old" in html
         assert "Dune" in html
+
+    def test_subjects_row_renders_with_apply_checkbox(self, mock_catalog, client, open_library):
+        """The diff panel surfaces a Subjects row with its own apply checkbox
+        when the candidate's subjects differ (#290)."""
+        mock_catalog.get_by_id.return_value = make_book(1, title="Dune", subjects=[])
+        candidate = make_candidate(
+            title="Dune",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Science Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+
+        html = response.data.decode()
+        assert "Subjects" in html
+        assert 'name="apply_fields" value="subjects"' in html
+        assert "Science Fiction; Fantasy" in html
 
     def test_changed_field_has_changed_class(self, mock_catalog, client, open_library):
         mock_catalog.get_by_id.return_value = make_book(1, title="Old Title")
@@ -465,6 +526,105 @@ class TestEnrichApplyPost:
         assert kwargs["publisher"] == "Acme"
         # Source attribution credited to the provider name.
         assert kwargs.get("source") == "Open Library"
+
+    def test_updates_catalog_with_subjects(self, mock_catalog, client, open_library, tmp_path):
+        """Applying a candidate mirrors its subjects into the catalog so the
+        auto-genre hook (catalog.update_book) fires (#290)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs["subjects"] == ["Fiction", "Fantasy"]
+        assert kwargs.get("source") == "Open Library"
+
+    def test_unchecked_subjects_not_written(self, mock_catalog, client, open_library, tmp_path):
+        """With a per-field selection that omits subjects, the candidate's
+        subjects are not written — unchecked means keep current (#284/#290)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "apply_fields_present": "1",
+                    "apply_fields": ["title"],
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "subjects" not in kwargs
+
+    def test_empty_proposed_subjects_does_not_clear(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """A candidate with no subjects never clears the book's curated
+        subjects, even when the subjects field is selected (#125 guard)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, source_path=source, subjects=["Existing"]
+        )
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=[],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "apply_fields_present": "1",
+                    "apply_fields": ["title", "subjects"],
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "subjects" not in kwargs
 
     def test_records_output_path(self, mock_catalog, client, open_library, tmp_path):
         source = tmp_path / "src.epub"
