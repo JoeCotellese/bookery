@@ -1671,3 +1671,82 @@ class TestEnrichApplyFieldSelection:
         assert meta.title == "New Title"
         assert meta.publisher == "Old House"
         assert meta.authors == ["Old Author"]
+
+
+class TestDiffPanelCheckboxes:
+    """Rendered diff panel carries per-field apply checkboxes (issue #284)."""
+
+    def _get_diff(self, mock_catalog, client, open_library, candidate):
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="Old Title", authors=["Old Author"], publisher="Old House"
+        )
+        open_library.by_isbn = [candidate]
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+        assert response.status_code == 200
+        return response.data.decode()
+
+    def test_changed_rows_have_checked_checkboxes(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            authors=["Old Author"],
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert re.search(r'<input[^>]*name="apply_fields"[^>]*value="title"[^>]*checked', page)
+        # Unchanged authors row gets no checkbox.
+        assert not re.search(r'value="authors"[^>]*checked', page)
+
+    def test_skip_clear_row_has_no_checkbox(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            publisher=None,  # skip-clear vs curated "Old House"
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert not re.search(r'<input[^>]*name="apply_fields"[^>]*value="publisher"', page)
+
+    def test_cover_checkbox_present_iff_cover_url(self, mock_catalog, client, open_library):
+        with_cover = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+            cover_url="https://example/c.jpg",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, with_cover)
+        assert re.search(r'<input[^>]*name="apply_fields"[^>]*value="cover"[^>]*checked', page)
+
+        without_cover = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, without_cover)
+        assert not re.search(r'<input[^>]*name="apply_fields"[^>]*value="cover"', page)
+
+    def test_form_wiring(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert 'id="enrich-apply-form"' in page
+        assert re.search(r'name="apply_fields_present"\s+value="1"', page)
+        # Checkboxes live in the table, outside the form element.
+        assert re.search(r'name="apply_fields"[^>]*form="enrich-apply-form"', page)
+        # Accessible label on the checkbox.
+        assert re.search(r'aria-label="Apply title"', page)
