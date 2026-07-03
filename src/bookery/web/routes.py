@@ -5,6 +5,7 @@ import logging
 import os
 import sqlite3
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -37,6 +38,7 @@ from bookery.core.remove import remove_book
 from bookery.db.status import STATUS_FINISHED, STATUS_READING, STATUS_UNREAD
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
+from bookery.metadata.types import BookMetadata
 from bookery.util.text import strip_html
 from bookery.web.browse import (
     DEFAULT_VISIBLE_COLUMNS,
@@ -48,6 +50,7 @@ from bookery.web.browse import (
 )
 from bookery.web.candidate_payload import deserialize_candidate, serialize_candidate
 from bookery.web.covers import get_or_extract_cover, invalidate_cover
+from bookery.web.diff import _FIELDS as DIFF_FIELDS
 from bookery.web.diff import metadata_diff
 
 logger = logging.getLogger(__name__)
@@ -789,6 +792,46 @@ def _should_write_authors(current: list[str], proposed: list[str]) -> bool:
     return list(cur) != list(prop)
 
 
+# Field names a client may select for apply: the diff panel's text fields plus
+# the cover pseudo-field (issue #284).
+_APPLY_FIELD_WHITELIST = frozenset(DIFF_FIELDS) | {"cover"}
+
+
+def _parse_apply_selection(form) -> list[str] | None:
+    """Parse the per-field apply selection from the Apply form (issue #284).
+
+    Returns ``None`` when the ``apply_fields_present`` sentinel is absent — a
+    legacy/non-JS post — which callers treat as "apply every field" (the
+    pre-#284 behavior). With the sentinel, returns the whitelist-filtered
+    selection, which may be empty (caller rejects, nothing is written).
+    """
+    if form.get("apply_fields_present") != "1":
+        return None
+    return [f for f in form.getlist("apply_fields") if f in _APPLY_FIELD_WHITELIST]
+
+
+def _filter_skip_clears(
+    current: BookMetadata, proposed: BookMetadata, fields: list[str]
+) -> list[str]:
+    """Drop selected fields whose proposed value would clear a curated one.
+
+    EPUB-side mirror of the catalog guards (:func:`_should_write_scalar` /
+    :func:`_should_write_authors`, issue #125): an empty proposed value never
+    overwrites a non-empty current value, even if the field arrives selected.
+    """
+    kept: list[str] = []
+    for name in fields:
+        cur = getattr(current, name)
+        prop = getattr(proposed, name)
+        if name == "authors":
+            if not (prop or []) and (cur or []):
+                continue
+        elif _is_empty_scalar(prop) and not _is_empty_scalar(cur):
+            continue
+        kept.append(name)
+    return kept
+
+
 @bp.route("/books/<int:book_id>/delete", methods=["GET"])
 def delete_confirm(book_id):
     """Render the delete confirmation panel (htmx swap into #book-content)."""
@@ -1022,6 +1065,24 @@ def enrich_apply(book_id):
     author = request.form.get("author", "")
     candidate_id = request.form.get("candidate_id", "")
 
+    # Per-field selection (#284). None means a legacy post without the
+    # sentinel — apply every field, the pre-#284 behavior.
+    selection = _parse_apply_selection(request.form)
+    if selection is not None and not selection:
+        flash("Select at least one field to apply.", "warning")
+        return _hx_redirect(
+            url_for(
+                "web.enrich_candidate",
+                book_id=book_id,
+                provider=provider_name,
+                isbn=isbn,
+                url=url,
+                title=title,
+                author=author,
+                candidate_id=candidate_id,
+            )
+        )
+
     # Prefer the candidate the user previewed, carried verbatim in the form, so
     # Apply writes exactly what the diff showed without a provider round-trip
     # (#234). A missing/malformed/tampered payload falls back to re-fetching by
@@ -1066,22 +1127,49 @@ def enrich_apply(book_id):
     # the filesystem. Fall back to the source file's directory.
     output_dir = book.output_path.parent if book.output_path is not None else source.parent
 
-    proposed = candidate.metadata
+    # Build the metadata to write. A legacy post applies the candidate
+    # wholesale; an explicit selection starts from the book's CURRENT metadata
+    # and overlays only the selected fields, so "unchecked = keep current" is
+    # literal in the EPUB write (#284). Skip-clear fields are dropped from the
+    # selection so an empty provider value never clears a curated one (#125).
+    if selection is None:
+        proposed = candidate.metadata
+        surviving_fields: list[str] | None = None
+        cover_selected = True
+    else:
+        text_fields = [f for f in selection if f != "cover"]
+        surviving_fields = _filter_skip_clears(book.metadata, candidate.metadata, text_fields)
+        proposed = replace(
+            book.metadata,
+            **{f: getattr(candidate.metadata, f) for f in surviving_fields},
+        )
+        cover_selected = "cover" in selection
+        if not surviving_fields and not (cover_selected and candidate.metadata.cover_url):
+            # Everything selected was either skip-cleared or an absent cover —
+            # writing would produce a copy identical to the current metadata.
+            flash("Nothing to apply — the selected fields have no usable values.", "warning")
+            return _hx_redirect(detail_url)
 
-    # Fetch the candidate's cover (if any) so it lands in the same atomic write
-    # as the text fields. A cover fetch failure is non-fatal: the text metadata
-    # still applies, and we note the skipped cover in the success flash.
+    # Fetch the candidate's cover (if selected) so it lands in the same atomic
+    # write as the text fields. A cover fetch failure is non-fatal: the text
+    # metadata still applies, and we note the skipped cover in the success flash.
     cover_image: bytes | None = None
     cover_skipped = False
-    if proposed.cover_url:
-        cover_image = fetch_cover_image(proposed.cover_url)
+    if cover_selected and candidate.metadata.cover_url:
+        cover_image = fetch_cover_image(candidate.metadata.cover_url)
         if cover_image is None:
             cover_skipped = True
             logger.warning(
                 "enrich_apply: cover fetch failed for book %s from %s",
                 book_id,
-                proposed.cover_url,
+                candidate.metadata.cover_url,
             )
+            if surviving_fields is not None and not surviving_fields:
+                # The failed cover was the only thing selected — writing now
+                # would produce a metadata-identical copy and record provenance
+                # with zero fields applied (#284).
+                flash("Cover could not be fetched — nothing was applied.", "warning")
+                return _hx_redirect(detail_url)
 
     write_result = apply_metadata_safely(source, proposed, output_dir, cover_image=cover_image)
     if not write_result.success or write_result.path is None:
@@ -1139,7 +1227,12 @@ def enrich_apply(book_id):
     # the next GET /books/<id>/cover re-extracts from the new file.
     invalidate_cover(get_library_root(), book_id)
 
-    message = f'Applied "{proposed.title}" from {candidate.source}'
+    if surviving_fields is None:
+        message = f'Applied "{proposed.title}" from {candidate.source}'
+    else:
+        applied = list(surviving_fields) + (["cover"] if cover_image is not None else [])
+        shown = ", ".join(applied) if len(applied) <= 4 else f"{len(applied)} fields"
+        message = f"Applied {shown} from {candidate.source}"
     if cover_skipped:
         message += " (cover could not be fetched and was skipped)"
     flash(message, "success")

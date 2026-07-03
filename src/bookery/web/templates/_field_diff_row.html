@@ -2,6 +2,18 @@
 {# ABOUTME: Highlights changed cells, collapses long values into <details>. #}
 {% set row_class = 'diff-clear' if diff.skip_clear else ('diff-changed' if diff.changed else 'diff-unchanged') %}
 <tr class="diff-row {{ row_class }}">
+    {# Apply checkbox only on rows that will actually write (#284): changed and
+       not skip-clear. Unchanged/skip-clear rows get an empty cell — a disabled
+       control would just invite "why can't I check this?" confusion. #}
+    {% if diff.changed and not diff.skip_clear %}
+        <td class="diff-apply">
+            <label class="diff-apply-label">
+                <input type="checkbox" name="apply_fields" value="{{ diff.field }}" form="enrich-apply-form" checked aria-label="Apply {{ diff.field|replace('_', ' ') }}">
+            </label>
+        </td>
+    {% else %}
+        <td class="diff-apply"></td>
+    {% endif %}
     <th scope="row" class="diff-field">{{ diff.field|replace('_', ' ')|title }}</th>
     {% if diff.skip_clear %}
         {# Proposed is empty while current is set — skipped to protect curated data (issue #125). #}

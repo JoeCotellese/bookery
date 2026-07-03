@@ -13,6 +13,7 @@
     <table class="enrich-diff-table">
         <thead>
             <tr>
+                <th scope="col" class="diff-apply-col">Apply</th>
                 <th scope="col">Field</th>
                 <th scope="col">Current</th>
                 <th scope="col">Proposed</th>
@@ -25,6 +26,15 @@
             {# Cover is an image, not a text field, so it gets a dedicated row
                rather than going through metadata_diff / _field_diff_row.html. #}
             <tr class="diff-row {{ 'diff-changed' if candidate.metadata.cover_url else 'diff-unchanged' }}">
+                {% if candidate.metadata.cover_url %}
+                <td class="diff-apply">
+                    <label class="diff-apply-label">
+                        <input type="checkbox" name="apply_fields" value="cover" form="enrich-apply-form" checked aria-label="Apply cover">
+                    </label>
+                </td>
+                {% else %}
+                <td class="diff-apply"></td>
+                {% endif %}
                 <th scope="row" class="diff-field">Cover</th>
                 <td class="diff-current{{ ' changed' if candidate.metadata.cover_url else '' }}">
                     <img class="enrich-diff-cover"
@@ -57,6 +67,7 @@
 
     <div class="enrich-diff-actions" role="group" aria-label="Diff actions">
         <form class="enrich-diff-apply"
+              id="enrich-apply-form"
               method="post"
               action="{{ url_for('web.enrich_apply', book_id=book.id) }}"
               hx-post="{{ url_for('web.enrich_apply', book_id=book.id) }}"
@@ -71,15 +82,42 @@
                re-querying the provider (#234); dispatch fields above back the
                re-fetch fallback when this payload is absent. #}
             <input type="hidden" name="candidate_payload" value="{{ candidate_payload }}">
-            <button type="submit" class="btn btn-primary">
+            {# Sentinel distinguishing "user unchecked everything" from a
+               legacy post with no selection support at all (#284). #}
+            <input type="hidden" name="apply_fields_present" value="1">
+            <button type="submit" class="btn btn-primary"{% if not write_count %} disabled{% endif %}>
                 Apply{% if write_count %} ({{ write_count }} change{{ '' if write_count == 1 else 's' }}){% endif %}
             </button>
+            <span id="apply-none-hint" class="enrich-diff-skip-summary"{% if write_count %} hidden{% endif %}>
+                Select at least one field to apply.
+            </span>
             {% if skip_clear_count %}
                 <span class="enrich-diff-skip-summary">
                     {{ skip_clear_count }} field{{ '' if skip_clear_count == 1 else 's' }} kept — provider had no value
                 </span>
             {% endif %}
         </form>
+
+        <script>
+        (function () {
+            var form = document.getElementById('enrich-apply-form');
+            if (!form) { return; }
+            var button = form.querySelector('button[type=submit]');
+            var hint = document.getElementById('apply-none-hint');
+            var boxes = document.querySelectorAll('input[name="apply_fields"][form="enrich-apply-form"]');
+            function sync() {
+                var n = 0;
+                boxes.forEach(function (box) { if (box.checked) { n += 1; } });
+                button.disabled = n === 0;
+                if (hint) { hint.hidden = n !== 0; }
+                button.textContent = n === 0
+                    ? 'Apply'
+                    : 'Apply (' + n + ' change' + (n === 1 ? '' : 's') + ')';
+            }
+            boxes.forEach(function (box) { box.addEventListener('change', sync); });
+            sync();
+        })();
+        </script>
 
         <button type="button"
                 class="btn btn-secondary"

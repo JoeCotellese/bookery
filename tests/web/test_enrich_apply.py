@@ -1413,3 +1413,365 @@ class TestEnrichApplyCover:
         messages = [m for _, m in flashes]
         # Happy path flash should not mention a skipped cover.
         assert not any("skip" in m.lower() for m in messages)
+
+
+class TestParseApplySelection:
+    """Unit tests for the apply_fields selection parser (issue #284)."""
+
+    def _parse(self, data: dict | list) -> list[str] | None:
+        from werkzeug.datastructures import MultiDict
+
+        from bookery.web.routes import _parse_apply_selection
+
+        return _parse_apply_selection(MultiDict(data))
+
+    def test_no_sentinel_returns_none_for_legacy_posts(self):
+        assert self._parse({"title": "x"}) is None
+
+    def test_sentinel_with_values_returns_filtered_list(self):
+        data = [
+            ("apply_fields_present", "1"),
+            ("apply_fields", "title"),
+            ("apply_fields", "description"),
+        ]
+        assert self._parse(data) == ["title", "description"]
+
+    def test_unknown_names_dropped(self):
+        data = [
+            ("apply_fields_present", "1"),
+            ("apply_fields", "title"),
+            ("apply_fields", "evil_field"),
+        ]
+        assert self._parse(data) == ["title"]
+
+    def test_cover_is_a_valid_selection(self):
+        data = [("apply_fields_present", "1"), ("apply_fields", "cover")]
+        assert self._parse(data) == ["cover"]
+
+    def test_sentinel_with_nothing_selected_returns_empty(self):
+        assert self._parse({"apply_fields_present": "1"}) == []
+
+
+class TestFilterSkipClears:
+    """Unit tests for the EPUB-side skip-clear filter (issue #284)."""
+
+    def _filter(self, current: BookMetadata, proposed: BookMetadata, fields: list[str]):
+        from bookery.web.routes import _filter_skip_clears
+
+        return _filter_skip_clears(current, proposed, fields)
+
+    def test_empty_proposed_over_curated_value_dropped(self):
+        current = BookMetadata(title="Kept", publisher="Curated House")
+        proposed = BookMetadata(title="New", publisher=None)
+        assert self._filter(current, proposed, ["title", "publisher"]) == ["title"]
+
+    def test_empty_authors_over_curated_authors_dropped(self):
+        current = BookMetadata(title="T", authors=["Kept Author"])
+        proposed = BookMetadata(title="T", authors=[])
+        assert self._filter(current, proposed, ["authors"]) == []
+
+    def test_real_change_kept(self):
+        current = BookMetadata(title="Old")
+        proposed = BookMetadata(title="New")
+        assert self._filter(current, proposed, ["title"]) == ["title"]
+
+    def test_filling_an_empty_current_kept(self):
+        current = BookMetadata(title="T", publisher=None)
+        proposed = BookMetadata(title="T", publisher="New House")
+        assert self._filter(current, proposed, ["publisher"]) == ["publisher"]
+
+
+class TestEnrichApplyFieldSelection:
+    """POST /enrich/apply with an explicit apply_fields selection (issue #284)."""
+
+    def _post(self, client, data_extra: dict | None = None, apply_fields: list[str] | None = None):
+        data: dict = {
+            "provider": "Open Library",
+            "isbn": "9780441172719",
+            "candidate_id": "OL:1",
+            "apply_fields_present": "1",
+        }
+        if apply_fields is not None:
+            data["apply_fields"] = apply_fields
+        if data_extra:
+            data.update(data_extra)
+        return client.post("/books/1/enrich/apply", data=data)
+
+    def _book(self, tmp_path):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        return make_book(
+            1,
+            title="Old Title",
+            authors=["Old Author"],
+            publisher="Old House",
+            source_path=source,
+        )
+
+    def _candidate(self, cover_url: str | None = None):
+        return make_candidate(
+            title="New Title",
+            authors=["New Author"],
+            publisher="New House",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+            cover_url=cover_url,
+        )
+
+    def test_subset_apply_keeps_unselected_fields(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title"])
+
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "New Title"
+        assert proposed.publisher == "Old House"
+        assert proposed.authors == ["Old Author"]
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs.get("title") == "New Title"
+        assert "publisher" not in kwargs
+        assert "authors" not in kwargs
+
+    def test_cover_only_apply_leaves_text_untouched(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image") as mock_fetch,
+        ):
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            mock_fetch.return_value = b"jpeg-bytes"
+            self._post(client, apply_fields=["cover"])
+
+        mock_fetch.assert_called_once_with("https://example/c.jpg")
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "Old Title"
+        assert proposed.publisher == "Old House"
+        assert mock_apply.call_args.kwargs.get("cover_image") == b"jpeg-bytes"
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "title" not in kwargs
+        assert "publisher" not in kwargs
+
+    def test_cover_only_apply_with_failed_fetch_writes_nothing(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image", return_value=None),
+        ):
+            response = self._post(client, apply_fields=["cover"])
+
+        # The cover was the only thing to apply and it couldn't be fetched:
+        # no EPUB copy, no provenance, no output-path repoint.
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+        mock_catalog.set_output_path.assert_not_called()
+        assert response.headers.get("HX-Redirect") == "/books/1"
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        categories = [c for c, _ in flashes]
+        assert "warning" in categories
+        assert "success" not in categories
+
+    def test_unselected_cover_not_fetched(self, mock_catalog, client, open_library, tmp_path):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image") as mock_fetch,
+        ):
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title"])
+
+        mock_fetch.assert_not_called()
+        assert mock_apply.call_args.kwargs.get("cover_image") is None
+
+    def test_zero_selection_rejected_without_write(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = self._post(client, apply_fields=None)
+
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+        assert response.status_code == 200
+        assert "/enrich/candidate" in response.headers.get("HX-Redirect", "")
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        assert any("Select at least one field" in message for _, message in flashes)
+
+    def test_skip_clear_protects_curated_value(self, mock_catalog, client, open_library, tmp_path):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        candidate = make_candidate(
+            title="New Title",
+            publisher=None,
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title", "publisher"])
+
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "New Title"
+        assert proposed.publisher == "Old House"
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "publisher" not in kwargs
+
+    def test_success_flash_lists_applied_fields(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title", "publisher"])
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        assert any("title" in m and "publisher" in m for _, m in flashes)
+
+    def test_end_to_end_partial_apply_on_real_epub(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """No write mocks: the output EPUB keeps unselected fields' current values."""
+        from ebooklib import epub as eb
+
+        from bookery.formats.epub import read_epub_metadata
+
+        book = eb.EpubBook()
+        book.set_identifier("e2e-284")
+        book.set_title("Old Title")
+        book.set_language("en")
+        book.add_author("Old Author")
+        chapter = eb.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>x</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [eb.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(eb.EpubNcx())
+        book.add_item(eb.EpubNav())
+        book.spine = ["nav", chapter]
+        source = tmp_path / "real.epub"
+        eb.write_epub(str(source), book)
+
+        mock_catalog.get_by_id.return_value = make_book(
+            1,
+            title="Old Title",
+            authors=["Old Author"],
+            publisher="Old House",
+            source_path=source,
+        )
+        open_library.by_isbn = [self._candidate()]
+
+        response = self._post(client, apply_fields=["title"])
+        assert response.status_code == 200
+
+        outputs = [p for p in tmp_path.rglob("*.epub") if p != source]
+        assert len(outputs) == 1
+        meta = read_epub_metadata(outputs[0])
+        assert meta.title == "New Title"
+        assert meta.publisher == "Old House"
+        assert meta.authors == ["Old Author"]
+
+
+class TestDiffPanelCheckboxes:
+    """Rendered diff panel carries per-field apply checkboxes (issue #284)."""
+
+    def _get_diff(self, mock_catalog, client, open_library, candidate):
+        mock_catalog.get_by_id.return_value = make_book(
+            1, title="Old Title", authors=["Old Author"], publisher="Old House"
+        )
+        open_library.by_isbn = [candidate]
+        response = client.get(
+            "/books/1/enrich/candidate",
+            query_string={
+                "provider": "Open Library",
+                "isbn": "9780441172719",
+                "candidate_id": "OL:1",
+            },
+        )
+        assert response.status_code == 200
+        return response.data.decode()
+
+    def test_changed_rows_have_checked_checkboxes(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            authors=["Old Author"],
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert re.search(r'<input[^>]*name="apply_fields"[^>]*value="title"[^>]*checked', page)
+        # Unchanged authors row gets no checkbox.
+        assert not re.search(r'value="authors"[^>]*checked', page)
+
+    def test_skip_clear_row_has_no_checkbox(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            publisher=None,  # skip-clear vs curated "Old House"
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert not re.search(r'<input[^>]*name="apply_fields"[^>]*value="publisher"', page)
+
+    def test_cover_checkbox_present_iff_cover_url(self, mock_catalog, client, open_library):
+        with_cover = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+            cover_url="https://example/c.jpg",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, with_cover)
+        assert re.search(r'<input[^>]*name="apply_fields"[^>]*value="cover"[^>]*checked', page)
+
+        without_cover = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, without_cover)
+        assert not re.search(r'<input[^>]*name="apply_fields"[^>]*value="cover"', page)
+
+    def test_form_wiring(self, mock_catalog, client, open_library):
+        candidate = make_candidate(
+            title="New Title",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        page = self._get_diff(mock_catalog, client, open_library, candidate)
+        assert 'id="enrich-apply-form"' in page
+        assert re.search(r'name="apply_fields_present"\s+value="1"', page)
+        # Checkboxes live in the table, outside the form element.
+        assert re.search(r'name="apply_fields"[^>]*form="enrich-apply-form"', page)
+        # Accessible label on the checkbox.
+        assert re.search(r'aria-label="Apply title"', page)
