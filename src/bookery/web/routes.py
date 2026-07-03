@@ -37,6 +37,7 @@ from bookery.core.remove import remove_book
 from bookery.db.status import STATUS_FINISHED, STATUS_READING, STATUS_UNREAD
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.provider import MetadataProvider
+from bookery.metadata.types import BookMetadata
 from bookery.util.text import strip_html
 from bookery.web.browse import (
     DEFAULT_VISIBLE_COLUMNS,
@@ -48,6 +49,7 @@ from bookery.web.browse import (
 )
 from bookery.web.candidate_payload import deserialize_candidate, serialize_candidate
 from bookery.web.covers import get_or_extract_cover, invalidate_cover
+from bookery.web.diff import _FIELDS as DIFF_FIELDS
 from bookery.web.diff import metadata_diff
 
 logger = logging.getLogger(__name__)
@@ -787,6 +789,46 @@ def _should_write_authors(current: list[str], proposed: list[str]) -> bool:
     if not prop and cur:
         return False
     return list(cur) != list(prop)
+
+
+# Field names a client may select for apply: the diff panel's text fields plus
+# the cover pseudo-field (issue #284).
+_APPLY_FIELD_WHITELIST = frozenset(DIFF_FIELDS) | {"cover"}
+
+
+def _parse_apply_selection(form) -> list[str] | None:
+    """Parse the per-field apply selection from the Apply form (issue #284).
+
+    Returns ``None`` when the ``apply_fields_present`` sentinel is absent — a
+    legacy/non-JS post — which callers treat as "apply every field" (the
+    pre-#284 behavior). With the sentinel, returns the whitelist-filtered
+    selection, which may be empty (caller rejects, nothing is written).
+    """
+    if form.get("apply_fields_present") != "1":
+        return None
+    return [f for f in form.getlist("apply_fields") if f in _APPLY_FIELD_WHITELIST]
+
+
+def _filter_skip_clears(
+    current: BookMetadata, proposed: BookMetadata, fields: list[str]
+) -> list[str]:
+    """Drop selected fields whose proposed value would clear a curated one.
+
+    EPUB-side mirror of the catalog guards (:func:`_should_write_scalar` /
+    :func:`_should_write_authors`, issue #125): an empty proposed value never
+    overwrites a non-empty current value, even if the field arrives selected.
+    """
+    kept: list[str] = []
+    for name in fields:
+        cur = getattr(current, name)
+        prop = getattr(proposed, name)
+        if name == "authors":
+            if not (prop or []) and (cur or []):
+                continue
+        elif _is_empty_scalar(prop) and not _is_empty_scalar(cur):
+            continue
+        kept.append(name)
+    return kept
 
 
 @bp.route("/books/<int:book_id>/delete", methods=["GET"])

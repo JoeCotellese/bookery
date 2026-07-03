@@ -1413,3 +1413,69 @@ class TestEnrichApplyCover:
         messages = [m for _, m in flashes]
         # Happy path flash should not mention a skipped cover.
         assert not any("skip" in m.lower() for m in messages)
+
+
+class TestParseApplySelection:
+    """Unit tests for the apply_fields selection parser (issue #284)."""
+
+    def _parse(self, data: dict | list) -> list[str] | None:
+        from werkzeug.datastructures import MultiDict
+
+        from bookery.web.routes import _parse_apply_selection
+
+        return _parse_apply_selection(MultiDict(data))
+
+    def test_no_sentinel_returns_none_for_legacy_posts(self):
+        assert self._parse({"title": "x"}) is None
+
+    def test_sentinel_with_values_returns_filtered_list(self):
+        data = [
+            ("apply_fields_present", "1"),
+            ("apply_fields", "title"),
+            ("apply_fields", "description"),
+        ]
+        assert self._parse(data) == ["title", "description"]
+
+    def test_unknown_names_dropped(self):
+        data = [
+            ("apply_fields_present", "1"),
+            ("apply_fields", "title"),
+            ("apply_fields", "evil_field"),
+        ]
+        assert self._parse(data) == ["title"]
+
+    def test_cover_is_a_valid_selection(self):
+        data = [("apply_fields_present", "1"), ("apply_fields", "cover")]
+        assert self._parse(data) == ["cover"]
+
+    def test_sentinel_with_nothing_selected_returns_empty(self):
+        assert self._parse({"apply_fields_present": "1"}) == []
+
+
+class TestFilterSkipClears:
+    """Unit tests for the EPUB-side skip-clear filter (issue #284)."""
+
+    def _filter(self, current: BookMetadata, proposed: BookMetadata, fields: list[str]):
+        from bookery.web.routes import _filter_skip_clears
+
+        return _filter_skip_clears(current, proposed, fields)
+
+    def test_empty_proposed_over_curated_value_dropped(self):
+        current = BookMetadata(title="Kept", publisher="Curated House")
+        proposed = BookMetadata(title="New", publisher=None)
+        assert self._filter(current, proposed, ["title", "publisher"]) == ["title"]
+
+    def test_empty_authors_over_curated_authors_dropped(self):
+        current = BookMetadata(title="T", authors=["Kept Author"])
+        proposed = BookMetadata(title="T", authors=[])
+        assert self._filter(current, proposed, ["authors"]) == []
+
+    def test_real_change_kept(self):
+        current = BookMetadata(title="Old")
+        proposed = BookMetadata(title="New")
+        assert self._filter(current, proposed, ["title"]) == ["title"]
+
+    def test_filling_an_empty_current_kept(self):
+        current = BookMetadata(title="T", publisher=None)
+        proposed = BookMetadata(title="T", publisher="New House")
+        assert self._filter(current, proposed, ["publisher"]) == ["publisher"]
