@@ -783,8 +783,8 @@ def _should_write_scalar(current: object, proposed: object) -> bool:
     return cur != prop
 
 
-def _should_write_authors(current: list[str], proposed: list[str]) -> bool:
-    """Authors variant of :func:`_should_write_scalar` for the list field."""
+def _should_write_list(current: list[str], proposed: list[str]) -> bool:
+    """List-field variant of :func:`_should_write_scalar` (authors, subjects)."""
     cur = current or []
     prop = proposed or []
     if not prop and cur:
@@ -823,7 +823,7 @@ def _filter_skip_clears(
     for name in fields:
         cur = getattr(current, name)
         prop = getattr(proposed, name)
-        if name == "authors":
+        if name in ("authors", "subjects"):
             if not (prop or []) and (cur or []):
                 continue
         elif _is_empty_scalar(prop) and not _is_empty_scalar(cur):
@@ -1189,7 +1189,7 @@ def enrich_apply(book_id):
     update_fields: dict[str, object] = {}
     if _should_write_scalar(current.title, proposed.title):
         update_fields["title"] = proposed.title
-    if _should_write_authors(current.authors, proposed.authors):
+    if _should_write_list(current.authors, proposed.authors):
         update_fields["authors"] = list(proposed.authors)
     if _should_write_scalar(current.isbn, proposed.isbn):
         update_fields["isbn"] = proposed.isbn
@@ -1209,6 +1209,10 @@ def enrich_apply(book_id):
         update_fields["series"] = proposed.series
     if _should_write_scalar(current.series_index, proposed.series_index):
         update_fields["series_index"] = proposed.series_index
+    # Subjects drive the auto-genre hook in update_book (#290): writing them
+    # with a provider source attached re-derives the book's genre(s).
+    if _should_write_list(current.subjects, proposed.subjects):
+        update_fields["subjects"] = list(proposed.subjects)
 
     # Credit provenance to the candidate's source — the provider's canonical
     # name captured when the candidate was built at View time, carried in the

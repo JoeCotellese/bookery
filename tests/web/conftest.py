@@ -54,6 +54,7 @@ def make_candidate(
     source: str = "fake",
     source_id: str = "fake:1",
     cover_url: str | None = None,
+    subjects: list[str] | None = None,
 ) -> MetadataCandidate:
     """Build a MetadataCandidate for web tests."""
     return MetadataCandidate(
@@ -64,6 +65,7 @@ def make_candidate(
             publisher=publisher,
             published_date=published_date,
             cover_url=cover_url,
+            subjects=subjects or [],
         ),
         confidence=confidence,
         source=source,
@@ -84,6 +86,7 @@ def make_book(
     description: str | None = None,
     series: str | None = None,
     series_index: float | None = None,
+    subjects: list[str] | None = None,
     file_hash: str = "abc123",
     date_added: str = "2026-01-01",
     date_modified: str = "2026-01-02",
@@ -102,6 +105,7 @@ def make_book(
             description=description,
             series=series,
             series_index=series_index,
+            subjects=subjects or [],
         ),
         file_hash=file_hash,
         source_path=source_path,

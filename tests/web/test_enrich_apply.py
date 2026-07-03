@@ -501,6 +501,105 @@ class TestEnrichApplyPost:
         # Source attribution credited to the provider name.
         assert kwargs.get("source") == "Open Library"
 
+    def test_updates_catalog_with_subjects(self, mock_catalog, client, open_library, tmp_path):
+        """Applying a candidate mirrors its subjects into the catalog so the
+        auto-genre hook (catalog.update_book) fires (#290)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs["subjects"] == ["Fiction", "Fantasy"]
+        assert kwargs.get("source") == "Open Library"
+
+    def test_unchecked_subjects_not_written(self, mock_catalog, client, open_library, tmp_path):
+        """With a per-field selection that omits subjects, the candidate's
+        subjects are not written — unchecked means keep current (#284/#290)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(1, source_path=source)
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=["Fiction", "Fantasy"],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "apply_fields_present": "1",
+                    "apply_fields": ["title"],
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "subjects" not in kwargs
+
+    def test_empty_proposed_subjects_does_not_clear(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """A candidate with no subjects never clears the book's curated
+        subjects, even when the subjects field is selected (#125 guard)."""
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        mock_catalog.get_by_id.return_value = make_book(
+            1, source_path=source, subjects=["Existing"]
+        )
+
+        candidate = make_candidate(
+            title="New Title",
+            source="Open Library",
+            source_id="OL:1",
+            subjects=[],
+        )
+        open_library.by_isbn = [candidate]
+        dest = tmp_path / "out.epub"
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=dest, success=True)
+            client.post(
+                "/books/1/enrich/apply",
+                data={
+                    "provider": "Open Library",
+                    "isbn": "9780441172719",
+                    "candidate_id": "OL:1",
+                    "apply_fields_present": "1",
+                    "apply_fields": ["title", "subjects"],
+                },
+            )
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "subjects" not in kwargs
+
     def test_records_output_path(self, mock_catalog, client, open_library, tmp_path):
         source = tmp_path / "src.epub"
         source.write_bytes(b"epub")
