@@ -43,3 +43,25 @@ def test_config_file_cache_ttl_override(isolated_home):
         'library_root = "/tmp/lib"\n[matching]\ncache_ttl_days = 7\n'
     )
     assert config_module.load_config().matching.cache_ttl_days == 7
+
+
+def test_default_fetch_covers_is_true(isolated_home):
+    assert config_module.load_config().matching.fetch_covers is True
+
+
+def test_config_file_fetch_covers_override(isolated_home):
+    config_dir = isolated_home / ".bookery"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        'library_root = "/tmp/lib"\n[matching]\nfetch_covers = false\n'
+    )
+    assert config_module.load_config().matching.fetch_covers is False
+
+
+def test_garbage_fetch_covers_falls_back_to_true(isolated_home):
+    config_dir = isolated_home / ".bookery"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        'library_root = "/tmp/lib"\n[matching]\nfetch_covers = "banana"\n'
+    )
+    assert config_module.load_config().matching.fetch_covers is True
