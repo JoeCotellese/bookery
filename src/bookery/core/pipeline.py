@@ -103,6 +103,19 @@ def _verify_write(dest: Path, metadata: BookMetadata) -> list[FieldVerification]
             )
         )
 
+    # Subjects — sorted comparison for order independence, stripped for whitespace tolerance
+    if metadata.subjects:
+        expected_subjects = ", ".join(sorted(s.strip() for s in metadata.subjects))
+        actual_subjects = ", ".join(sorted(s.strip() for s in read_back.subjects))
+        verifications.append(
+            FieldVerification(
+                field="subjects",
+                expected=expected_subjects,
+                actual=actual_subjects,
+                passed=expected_subjects == actual_subjects,
+            )
+        )
+
     return verifications
 
 

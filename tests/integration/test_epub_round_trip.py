@@ -19,6 +19,7 @@ class TestEpubRoundTrip:
             language="it",
             publisher="Bompiani",
             description="Un giallo ambientato in un monastero medievale.",
+            subjects=["Narrativa", "Giallo storico"],
         )
         write_epub_metadata(sample_epub, updated)
 
@@ -28,6 +29,7 @@ class TestEpubRoundTrip:
         assert result.language == "it"
         assert result.publisher == "Bompiani"
         assert result.description == "Un giallo ambientato in un monastero medievale."
+        assert result.subjects == ["Narrativa", "Giallo storico"]
 
     def test_multiple_writes_preserve_integrity(self, sample_epub: Path) -> None:
         """Multiple sequential writes don't corrupt the file."""

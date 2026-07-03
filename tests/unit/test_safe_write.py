@@ -146,6 +146,20 @@ class TestWriteBackVerification:
         assert title_field.actual == "Verified Title"
         assert title_field.passed is True
 
+    def test_subjects_are_verified(self, sample_epub: Path, tmp_path: Path) -> None:
+        """Subjects are read back and included in verified_fields."""
+        output_dir = tmp_path / "output"
+        metadata = BookMetadata(
+            title="Test Title",
+            subjects=["Fiction", "Mystery"],
+        )
+
+        result = apply_metadata_safely(sample_epub, metadata, output_dir)
+
+        assert result.success is True
+        subjects_field = next(v for v in result.verified_fields if v.field == "subjects")
+        assert subjects_field.passed is True
+
     def test_write_failure_cleans_up_copy(self, sample_epub: Path, tmp_path: Path) -> None:
         """If write_epub_metadata raises, the copy is deleted."""
         output_dir = tmp_path / "output"
