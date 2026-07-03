@@ -168,10 +168,19 @@ Bookery never modifies original files. The write pipeline copies the file to an 
 
 ### Adding a Metadata Provider
 
-Implement the `MetadataProvider` protocol in `metadata/provider.py`:
+1. Implement the `MetadataProvider` protocol from `metadata/provider.py`:
 
-- `search_by_isbn(isbn) -> list[MetadataCandidate]`
-- `search_by_title_author(title, author) -> list[MetadataCandidate]`
+   - `name` (property)
+   - `search_by_isbn(isbn) -> list[MetadataCandidate]`
+   - `search_by_title_author(title, author) -> list[MetadataCandidate]`
+   - `lookup_by_url(url) -> MetadataCandidate | None`
+
+2. Register a factory in `PROVIDER_FACTORIES` in `metadata/registry.py`. The
+   factory receives a `ProviderContext` whose `http_client_for(name)` returns
+   an HTTP client with caching and rate limiting already wired — no dispatch
+   code elsewhere needs to change.
+
+3. Users activate it by naming it in `[matching].providers` in config.
 
 See `metadata/openlibrary.py` for a complete example.
 
