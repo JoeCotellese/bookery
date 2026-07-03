@@ -37,9 +37,12 @@ def _make_candidate(
     author: str,
     confidence: float,
     isbn: str | None = None,
+    cover_url: str | None = None,
 ) -> MetadataCandidate:
     return MetadataCandidate(
-        metadata=BookMetadata(title=title, authors=[author], isbn=isbn, language="en"),
+        metadata=BookMetadata(
+            title=title, authors=[author], isbn=isbn, language="en", cover_url=cover_url
+        ),
         confidence=confidence,
         source="openlibrary",
         source_id=f"test-{title}",
@@ -200,3 +203,87 @@ class TestMatchOne:
         assert result.status == "error"
         assert result.error is not None
         assert "Disk full" in result.error
+
+
+_COVER_JPEG = b"\xff\xd8\xff\xe0" + b"provider-cover" * 16
+
+
+class TestMatchOneCoverFetch:
+    """match_one fetches the accepted candidate's cover and embeds it (issue #285)."""
+
+    def _run(
+        self,
+        tmp_path: Path,
+        cover_url: str | None,
+        fetch_returns: bytes | None,
+        fetch_covers: bool = True,
+    ):
+        """Run match_one with a mocked provider/review and patched cover fetch."""
+        epub_path = _make_epub(tmp_path)
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("Better Title", "Better Author", 0.95, cover_url=cover_url)
+
+        provider = MagicMock()
+        provider.search_by_isbn.return_value = []
+        provider.search_by_title_author.return_value = [candidate]
+
+        review = MagicMock()
+        review.review.return_value = candidate.metadata
+
+        with patch("bookery.core.pipeline.fetch_cover_image") as mock_fetch:
+            mock_fetch.return_value = fetch_returns
+            result = match_one(epub_path, provider, review, output_dir, fetch_covers=fetch_covers)
+
+        return result, mock_fetch
+
+    def test_fetches_and_embeds_cover(self, tmp_path: Path) -> None:
+        """A candidate cover_url is fetched and the bytes land in the output EPUB."""
+        result, mock_fetch = self._run(
+            tmp_path, cover_url="https://example/cover.jpg", fetch_returns=_COVER_JPEG
+        )
+
+        assert result.status == "matched"
+        mock_fetch.assert_called_once_with("https://example/cover.jpg")
+        assert result.cover_skipped is False
+        assert result.output_path is not None
+
+        from bookery.formats.epub import read_epub_metadata
+
+        assert read_epub_metadata(result.output_path).cover_image == _COVER_JPEG
+
+    def test_fetch_failure_is_nonfatal(self, tmp_path: Path) -> None:
+        """A failed cover fetch still applies text metadata and flags cover_skipped."""
+        result, _mock_fetch = self._run(
+            tmp_path, cover_url="https://example/cover.jpg", fetch_returns=None
+        )
+
+        assert result.status == "matched"
+        assert result.metadata is not None
+        assert result.metadata.title == "Better Title"
+        assert result.cover_skipped is True
+        assert result.output_path is not None
+
+        from bookery.formats.epub import read_epub_metadata
+
+        assert read_epub_metadata(result.output_path).cover_image is None
+
+    def test_fetch_covers_false_skips_fetch(self, tmp_path: Path) -> None:
+        """fetch_covers=False never calls the fetch helper."""
+        result, mock_fetch = self._run(
+            tmp_path,
+            cover_url="https://example/cover.jpg",
+            fetch_returns=_COVER_JPEG,
+            fetch_covers=False,
+        )
+
+        assert result.status == "matched"
+        mock_fetch.assert_not_called()
+        assert result.cover_skipped is False
+
+    def test_no_cover_url_skips_fetch(self, tmp_path: Path) -> None:
+        """Candidates without a cover_url don't trigger a fetch."""
+        result, mock_fetch = self._run(tmp_path, cover_url=None, fetch_returns=_COVER_JPEG)
+
+        assert result.status == "matched"
+        mock_fetch.assert_not_called()
+        assert result.cover_skipped is False
