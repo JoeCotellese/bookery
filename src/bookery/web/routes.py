@@ -1164,6 +1164,12 @@ def enrich_apply(book_id):
                 book_id,
                 candidate.metadata.cover_url,
             )
+            if surviving_fields is not None and not surviving_fields:
+                # The failed cover was the only thing selected — writing now
+                # would produce a metadata-identical copy and record provenance
+                # with zero fields applied (#284).
+                flash("Cover could not be fetched — nothing was applied.", "warning")
+                return _hx_redirect(detail_url)
 
     write_result = apply_metadata_safely(source, proposed, output_dir, cover_image=cover_image)
     if not write_result.success or write_result.path is None:

@@ -1563,6 +1563,31 @@ class TestEnrichApplyFieldSelection:
         assert "title" not in kwargs
         assert "publisher" not in kwargs
 
+    def test_cover_only_apply_with_failed_fetch_writes_nothing(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image", return_value=None),
+        ):
+            response = self._post(client, apply_fields=["cover"])
+
+        # The cover was the only thing to apply and it couldn't be fetched:
+        # no EPUB copy, no provenance, no output-path repoint.
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+        mock_catalog.set_output_path.assert_not_called()
+        assert response.headers.get("HX-Redirect") == "/books/1"
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        categories = [c for c, _ in flashes]
+        assert "warning" in categories
+        assert "success" not in categories
+
     def test_unselected_cover_not_fetched(self, mock_catalog, client, open_library, tmp_path):
         mock_catalog.get_by_id.return_value = self._book(tmp_path)
         open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
