@@ -36,3 +36,19 @@ def test_sync_kobo_overrides_parsed(_isolated_home: Path) -> None:
 def test_get_sync_config_shortcut(_isolated_home: Path) -> None:
     sync = get_sync_config()
     assert sync.kobo.books_subdir == "Bookery"
+
+
+def test_kepub_defaults_true(_isolated_home: Path) -> None:
+    cfg = load_config()
+    assert cfg.sync.kobo.kepub is True
+
+
+def test_kepub_override_false(_isolated_home: Path) -> None:
+    config_file = _isolated_home / ".bookery" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(
+        "[sync.kobo]\nkepub = false\n",
+        encoding="utf-8",
+    )
+    cfg = load_config()
+    assert cfg.sync.kobo.kepub is False

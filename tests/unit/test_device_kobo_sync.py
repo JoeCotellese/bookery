@@ -796,3 +796,54 @@ class TestDeviceWiring:
         )
         assert report.read_states_pulled == 0
         assert report.read_states_skipped == 0
+
+
+def test_no_kepub_copies_plain_epub(tmp_path: Path) -> None:
+    env = _setup(tmp_path)
+    epub = env["library"] / "Author A" / "Title A" / "Title A.epub"
+    _write_epub(epub, body=b"PLAIN-EPUB-BYTES")
+    record = _make_record(rec_id=1, title="Title A", author="Author A", epub_path=epub)
+
+    report = sync_library_to_kobo(
+        catalog=StubCatalog(records=[record]),
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=env["kepubify"].get_version,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        kepub=False,
+    )
+
+    expected_dest = env["target"] / "Books" / "Author A" / "Title A" / "Title A.epub"
+    assert expected_dest.exists()
+    assert expected_dest.read_bytes() == b"PLAIN-EPUB-BYTES"
+    assert report.copied == [expected_dest]
+    # No conversion ran, and the canonical library file was copied (not moved).
+    assert env["kepubify"].calls == []
+    assert epub.exists()
+
+
+def test_no_kepub_does_not_call_kepubify_version(tmp_path: Path) -> None:
+    # A plain-EPUB sync must never touch the kepubify binary, so it works even
+    # when kepubify is not installed (kepubify_version would raise).
+    env = _setup(tmp_path)
+    epub = env["library"] / "A" / "T" / "T.epub"
+    _write_epub(epub)
+    record = _make_record(rec_id=1, title="T", author="A", epub_path=epub)
+
+    def _boom() -> str:
+        raise RuntimeError("kepubify not installed")
+
+    report = sync_library_to_kobo(
+        catalog=StubCatalog(records=[record]),
+        target=env["target"],
+        cache=env["cache"],
+        run_kepubify=env["kepubify"].run,
+        kepubify_version=_boom,
+        workspace_dir=env["workspace"],
+        books_subdir="Books",
+        kepub=False,
+    )
+    assert len(report.copied) == 1
+    assert report.copied[0].name == "T.epub"

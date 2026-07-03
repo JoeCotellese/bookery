@@ -230,16 +230,22 @@ def _book_dest_dir(target: Path, books_subdir: str, record: BookRecord) -> Path:
     return target / books_subdir / author / title
 
 
-def _compute_device_dest(target: Path, books_subdir: str, record: BookRecord) -> Path:
-    """Host-side path where the kepub for ``record`` would live on the mount.
+def _compute_device_dest(
+    target: Path, books_subdir: str, record: BookRecord, *, kepub: bool = True
+) -> Path:
+    """Host-side path where ``record`` would live on the mount.
 
     Pure function — does no I/O. Shared by the copy phase (which writes to this
     path) and the discovery phase (which checks whether it exists). Keeping the
-    naming convention in one place prevents the two phases from drifting.
+    naming convention in one place prevents the two phases from drifting — and
+    means read-status/shelf ContentIDs (derived from this path) stay consistent
+    whether the book is delivered as ``.kepub.epub`` or, when ``kepub`` is False,
+    as a plain ``.epub``.
     """
     dest_dir = _book_dest_dir(target, books_subdir, record)
     title = sanitize_component(record.metadata.title, fallback="Untitled")
-    return dest_dir / f"{title}.kepub.epub"
+    ext = "kepub.epub" if kepub else "epub"
+    return dest_dir / f"{title}.{ext}"
 
 
 class _DiscoveryCatalogProto(Protocol):
@@ -256,6 +262,7 @@ def discover_existing_device_files(
     books_subdir: str,
     device_id: int,
     now: str,
+    kepub: bool = True,
 ) -> int:
     """Reconcile ``device_files`` against books already present on the mount.
 
@@ -276,7 +283,7 @@ def discover_existing_device_files(
     for record in records:
         if record.output_path is None:
             continue
-        dest = _compute_device_dest(target, books_subdir, record)
+        dest = _compute_device_dest(target, books_subdir, record, kepub=kepub)
         if not dest.exists():
             continue
         catalog.upsert_device_file(
@@ -303,6 +310,7 @@ def _sync_record(
     device_id: int | None,
     now: str,
     on_stage: StageCallback | None = None,
+    kepub: bool = True,
 ) -> None:
     def stage(name: str) -> None:
         if on_stage is not None:
@@ -321,7 +329,7 @@ def _sync_record(
         report.failed.append((source, f"source missing: {source}"))
         return
 
-    dest = _compute_device_dest(target, books_subdir, record)
+    dest = _compute_device_dest(target, books_subdir, record, kepub=kepub)
     dest_dir = dest.parent
 
     def stamp_device_file() -> None:
@@ -397,24 +405,37 @@ def _sync_record(
         except OSError:
             pass  # fall through to re-convert
 
-    stage("convert")
-    try:
-        kepub_path = run_kepubify(source, out_dir=workspace)
-    except Exception as exc:
-        report.failed.append((source, f"kepubify error: {exc}"))
-        return
+    if kepub:
+        stage("convert")
+        try:
+            kepub_path = run_kepubify(source, out_dir=workspace)
+        except Exception as exc:
+            report.failed.append((source, f"kepubify error: {exc}"))
+            return
 
-    stage("copy")
-    try:
-        kepub_sha = compute_file_hash(kepub_path)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        # shutil.move handles cross-device renames and streams large files.
-        shutil.move(str(kepub_path), str(dest))
-    except OSError as exc:
-        report.failed.append((source, f"copy failed: {exc}"))
-        return
+        stage("copy")
+        try:
+            dest_sha = compute_file_hash(kepub_path)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            # shutil.move handles cross-device renames and streams large files.
+            shutil.move(str(kepub_path), str(dest))
+        except OSError as exc:
+            report.failed.append((source, f"copy failed: {exc}"))
+            return
+    else:
+        stage("copy")
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            # Plain passthrough: source IS the canonical library EPUB, so copy
+            # it (never move). dest bytes == source bytes, so its sha is the
+            # source hash we already computed.
+            shutil.copy2(str(source), str(dest))
+            dest_sha = source_hash
+        except OSError as exc:
+            report.failed.append((source, f"copy failed: {exc}"))
+            return
 
-    cache.put(source_hash, version, kepub_sha, dest)
+    cache.put(source_hash, version, dest_sha, dest)
     record_quickcheck()
     stage("done")
     report.copied.append(dest)
@@ -512,13 +533,19 @@ def sync_library_to_kobo(
     on_stage: StageCallback | None = None,
     backup_root: Path | None = None,
     status_push_enabled: bool = True,
+    kepub: bool = True,
 ) -> SyncReport:
-    """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
+    """Walk the catalog and mirror its EPUBs to a Kobo.
 
-    Cache semantics: row keyed on (source_sha256, kepubify_version) -> kepub_sha
-    plus the device-side path that kepub was written to. On re-sync we hash
-    the on-device file; if it matches the cached kepub_sha we skip kepubify
-    entirely. Cache miss or device-file mismatch triggers a fresh run.
+    Each book is converted to ``.kepub.epub`` (default) or, when ``kepub`` is
+    False, copied as a plain ``.epub`` — the latter needs no kepubify binary.
+
+    Cache semantics: row keyed on (source_sha256, kepubify_version) -> dest_sha
+    plus the device-side path the file was written to. On re-sync we hash the
+    on-device file; if it matches the cached dest_sha we skip the copy entirely.
+    Cache miss or device-file mismatch triggers a fresh run. Plain-EPUB syncs
+    key on the sentinel version ``"epub-passthrough"`` so their rows never
+    collide with kepub rows.
 
     Dependencies are injected so this function stays unit-testable; the CLI
     wires up the real KepubCache and the kepubify subprocess wrapper.
@@ -545,10 +572,13 @@ def sync_library_to_kobo(
             if source.suffix.lower() != ".epub":
                 report.skipped.append((source, "output is not an EPUB"))
                 continue
-            report.copied.append(_compute_device_dest(target, books_subdir, record))
+            report.copied.append(_compute_device_dest(target, books_subdir, record, kepub=kepub))
         return report
 
-    version = kepubify_version()
+    # Plain-EPUB syncs never shell out to kepubify (it may not even be
+    # installed), so use a sentinel version that also namespaces the cache
+    # apart from kepub rows.
+    version = kepubify_version() if kepub else "epub-passthrough"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     now = _now_iso()
 
@@ -581,6 +611,7 @@ def sync_library_to_kobo(
                 books_subdir=books_subdir,
                 device_id=device_id,
                 now=now,
+                kepub=kepub,
             )
         except Exception as exc:
             logger.warning("device_files discovery failed; continuing with pull: %s", exc)
@@ -610,6 +641,7 @@ def sync_library_to_kobo(
                 device_id=device_id,
                 now=now,
                 on_stage=on_stage,
+                kepub=kepub,
             )
     finally:
         if workspace_dir.exists():

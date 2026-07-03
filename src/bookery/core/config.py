@@ -46,12 +46,16 @@ class ConvertConfig:
 
 DEFAULT_KOBO_BOOKS_SUBDIR = "Bookery"
 DEFAULT_KOBO_AUTO_DETECT = True
+DEFAULT_KOBO_KEPUB = True
 
 
 @dataclass(frozen=True, slots=True)
 class SyncKoboConfig:
     books_subdir: str = DEFAULT_KOBO_BOOKS_SUBDIR
     auto_detect: bool = DEFAULT_KOBO_AUTO_DETECT
+    # When False, copy plain EPUBs to the device instead of converting to
+    # .kepub.epub. The CLI `--no-kepub` flag overrides this per-run.
+    kepub: bool = DEFAULT_KOBO_KEPUB
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +146,7 @@ def _parse_sync_kobo(section: dict[str, Any] | None) -> SyncKoboConfig:
     return SyncKoboConfig(
         books_subdir=str(section.get("books_subdir", DEFAULT_KOBO_BOOKS_SUBDIR)),
         auto_detect=bool(section.get("auto_detect", DEFAULT_KOBO_AUTO_DETECT)),
+        kepub=bool(section.get("kepub", DEFAULT_KOBO_KEPUB)),
     )
 
 

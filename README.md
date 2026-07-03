@@ -41,12 +41,30 @@ welcome.
 
 Requires Python 3.12+.
 
+### Install it (to use bookery)
+
 ```bash
-# Clone and install with uv
+uv tool install git+https://github.com/joecotellese/bookery.git
+```
+
+`uv tool install` puts `bookery` in its own isolated environment and drops a
+`bookery` command on your `PATH` (in `~/.local/bin`) — no virtualenv to create
+or activate. Just run `bookery` from anywhere. If the command isn't found after
+install, run `uv tool update-shell` once and restart your shell.
+
+Upgrade later with `uv tool upgrade bookery`; remove with `uv tool uninstall bookery`.
+
+### Develop it (to hack on bookery)
+
+```bash
 git clone https://github.com/joecotellese/bookery.git
 cd bookery
 uv sync
 ```
+
+`uv sync` installs into the project's `.venv`. Run the CLI with
+`uv run bookery ...`, or activate the venv first
+(`source .venv/bin/activate`) and call `bookery` directly.
 
 ### Optional: PDF conversion
 
@@ -288,17 +306,29 @@ For beginners who don't want to memorize the query syntax, the form also has a c
 | `sync kobo` | Convert library EPUBs to `.kepub.epub`, copy to a mounted Kobo, and mirror collections to device shelves |
 | `sync kobo --target <path>` | Override auto-detection with an explicit mount point |
 | `sync kobo --dry-run` | Show what would be copied without touching the device |
+| `sync kobo --no-kepub` | Send plain EPUBs untouched — skip kepub conversion (and the `kepubify` dependency) |
 | `collections show <id> --sync-status` | Show per-device shelf sync state for a collection |
 
-Requires the [`kepubify`](https://pgaskin.net/kepubify/) binary on `PATH`
+Conversion to `.kepub.epub` requires the
+[`kepubify`](https://pgaskin.net/kepubify/) binary on `PATH`
 (`brew install kepubify` on macOS). Files are written to
 `<kobo>/Bookery/Author/Title/Title.kepub.epub` — the dedicated `Bookery/`
 subdirectory keeps synced content visibly separate from Calibre
-sideloads, Kobo store purchases, and library borrows. Sync is currently
-**additive**: existing files on the device are never deleted. A SQLite
-cache at `{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus
-the `kepubify` version makes re-syncs effectively free when nothing has
+sideloads, Kobo store purchases, and library borrows. Pass `--no-kepub`
+(or set `kepub = false` under `[sync.kobo]`) to copy plain EPUBs as
+`Title.epub` instead; kepub adds richer on-device progress/stats, but
+Kobo reads plain sideloaded EPUBs fine, and this path needs no `kepubify`.
+Sync is currently **additive**: existing files on the device are never
+deleted — including when you switch a book's format, so the old
+`.kepub.epub`/`.epub` is left in place. A SQLite cache at
+`{data_dir}/kepub_cache.db` keyed on the source EPUB hash plus the
+`kepubify` version makes re-syncs effectively free when nothing has
 changed.
+
+```toml
+[sync.kobo]
+kepub = false          # default true; send plain EPUBs when false
+```
 
 Readers sort authors by the EPUB's `opf:file-as` key. If a device files
 an author under their given name (e.g. "Brandon" instead of "Sanderson"),
