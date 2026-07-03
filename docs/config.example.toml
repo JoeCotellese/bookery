@@ -124,3 +124,8 @@ max_tokens = 262144
 # Confidence cutoff for auto-accept when -y/--yes is in effect (0.0-1.0).
 # Override per-invocation with `-t/--threshold`.
 # auto_accept_threshold = 0.8
+
+# Download and embed the accepted candidate's cover image during matching.
+# Disable globally for offline/batch runs; per-invocation opt-out is
+# `--no-covers` on `add`, `match`, and `rematch`.
+# fetch_covers = true
