@@ -110,7 +110,42 @@ class TestMetadataDiff:
             "series",
             "series_index",
             "description",
+            "subjects",
         }
+
+    def test_subjects_compared_as_ordered_list(self):
+        current = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+        proposed = BookMetadata(title="X", subjects=["Fantasy", "Fiction"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+
+    def test_subjects_same_order_marked_unchanged(self):
+        current = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+        proposed = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is False
+
+    def test_subjects_changed_shows_joined_values(self):
+        current = BookMetadata(title="X", subjects=[])
+        proposed = BookMetadata(title="X", subjects=["Fiction", "Fantasy"])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+        assert subj_diff.proposed == "Fiction; Fantasy"
+
+    def test_subjects_empty_proposed_flags_skip_clear(self):
+        current = BookMetadata(title="X", subjects=["Fiction"])
+        proposed = BookMetadata(title="X", subjects=[])
+
+        diffs = metadata_diff(current, proposed)
+        subj_diff = next(d for d in diffs if d.field == "subjects")
+        assert subj_diff.changed is True
+        assert subj_diff.skip_clear is True
 
     def test_series_index_changed(self):
         current = BookMetadata(title="X", series_index=1.0)
