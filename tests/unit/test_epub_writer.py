@@ -72,6 +72,30 @@ class TestWriteEpubMetadata:
         re_read = read_epub_metadata(sample_epub)
         assert re_read.description == "A new description."
 
+    def test_write_updates_subjects(self, sample_epub: Path) -> None:
+        """Writing new metadata writes dc:subject elements into the EPUB."""
+        updated = BookMetadata(title="Test", subjects=["Fiction", "Mystery"])
+        write_epub_metadata(sample_epub, updated)
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.subjects == ["Fiction", "Mystery"]
+
+    def test_write_replaces_existing_subjects(self, sample_epub: Path) -> None:
+        """Writing subjects replaces any prior set rather than appending."""
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", subjects=["Old"]))
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", subjects=["New"]))
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.subjects == ["New"]
+
+    def test_write_empty_subjects_preserves_existing(self, sample_epub: Path) -> None:
+        """An empty subjects list does not clear subjects already in the EPUB."""
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", subjects=["Keep"]))
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", subjects=[]))
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.subjects == ["Keep"]
+
     def test_write_preserves_content(self, sample_epub: Path) -> None:
         """Writing metadata does not corrupt the EPUB's content."""
         updated = BookMetadata(title="Updated Title")

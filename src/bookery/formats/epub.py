@@ -53,6 +53,14 @@ def _get_authors(book: epub.EpubBook) -> list[str]:
     return [str(entry[0]).strip() for entry in creators if entry[0]]
 
 
+def _get_subjects(book: epub.EpubBook) -> list[str]:
+    """Extract all dc:subject values from an EpubBook."""
+    subjects = book.get_metadata("DC", "subject")
+    if not subjects:
+        return []
+    return [str(entry[0]).strip() for entry in subjects if entry[0]]
+
+
 def _get_identifiers(book: epub.EpubBook) -> dict[str, str]:
     """Extract all identifiers (ISBN, UUID, etc.) from an EpubBook."""
     identifiers = {}
@@ -202,6 +210,7 @@ def read_epub_metadata(path: Path) -> BookMetadata:
         publisher=_get_metadata_value(book, "DC", "publisher"),
         isbn=isbn,
         description=_strip_description(_get_metadata_value(book, "DC", "description")),
+        subjects=_get_subjects(book),
         identifiers=identifiers,
         cover_image=cover_image,
         source_path=path,
@@ -466,6 +475,11 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
 
     if metadata.description is not None:
         _set_dc_metadata(book, "description", metadata.description)
+
+    if metadata.subjects:
+        _clear_dc_metadata(book, "subject")
+        for subject in metadata.subjects:
+            book.add_metadata("DC", "subject", subject)
 
     if metadata.cover_image:
         _write_cover_image(book, metadata.cover_image)
