@@ -1479,3 +1479,195 @@ class TestFilterSkipClears:
         current = BookMetadata(title="T", publisher=None)
         proposed = BookMetadata(title="T", publisher="New House")
         assert self._filter(current, proposed, ["publisher"]) == ["publisher"]
+
+
+class TestEnrichApplyFieldSelection:
+    """POST /enrich/apply with an explicit apply_fields selection (issue #284)."""
+
+    def _post(self, client, data_extra: dict | None = None, apply_fields: list[str] | None = None):
+        data: dict = {
+            "provider": "Open Library",
+            "isbn": "9780441172719",
+            "candidate_id": "OL:1",
+            "apply_fields_present": "1",
+        }
+        if apply_fields is not None:
+            data["apply_fields"] = apply_fields
+        if data_extra:
+            data.update(data_extra)
+        return client.post("/books/1/enrich/apply", data=data)
+
+    def _book(self, tmp_path):
+        source = tmp_path / "src.epub"
+        source.write_bytes(b"epub")
+        return make_book(
+            1,
+            title="Old Title",
+            authors=["Old Author"],
+            publisher="Old House",
+            source_path=source,
+        )
+
+    def _candidate(self, cover_url: str | None = None):
+        return make_candidate(
+            title="New Title",
+            authors=["New Author"],
+            publisher="New House",
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+            cover_url=cover_url,
+        )
+
+    def test_subset_apply_keeps_unselected_fields(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title"])
+
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "New Title"
+        assert proposed.publisher == "Old House"
+        assert proposed.authors == ["Old Author"]
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert kwargs.get("title") == "New Title"
+        assert "publisher" not in kwargs
+        assert "authors" not in kwargs
+
+    def test_cover_only_apply_leaves_text_untouched(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image") as mock_fetch,
+        ):
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            mock_fetch.return_value = b"jpeg-bytes"
+            self._post(client, apply_fields=["cover"])
+
+        mock_fetch.assert_called_once_with("https://example/c.jpg")
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "Old Title"
+        assert proposed.publisher == "Old House"
+        assert mock_apply.call_args.kwargs.get("cover_image") == b"jpeg-bytes"
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "title" not in kwargs
+        assert "publisher" not in kwargs
+
+    def test_unselected_cover_not_fetched(self, mock_catalog, client, open_library, tmp_path):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate(cover_url="https://example/c.jpg")]
+
+        with (
+            patch("bookery.web.routes.apply_metadata_safely") as mock_apply,
+            patch("bookery.web.routes.fetch_cover_image") as mock_fetch,
+        ):
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title"])
+
+        mock_fetch.assert_not_called()
+        assert mock_apply.call_args.kwargs.get("cover_image") is None
+
+    def test_zero_selection_rejected_without_write(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            response = self._post(client, apply_fields=None)
+
+        mock_apply.assert_not_called()
+        mock_catalog.update_book.assert_not_called()
+        assert response.status_code == 200
+        assert "/enrich/candidate" in response.headers.get("HX-Redirect", "")
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        assert any("Select at least one field" in message for _, message in flashes)
+
+    def test_skip_clear_protects_curated_value(self, mock_catalog, client, open_library, tmp_path):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        candidate = make_candidate(
+            title="New Title",
+            publisher=None,
+            isbn="9780441172719",
+            source="Open Library",
+            source_id="OL:1",
+        )
+        open_library.by_isbn = [candidate]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title", "publisher"])
+
+        proposed = mock_apply.call_args.args[1]
+        assert proposed.title == "New Title"
+        assert proposed.publisher == "Old House"
+
+        _, kwargs = mock_catalog.update_book.call_args
+        assert "publisher" not in kwargs
+
+    def test_success_flash_lists_applied_fields(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        mock_catalog.get_by_id.return_value = self._book(tmp_path)
+        open_library.by_isbn = [self._candidate()]
+
+        with patch("bookery.web.routes.apply_metadata_safely") as mock_apply:
+            mock_apply.return_value = WriteResult(path=tmp_path / "out.epub", success=True)
+            self._post(client, apply_fields=["title", "publisher"])
+
+        with client.session_transaction() as session:
+            flashes = session.get("_flashes", [])
+        assert any("title" in m and "publisher" in m for _, m in flashes)
+
+    def test_end_to_end_partial_apply_on_real_epub(
+        self, mock_catalog, client, open_library, tmp_path
+    ):
+        """No write mocks: the output EPUB keeps unselected fields' current values."""
+        from ebooklib import epub as eb
+
+        from bookery.formats.epub import read_epub_metadata
+
+        book = eb.EpubBook()
+        book.set_identifier("e2e-284")
+        book.set_title("Old Title")
+        book.set_language("en")
+        book.add_author("Old Author")
+        chapter = eb.EpubHtml(title="Ch1", file_name="ch01.xhtml", lang="en")
+        chapter.content = b"<html><body><p>x</p></body></html>"
+        book.add_item(chapter)
+        book.toc = [eb.Link("ch01.xhtml", "Ch1", "ch01")]
+        book.add_item(eb.EpubNcx())
+        book.add_item(eb.EpubNav())
+        book.spine = ["nav", chapter]
+        source = tmp_path / "real.epub"
+        eb.write_epub(str(source), book)
+
+        mock_catalog.get_by_id.return_value = make_book(
+            1,
+            title="Old Title",
+            authors=["Old Author"],
+            publisher="Old House",
+            source_path=source,
+        )
+        open_library.by_isbn = [self._candidate()]
+
+        response = self._post(client, apply_fields=["title"])
+        assert response.status_code == 200
+
+        outputs = [p for p in tmp_path.rglob("*.epub") if p != source]
+        assert len(outputs) == 1
+        meta = read_epub_metadata(outputs[0])
+        assert meta.title == "New Title"
+        assert meta.publisher == "Old House"
+        assert meta.authors == ["Old Author"]

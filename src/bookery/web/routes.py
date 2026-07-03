@@ -5,6 +5,7 @@ import logging
 import os
 import sqlite3
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -1064,6 +1065,24 @@ def enrich_apply(book_id):
     author = request.form.get("author", "")
     candidate_id = request.form.get("candidate_id", "")
 
+    # Per-field selection (#284). None means a legacy post without the
+    # sentinel — apply every field, the pre-#284 behavior.
+    selection = _parse_apply_selection(request.form)
+    if selection is not None and not selection:
+        flash("Select at least one field to apply.", "warning")
+        return _hx_redirect(
+            url_for(
+                "web.enrich_candidate",
+                book_id=book_id,
+                provider=provider_name,
+                isbn=isbn,
+                url=url,
+                title=title,
+                author=author,
+                candidate_id=candidate_id,
+            )
+        )
+
     # Prefer the candidate the user previewed, carried verbatim in the form, so
     # Apply writes exactly what the diff showed without a provider round-trip
     # (#234). A missing/malformed/tampered payload falls back to re-fetching by
@@ -1108,21 +1127,42 @@ def enrich_apply(book_id):
     # the filesystem. Fall back to the source file's directory.
     output_dir = book.output_path.parent if book.output_path is not None else source.parent
 
-    proposed = candidate.metadata
+    # Build the metadata to write. A legacy post applies the candidate
+    # wholesale; an explicit selection starts from the book's CURRENT metadata
+    # and overlays only the selected fields, so "unchecked = keep current" is
+    # literal in the EPUB write (#284). Skip-clear fields are dropped from the
+    # selection so an empty provider value never clears a curated one (#125).
+    if selection is None:
+        proposed = candidate.metadata
+        surviving_fields: list[str] | None = None
+        cover_selected = True
+    else:
+        text_fields = [f for f in selection if f != "cover"]
+        surviving_fields = _filter_skip_clears(book.metadata, candidate.metadata, text_fields)
+        proposed = replace(
+            book.metadata,
+            **{f: getattr(candidate.metadata, f) for f in surviving_fields},
+        )
+        cover_selected = "cover" in selection
+        if not surviving_fields and not (cover_selected and candidate.metadata.cover_url):
+            # Everything selected was either skip-cleared or an absent cover —
+            # writing would produce a copy identical to the current metadata.
+            flash("Nothing to apply — the selected fields have no usable values.", "warning")
+            return _hx_redirect(detail_url)
 
-    # Fetch the candidate's cover (if any) so it lands in the same atomic write
-    # as the text fields. A cover fetch failure is non-fatal: the text metadata
-    # still applies, and we note the skipped cover in the success flash.
+    # Fetch the candidate's cover (if selected) so it lands in the same atomic
+    # write as the text fields. A cover fetch failure is non-fatal: the text
+    # metadata still applies, and we note the skipped cover in the success flash.
     cover_image: bytes | None = None
     cover_skipped = False
-    if proposed.cover_url:
-        cover_image = fetch_cover_image(proposed.cover_url)
+    if cover_selected and candidate.metadata.cover_url:
+        cover_image = fetch_cover_image(candidate.metadata.cover_url)
         if cover_image is None:
             cover_skipped = True
             logger.warning(
                 "enrich_apply: cover fetch failed for book %s from %s",
                 book_id,
-                proposed.cover_url,
+                candidate.metadata.cover_url,
             )
 
     write_result = apply_metadata_safely(source, proposed, output_dir, cover_image=cover_image)
@@ -1181,7 +1221,12 @@ def enrich_apply(book_id):
     # the next GET /books/<id>/cover re-extracts from the new file.
     invalidate_cover(get_library_root(), book_id)
 
-    message = f'Applied "{proposed.title}" from {candidate.source}'
+    if surviving_fields is None:
+        message = f'Applied "{proposed.title}" from {candidate.source}'
+    else:
+        applied = list(surviving_fields) + (["cover"] if cover_image is not None else [])
+        shown = ", ".join(applied) if len(applied) <= 4 else f"{len(applied)} fields"
+        message = f"Applied {shown} from {candidate.source}"
     if cover_skipped:
         message += " (cover could not be fetched and was skipped)"
     flash(message, "success")
