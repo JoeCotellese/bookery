@@ -535,12 +535,17 @@ def sync_library_to_kobo(
     status_push_enabled: bool = True,
     kepub: bool = True,
 ) -> SyncReport:
-    """Walk the catalog and mirror its EPUBs to a Kobo as .kepub.epub files.
+    """Walk the catalog and mirror its EPUBs to a Kobo.
 
-    Cache semantics: row keyed on (source_sha256, kepubify_version) -> kepub_sha
-    plus the device-side path that kepub was written to. On re-sync we hash
-    the on-device file; if it matches the cached kepub_sha we skip kepubify
-    entirely. Cache miss or device-file mismatch triggers a fresh run.
+    Each book is converted to ``.kepub.epub`` (default) or, when ``kepub`` is
+    False, copied as a plain ``.epub`` — the latter needs no kepubify binary.
+
+    Cache semantics: row keyed on (source_sha256, kepubify_version) -> dest_sha
+    plus the device-side path the file was written to. On re-sync we hash the
+    on-device file; if it matches the cached dest_sha we skip the copy entirely.
+    Cache miss or device-file mismatch triggers a fresh run. Plain-EPUB syncs
+    key on the sentinel version ``"epub-passthrough"`` so their rows never
+    collide with kepub rows.
 
     Dependencies are injected so this function stays unit-testable; the CLI
     wires up the real KepubCache and the kepubify subprocess wrapper.
