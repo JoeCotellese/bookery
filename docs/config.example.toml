@@ -129,3 +129,10 @@ max_tokens = 262144
 # Disable globally for offline/batch runs; per-invocation opt-out is
 # `--no-covers` on `add`, `match`, and `rematch`.
 # fetch_covers = true
+
+# Metadata sources, in priority order. Supported: "openlibrary",
+# "googlebooks", "hardcover". Two or more entries are merged by consensus
+# (≥2-provider agreement wins, else priority order; series/rating fields
+# prefer hardcover). hardcover requires the HARDCOVER_API_KEY environment
+# variable; googlebooks optionally uses GOOGLE_BOOKS_API_KEY for quota.
+# providers = ["openlibrary"]

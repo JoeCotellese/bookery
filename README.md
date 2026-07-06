@@ -151,15 +151,16 @@ bookery info 42
   [matching]
   auto_accept_threshold = 0.85
   cache_ttl_days = 30        # metadata response cache TTL (default 30)
-  providers = ["openlibrary", "googlebooks"]   # priority order; default ["openlibrary"]
+  providers = ["openlibrary", "googlebooks", "hardcover"]   # priority order; default ["openlibrary"]
   min_request_interval = 0.1 # seconds between provider HTTP requests (default 0.1)
   fetch_covers = true        # download & embed candidate covers during matching (default true)
   ```
 
 - **`--no-cache`** on `match`/`rematch` bypasses the on-disk metadata response cache and forces fresh provider lookups. Cached responses live at `{data_dir}/metadata_cache.db` and expire after `[matching].cache_ttl_days`.
 - **`--no-covers`** on `add`/`match`/`rematch` skips downloading the accepted candidate's cover image (useful offline or for throttled batch runs). The default comes from `[matching].fetch_covers` (default `true`). When enabled, the cover is embedded in the same write as the text metadata; a failed download is non-fatal — the text still applies and one warning line is printed.
-- **`[matching].providers`** selects and orders metadata sources. With a single entry the named provider is used directly; with two or more, results are merged by a consensus step that prefers values agreed on by ≥2 providers and falls back to the priority order otherwise. Supported: `openlibrary`, `googlebooks`.
+- **`[matching].providers`** selects and orders metadata sources. With a single entry the named provider is used directly; with two or more, results are merged by a consensus step that prefers values agreed on by ≥2 providers and falls back to the priority order otherwise. Supported: `openlibrary`, `googlebooks`, `hardcover`. Exception: `series`, `series_index`, `rating`, and `ratings_count` prefer Hardcover's value regardless of provider order (it is the only source with reliable series positions); ≥2-provider agreement still wins the vote, but Hardcover's spelling of an agreed series name is used. Title-pattern heuristics fill series data that providers leave empty and are stamped source=`heuristic`, so they never outrank provider or user values.
 - **Google Books API key** — set the `GOOGLE_BOOKS_API_KEY` environment variable to authenticate Google Books requests. Without it, requests use the shared anonymous per-IP quota, which a full-library `rematch` exhausts quickly (HTTP 429). Create a free key in the [Google Cloud Console](https://console.cloud.google.com/): create/select a project, enable the **Books API**, then **Credentials → Create credentials → API key**. Then `export GOOGLE_BOOKS_API_KEY=AIza...`. The key is read from the environment only — never written to config.
+- **Hardcover API key** — set the `HARDCOVER_API_KEY` environment variable to enable the `hardcover` provider. Hardcover is the strongest source for series name/position and community ratings, but it requires a token: create a free account at [hardcover.app](https://hardcover.app), then copy the token from **Account Settings → Hardcover API**. Then `export HARDCOVER_API_KEY=...`. The key is read from the environment only — never written to config. Without it, a configured `hardcover` provider logs one warning and returns no results. Rate limit is 60 requests/minute; tokens expire January 1st each year.
 - **`[matching].min_request_interval`** is the minimum seconds between provider HTTP requests (default `0.1`). Raise it to throttle a bulk `rematch` below a provider's rate limit; on a `429` the client also honors the response's `Retry-After` header (capped at 60s) before retrying.
 - **Per-field provenance** is recorded for every cataloged book in the `book_field_provenance` table. Use `bookery info <id> --provenance` to see which source supplied each field and when it was fetched. Use `bookery info <id> --set field=value` to hand-edit a value (it's stamped as `user` and locked against overwrite), and `--lock field` / `--unlock field` to gate fields against `rematch`.
 
@@ -171,6 +172,8 @@ bookery info 42
 |---------|-------------|
 | `match <path> -o <dir>` | Match metadata for loose EPUB files (not yet in the catalog) and write corrected copies |
 | `rematch [book_id]` | Re-run matching on cataloged books and update the database |
+| `series ls` | List series in the catalog with book counts and missing-position gaps |
+| `series backfill [book_id\|--all\|--tag]` | Fill missing series/series_index from providers, falling back to title-pattern heuristics (`--dry-run` to preview) |
 
 ### Conversion
 
