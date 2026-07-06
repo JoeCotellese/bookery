@@ -1738,3 +1738,25 @@ def collection_rename(collection_id):
         flash(f"Failed to rename collection: {exc}", "error")
 
     return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+
+@bp.route("/series")
+def series_list():
+    """List every series in the catalog with per-series coverage."""
+    catalog = current_app.config["CATALOG"]
+    return render_template("series_list.html", series=catalog.list_series())
+
+
+@bp.route("/series/<path:series_name>")
+def series_detail(series_name):
+    """Show one series' books ordered by position.
+
+    Series have no id — the name is the key, and a series "exists" iff at
+    least one cataloged book carries it. The ``path`` converter lets names
+    containing ``/`` route correctly.
+    """
+    catalog = current_app.config["CATALOG"]
+    books = catalog.list_by_series(series_name)
+    if not books:
+        abort(404)
+    return render_template("series_detail.html", series_name=series_name, books=books)
