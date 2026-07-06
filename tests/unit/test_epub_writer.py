@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from ebooklib import epub
 
 from bookery.formats.epub import (
     EpubReadError,
@@ -13,6 +14,32 @@ from bookery.formats.epub import (
     write_epub_metadata,
 )
 from bookery.metadata import BookMetadata
+
+
+def _opf_text(path: Path) -> str:
+    """Return the raw OPF XML from an EPUB."""
+    with zipfile.ZipFile(path) as zf:
+        name = next(n for n in zf.namelist() if n.endswith(".opf"))
+        return zf.read(name).decode("utf-8")
+
+
+def _build_epub_with_meta(path: Path, extra_meta: list[dict]) -> None:
+    """Write a minimal EPUB carrying extra OPF <meta> entries."""
+    book = epub.EpubBook()
+    book.set_identifier("built-uid")
+    book.set_title("Built")
+    book.set_language("en")
+    book.add_author("A. Author")
+    for attrs in extra_meta:
+        book.add_metadata(None, "meta", "", attrs)
+    chapter = epub.EpubHtml(title="C1", file_name="c1.xhtml", lang="en")
+    chapter.content = b"<html><body><p>x</p></body></html>"
+    book.add_item(chapter)
+    book.toc = [epub.Link("c1.xhtml", "C1", "c1")]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", chapter]
+    epub.write_epub(str(path), book)
 
 
 class TestWriteEpubMetadata:
@@ -95,6 +122,83 @@ class TestWriteEpubMetadata:
 
         re_read = read_epub_metadata(sample_epub)
         assert re_read.subjects == ["Keep"]
+
+    def test_write_updates_series(self, sample_epub: Path) -> None:
+        """Writing series metadata adds calibre:series meta tags to the EPUB."""
+        updated = BookMetadata(title="Test", series="Wheel of Time", series_index=1.0)
+        write_epub_metadata(sample_epub, updated)
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.series == "Wheel of Time"
+        assert re_read.series_index == 1.0
+
+    def test_write_series_without_index(self, sample_epub: Path) -> None:
+        """A series with no index writes only the calibre:series meta."""
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", series="Discworld"))
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.series == "Discworld"
+        assert re_read.series_index is None
+        assert 'name="calibre:series_index"' not in _opf_text(sample_epub)
+
+    def test_write_replaces_existing_series(self, sample_epub: Path) -> None:
+        """Writing series replaces the prior meta rather than accumulating."""
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="Test", series="Old", series_index=2.0)
+        )
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="Test", series="New", series_index=3.0)
+        )
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.series == "New"
+        assert re_read.series_index == 3.0
+        assert _opf_text(sample_epub).count('name="calibre:series"') == 1
+
+    def test_write_none_series_preserves_existing(self, sample_epub: Path) -> None:
+        """A None series does not clear series meta already in the EPUB."""
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="Test", series="Keep", series_index=4.0)
+        )
+        write_epub_metadata(sample_epub, BookMetadata(title="Test"))
+
+        re_read = read_epub_metadata(sample_epub)
+        assert re_read.series == "Keep"
+        assert re_read.series_index == 4.0
+
+    def test_series_index_formatting_round_trip(self, sample_epub: Path) -> None:
+        """Whole indices write as "1" (no trailing .0); fractions keep precision."""
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", series="S", series_index=1.0))
+        assert 'name="calibre:series_index" content="1"' in _opf_text(sample_epub)
+
+        write_epub_metadata(sample_epub, BookMetadata(title="Test", series="S", series_index=1.5))
+        assert read_epub_metadata(sample_epub).series_index == 1.5
+
+    def test_garbage_series_index_reads_as_none(self, tmp_path: Path) -> None:
+        """A non-numeric calibre:series_index is ignored on read."""
+        path = tmp_path / "garbage.epub"
+        _build_epub_with_meta(
+            path,
+            [
+                {"name": "calibre:series", "content": "S"},
+                {"name": "calibre:series_index", "content": "not-a-number"},
+            ],
+        )
+
+        meta = read_epub_metadata(path)
+        assert meta.series == "S"
+        assert meta.series_index is None
+
+    def test_rewrite_preserves_foreign_calibre_meta(self, tmp_path: Path) -> None:
+        """Unrelated calibre meta (e.g. title_sort) survives a title-only rewrite."""
+        path = tmp_path / "calibre.epub"
+        _build_epub_with_meta(path, [{"name": "calibre:title_sort", "content": "Built, The"}])
+
+        write_epub_metadata(path, BookMetadata(title="Renamed"))
+
+        opf = _opf_text(path)
+        assert 'name="calibre:title_sort"' in opf
+        assert 'content="Built, The"' in opf
 
     def test_write_preserves_content(self, sample_epub: Path) -> None:
         """Writing metadata does not corrupt the EPUB's content."""
