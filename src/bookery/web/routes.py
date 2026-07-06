@@ -327,6 +327,10 @@ def book_detail(book_id):
     book_status = catalog.get_book_status(book_id)
     device_read_state = catalog.get_device_read_state_for_book(book_id)
     queued_for_push = catalog.is_status_queued_for_push(book_id)
+    # "of M" for the Identity section's "Series #N of M" display.
+    series_total = (
+        catalog.count_books_in_series(book.metadata.series) if book.metadata.series else None
+    )
 
     context = dict(
         book=book,
@@ -339,6 +343,7 @@ def book_detail(book_id):
         book_status=book_status,
         device_read_state=device_read_state,
         queued_for_push=queued_for_push,
+        series_total=series_total,
     )
 
     if request.headers.get("HX-Request"):
