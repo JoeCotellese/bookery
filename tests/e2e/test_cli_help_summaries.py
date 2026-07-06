@@ -63,3 +63,7 @@ class TestTopLevelSummariesNameInputScope:
     def test_inventory_mentions_directory(self) -> None:
         line = _help_line_for("inventory")
         assert "directory" in line.lower()
+
+    def test_series_mentions_cataloged_books(self) -> None:
+        line = _help_line_for("series")
+        assert "cataloged" in line.lower()

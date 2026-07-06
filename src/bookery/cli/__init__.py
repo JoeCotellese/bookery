@@ -22,6 +22,7 @@ from bookery.cli.commands import (
     remove_cmd,
     reveal_cmd,
     search_cmd,
+    series_cmd,
     serve_cmd,
     sync_cmd,
     tag_cmd,
@@ -74,6 +75,7 @@ cli.add_command(rematch_cmd.rematch)
 cli.add_command(remove_cmd.remove)
 cli.add_command(reveal_cmd.reveal)
 cli.add_command(search_cmd.search)
+cli.add_command(series_cmd.series)
 cli.add_command(serve_cmd.serve)
 cli.add_command(sync_cmd.sync)
 cli.add_command(tag_cmd.tag)
