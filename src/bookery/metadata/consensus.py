@@ -1,7 +1,8 @@
 # ABOUTME: Consensus metadata provider that merges results from multiple providers.
-# ABOUTME: Prefers values agreed on by ≥2 providers; otherwise falls back to priority order.
+# ABOUTME: Prefers ≥2-provider agreement; else per-field provider priority, then config order.
 
 import logging
+import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields as dataclass_fields
@@ -35,6 +36,26 @@ _SCALAR_FIELDS = (
 _LIST_FIELDS = ("authors", "subjects")
 _AGREEMENT_BONUS = 0.05
 
+# Fields where one provider's data quality beats config order. Hardcover is
+# the only provider with reliable series positions and community ratings, so
+# it wins these fields whenever it has a value (agreement still outvotes it).
+_FIELD_PROVIDER_PRIORITY = {
+    "series": "hardcover",
+    "series_index": "hardcover",
+    "rating": "hardcover",
+    "ratings_count": "hardcover",
+}
+
+# Trailing position noise in free-text series names: "Wheel of Time (1)",
+# "Dune Chronicles #2".
+_SERIES_POSITION_SUFFIX_RE = re.compile(r"\s*(?:\(\d+(?:\.\d+)?\)|#\d+(?:\.\d+)?)\s*$")
+
+
+def _normalize_series_for_vote(value: str) -> str | None:
+    normalized = _SERIES_POSITION_SUFFIX_RE.sub("", value.strip().casefold())
+    normalized = normalized.removeprefix("the ").strip()
+    return normalized or None
+
 
 def _normalize_isbn(isbn: str | None) -> str | None:
     if not isbn:
@@ -48,6 +69,8 @@ def _normalize_for_vote(field_name: str, value: Any) -> Any:
         return None
     if field_name == "isbn":
         return _normalize_isbn(value)
+    if field_name == "series" and isinstance(value, str):
+        return _normalize_series_for_vote(value)
     if isinstance(value, str):
         return value.strip().casefold() or None
     if isinstance(value, list):
@@ -65,29 +88,39 @@ def _pick_scalar(
     """Pick a value for a scalar field from (provider, value) pairs.
 
     values is in priority order. Prefer values agreed on by ≥2 providers,
-    otherwise the first non-empty value. Records which provider supplied
-    the chosen value in ``provenance``.
+    otherwise the first non-empty value. Fields in _FIELD_PROVIDER_PRIORITY
+    prefer that provider's rendition within the winning vote group, and its
+    value outright when there is no agreement. Records which provider
+    supplied the chosen value in ``provenance``.
     """
     non_empty = [(p, v) for p, v in values if v not in (None, "", [])]
     if not non_empty:
         return None
 
+    preferred_provider = _FIELD_PROVIDER_PRIORITY.get(field_name)
+
     counts: Counter[Any] = Counter()
-    key_to_first: dict[Any, tuple[str, Any]] = {}
+    key_to_entries: dict[Any, list[tuple[str, Any]]] = {}
     for provider, value in non_empty:
         key = _normalize_for_vote(field_name, value)
         if key is None:
             continue
         counts[key] += 1
-        if key not in key_to_first:
-            key_to_first[key] = (provider, value)
+        key_to_entries.setdefault(key, []).append((provider, value))
 
     if counts:
         top_key, top_count = counts.most_common(1)[0]
         if top_count >= 2:
-            provider, value = key_to_first[top_key]
+            entries = key_to_entries[top_key]
+            provider, value = next((e for e in entries if e[0] == preferred_provider), entries[0])
             provenance[field_name] = provider
             return value
+
+    if preferred_provider is not None:
+        for provider, value in non_empty:
+            if provider == preferred_provider:
+                provenance[field_name] = provider
+                return value
 
     provider, value = non_empty[0]
     provenance[field_name] = provider

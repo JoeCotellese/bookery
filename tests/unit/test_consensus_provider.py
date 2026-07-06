@@ -268,3 +268,105 @@ def test_lookup_by_url_returns_first_hit_in_priority_order() -> None:
     p2 = FakeProvider("googlebooks", url_result=None)
     consensus = ConsensusProvider([p1, p2])
     assert consensus.lookup_by_url("https://openlibrary.org/works/OL1") is cand
+
+
+class TestSeriesConsensus:
+    def test_series_vote_normalization_and_hardcover_rendition(self) -> None:
+        """OL's "Wheel of Time (1)" and HC's "The Wheel of Time" agree; HC's spelling wins."""
+        ol = FakeProvider(
+            "openlibrary",
+            isbn_results=[
+                _cand("openlibrary", title="The Eye of the World", series="Wheel of Time (1)")
+            ],
+        )
+        hc = FakeProvider(
+            "hardcover",
+            isbn_results=[
+                _cand("hardcover", title="The Eye of the World", series="The Wheel of Time")
+            ],
+        )
+        consensus = ConsensusProvider([ol, hc])
+
+        merged = consensus.search_by_isbn("9780312850098")[0].metadata
+
+        assert merged.series == "The Wheel of Time"
+        assert merged.identifiers["provenance_series"] == "hardcover"
+
+    def test_hardcover_preferred_for_series_fields_without_agreement(self) -> None:
+        """HC last in config order still wins series/index/rating; publisher follows order."""
+        ol = FakeProvider(
+            "openlibrary",
+            isbn_results=[
+                _cand(
+                    "openlibrary",
+                    title="The Eye of the World",
+                    series="Eye of the World Saga",
+                    publisher="Orbit",
+                )
+            ],
+        )
+        hc = FakeProvider(
+            "hardcover",
+            isbn_results=[
+                _cand(
+                    "hardcover",
+                    title="The Eye of the World",
+                    series="The Wheel of Time",
+                    series_index=1.0,
+                    rating=4.2,
+                    ratings_count=5000,
+                    publisher="Tor Books",
+                )
+            ],
+        )
+        consensus = ConsensusProvider([ol, hc])
+
+        merged = consensus.search_by_isbn("9780312850098")[0].metadata
+
+        assert merged.series == "The Wheel of Time"
+        assert merged.series_index == 1.0
+        assert merged.rating == 4.2
+        assert merged.ratings_count == 5000
+        assert merged.identifiers["provenance_series"] == "hardcover"
+        # Publisher has no hardcover preference: first-in-order wins.
+        assert merged.publisher == "Orbit"
+        assert merged.identifiers["provenance_publisher"] == "openlibrary"
+
+    def test_fields_merge_independently_across_providers(self) -> None:
+        """GB supplies only the index, HC only the name: both land on the merged result."""
+        gb = FakeProvider(
+            "googlebooks",
+            isbn_results=[_cand("googlebooks", title="The Eye of the World", series_index=1.0)],
+        )
+        hc = FakeProvider(
+            "hardcover",
+            isbn_results=[
+                _cand("hardcover", title="The Eye of the World", series="The Wheel of Time")
+            ],
+        )
+        consensus = ConsensusProvider([gb, hc])
+
+        merged = consensus.search_by_isbn("9780312850098")[0].metadata
+
+        assert merged.series == "The Wheel of Time"
+        assert merged.series_index == 1.0
+
+    def test_agreement_of_others_beats_hardcover_preference(self) -> None:
+        """Two providers agreeing on a different series outvote lone Hardcover."""
+        ol = FakeProvider(
+            "openlibrary",
+            isbn_results=[_cand("openlibrary", title="T", series="Cosmere")],
+        )
+        gb = FakeProvider(
+            "googlebooks",
+            isbn_results=[_cand("googlebooks", title="T", series="Cosmere")],
+        )
+        hc = FakeProvider(
+            "hardcover",
+            isbn_results=[_cand("hardcover", title="T", series="Mistborn")],
+        )
+        consensus = ConsensusProvider([ol, gb, hc])
+
+        merged = consensus.search_by_isbn("X")[0].metadata
+
+        assert merged.series == "Cosmere"
