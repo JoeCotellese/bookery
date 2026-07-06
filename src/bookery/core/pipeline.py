@@ -117,6 +117,29 @@ def _verify_write(dest: Path, metadata: BookMetadata) -> list[FieldVerification]
             )
         )
 
+    # Series — exact match on name; index compared via %g so 1.0 == "1"
+    if metadata.series is not None:
+        verifications.append(
+            FieldVerification(
+                field="series",
+                expected=metadata.series,
+                actual=read_back.series,
+                passed=metadata.series == read_back.series,
+            )
+        )
+    # Index is only written alongside a series, so only verify it then
+    if metadata.series is not None and metadata.series_index is not None:
+        expected_index = f"{metadata.series_index:g}"
+        actual_index = None if read_back.series_index is None else f"{read_back.series_index:g}"
+        verifications.append(
+            FieldVerification(
+                field="series_index",
+                expected=expected_index,
+                actual=actual_index,
+                passed=expected_index == actual_index,
+            )
+        )
+
     return verifications
 
 
