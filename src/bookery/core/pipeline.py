@@ -11,6 +11,7 @@ from bookery.core.pathformat import build_output_path, record_processed, resolve
 from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
 from bookery.metadata.normalizer import NormalizationResult, normalize_metadata
 from bookery.metadata.provider import MetadataProvider
+from bookery.metadata.series_heuristic import apply_series_heuristic
 from bookery.metadata.types import BookMetadata
 
 logger = logging.getLogger(__name__)
@@ -304,6 +305,16 @@ def match_one(
         selected.author,
         epub_path.name,
     )
+
+    # Providers left series empty: infer it from title patterns. Stamped
+    # source="heuristic" so catalog provenance shows it as inferred.
+    if apply_series_heuristic(selected):
+        logger.debug(
+            "match_one: heuristic series %r #%s for %s",
+            selected.series,
+            selected.series_index,
+            epub_path.name,
+        )
 
     # Fetch the candidate's cover so it lands in the same write as the text
     # fields — parity with the web enrich-apply path (#285). Non-fatal on
