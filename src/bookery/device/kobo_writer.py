@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 # Keeping this set tiny is a defensive boundary: if a refactor ever tries to
 # write ___SyncTime / ___UserID / Synced / etc., the build of the UPDATE
 # statement happens here and only here, so the allow-list is single-source.
-_ALLOWED_COLUMNS = frozenset({"ReadStatus", "___PercentRead", "DateLastRead"})
+_ALLOWED_COLUMNS = frozenset(
+    {"ReadStatus", "___PercentRead", "DateLastRead", "Series", "SeriesNumber", "SeriesID"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +188,96 @@ def push_read_status(
             )
             report.pushed_count = 0
             report.pull_only_count = 0
+            report.failed = [(upd.content_id, str(exc)) for upd in updates]
+            return report
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    return report
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesUpdate:
+    """One row's worth of series intent for ``content_id``.
+
+    ``series_number`` is Kobo's TEXT column (e.g. ``"2"`` / ``"2.5"``), or
+    ``None`` when the catalog has no position. ``SeriesID`` is derived from the
+    series name inside the writer — Calibre's sideload convention, which is
+    what nickel groups on for firmware 4.25+.
+    """
+
+    content_id: str
+    series: str
+    series_number: str | None
+
+
+@dataclass
+class SeriesPushReport:
+    """Outcome of a ``push_series`` batch.
+
+    ``pushed_count`` is rows updated. ``unchanged_count`` is rows already
+    carrying the target values (no write issued). ``pending_count`` is
+    ContentIDs with no device row yet — the firmware indexes new files on the
+    next disconnect, so these land on the following sync. ``failed`` is
+    ContentID + error pairs from a rollback.
+    """
+
+    pushed_count: int = 0
+    unchanged_count: int = 0
+    pending_count: int = 0
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+
+def push_series(*, db_path: Path, updates: list[SeriesUpdate]) -> SeriesPushReport:
+    """Write series metadata into KoboReader.sqlite in a single transaction.
+
+    Firmware 4.45 (verified on-device, #298) does not parse series from
+    sideloaded kepub OPFs — neither calibre:series nor EPUB3
+    belongs-to-collection — so, like Calibre's Kobo driver, bookery writes
+    ``content.Series`` / ``SeriesNumber`` / ``SeriesID`` directly. Each row is
+    read first: identical values are skipped (no device-DB churn on re-sync),
+    missing rows count as pending. Any ``sqlite3.Error`` rolls back the batch.
+    """
+    report = SeriesPushReport()
+    if not updates:
+        return report
+
+    conn = open_kobo_db_rw(db_path)
+    try:
+        conn.execute("BEGIN")
+        try:
+            for upd in updates:
+                row = conn.execute(
+                    "SELECT Series, SeriesNumber, SeriesID FROM content WHERE ContentID = ?",
+                    (upd.content_id,),
+                ).fetchone()
+                if row is None:
+                    report.pending_count += 1
+                    continue
+                target = (upd.series, upd.series_number, upd.series)
+                if tuple(row) == target:
+                    report.unchanged_count += 1
+                    continue
+                for col in ("Series", "SeriesNumber", "SeriesID"):
+                    assert col in _ALLOWED_COLUMNS, (
+                        f"Writer tried to touch disallowed column {col!r}"
+                    )
+                conn.execute(
+                    "UPDATE content SET Series = ?, SeriesNumber = ?, SeriesID = ?"
+                    " WHERE ContentID = ?",
+                    (*target, upd.content_id),
+                )
+                report.pushed_count += 1
+        except sqlite3.Error as exc:
+            conn.execute("ROLLBACK")
+            logger.warning(
+                "Series push failed; rolling back batch of %d update(s): %s",
+                len(updates),
+                exc,
+            )
+            report.pushed_count = 0
+            report.unchanged_count = 0
+            report.pending_count = 0
             report.failed = [(upd.content_id, str(exc)) for upd in updates]
             return report
         conn.execute("COMMIT")
