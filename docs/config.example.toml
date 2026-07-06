@@ -101,6 +101,10 @@ max_tokens = 262144
 # book to the mounted Kobo. The library itself stays canonical EPUB; kepub
 # is generated on demand at sync time and cached in {data_dir}/kepub_cache.db
 # so unchanged books are skipped on re-sync.
+#
+# Books whose OPF carries calibre:series meta (see `bookery series backfill`)
+# group by series on device. Requires Kobo firmware 4.20+ and kepub sync
+# (the default); plain-epub sideloads don't get series grouping.
 
 [sync.kobo]
 # Subdirectory under the mount root where books are placed. Default is
