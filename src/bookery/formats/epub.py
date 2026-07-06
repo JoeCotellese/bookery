@@ -76,15 +76,18 @@ def _get_calibre_meta(book: epub.EpubBook, name: str) -> str | None:
     return None
 
 
-def _get_series_index(book: epub.EpubBook) -> float | None:
-    """Parse calibre:series_index into a float; non-numeric values read as None."""
-    raw = _get_calibre_meta(book, "series_index")
-    if raw is None:
-        return None
+def _parse_series_index(raw: str) -> float | None:
+    """Parse a calibre:series_index content value; non-numeric reads as None."""
     try:
         return float(raw)
     except ValueError:
         return None
+
+
+def _get_series_index(book: epub.EpubBook) -> float | None:
+    """Read calibre:series_index from parsed OPF meta."""
+    raw = _get_calibre_meta(book, "series_index")
+    return None if raw is None else _parse_series_index(raw)
 
 
 def _get_identifiers(book: epub.EpubBook) -> dict[str, str]:
@@ -429,6 +432,35 @@ def read_creator_file_as(path: Path) -> list[tuple[str, str | None]]:
             file_as = refines.get(creator.get("id", ""))
         pairs.append((name, file_as))
     return pairs
+
+
+def read_calibre_series(path: Path) -> tuple[str | None, float | None]:
+    """Return ``(series, series_index)`` from an EPUB's calibre-style OPF meta.
+
+    Cheap zipfile/ElementTree scan for candidate checks — avoids a full
+    ebooklib parse (including cover extraction) per book. Non-numeric
+    indices read as None, matching ``read_epub_metadata``.
+    """
+    with zipfile.ZipFile(path) as zf:
+        container = ET.fromstring(zf.read(_CONTAINER))
+        rootfile = container.find(".//{*}rootfile")
+        opf_path = rootfile.get("full-path") if rootfile is not None else None
+        if not opf_path:
+            return (None, None)
+        opf = ET.fromstring(zf.read(opf_path))
+
+    series: str | None = None
+    index: float | None = None
+    for meta in opf.iter(f"{{{_OPF_NS}}}meta"):
+        content = meta.get("content")
+        if not content:
+            continue
+        name = meta.get("name")
+        if name == "calibre:series" and series is None:
+            series = content
+        elif name == "calibre:series_index" and index is None:
+            index = _parse_series_index(content)
+    return (series, index)
 
 
 _COVER_EXTENSION_FOR_CONTENT_TYPE: dict[str, str] = {

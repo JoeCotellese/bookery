@@ -9,6 +9,7 @@ from ebooklib import epub
 
 from bookery.formats.epub import (
     EpubReadError,
+    read_calibre_series,
     read_creator_file_as,
     read_epub_metadata,
     write_epub_metadata,
@@ -337,6 +338,33 @@ class TestWriteEpubMetadata:
         assert re_read.authors == ["Umberto Eco"]
         assert re_read.publisher == "Harcourt"
         assert re_read.description == "A mystery set in a medieval monastery."
+
+
+class TestReadCalibreSeries:
+    """Tests for the light zipfile/ElementTree series scanner."""
+
+    def test_reads_series_and_index(self, sample_epub: Path) -> None:
+        """Returns the (series, index) pair written by write_epub_metadata."""
+        write_epub_metadata(
+            sample_epub, BookMetadata(title="Test", series="Wheel of Time", series_index=1.5)
+        )
+        assert read_calibre_series(sample_epub) == ("Wheel of Time", 1.5)
+
+    def test_missing_series_returns_nones(self, sample_epub: Path) -> None:
+        """An EPUB without calibre meta reads as (None, None)."""
+        assert read_calibre_series(sample_epub) == (None, None)
+
+    def test_garbage_index_reads_as_none(self, tmp_path: Path) -> None:
+        """A non-numeric index is ignored, matching read_epub_metadata."""
+        path = tmp_path / "garbage.epub"
+        _build_epub_with_meta(
+            path,
+            [
+                {"name": "calibre:series", "content": "S"},
+                {"name": "calibre:series_index", "content": "not-a-number"},
+            ],
+        )
+        assert read_calibre_series(path) == ("S", None)
 
 
 class TestWriteCreatorFileAs:
