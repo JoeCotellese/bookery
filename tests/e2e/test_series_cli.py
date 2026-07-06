@@ -5,11 +5,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
+from ebooklib import epub
 
 from bookery.cli import cli
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.mapping import BookRecord
+from bookery.formats.epub import read_calibre_series
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
 
@@ -63,6 +65,7 @@ def _add_book(
     series: str | None = None,
     series_index: float | None = None,
     file_hash: str = "",
+    output: Path | None = None,
 ) -> int:
     conn = open_library(db_path)
     catalog = LibraryCatalog(conn)
@@ -76,9 +79,26 @@ def _add_book(
             source_path=Path(f"/books/{title}.epub"),
         ),
         file_hash=file_hash or f"hash-{title}",
+        output_path=output,
     )
     conn.close()
     return book_id
+
+
+def _make_epub(path: Path, title: str) -> None:
+    """Write a minimal library EPUB carrying no series meta (the stale state)."""
+    book = epub.EpubBook()
+    book.set_identifier(f"id-{title}")
+    book.set_title(title)
+    book.set_language("en")
+    book.add_author("Robert Jordan")
+    chapter = epub.EpubHtml(title="c", file_name="c.xhtml", lang="en")
+    chapter.content = b"<html><body><p>x</p></body></html>"
+    book.add_item(chapter)
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", chapter]
+    epub.write_epub(str(path), book)
 
 
 def _get_book(db_path: Path, book_id: int) -> BookRecord:
@@ -245,6 +265,112 @@ class TestBackfillHeuristicFallback:
         provenance = LibraryCatalog(conn).get_provenance(book_id)
         conn.close()
         assert provenance["series"].source == "heuristic"
+
+
+class TestBackfillWritesEpubs:
+    """The write phase pushes catalog series into the library EPUB files (#298)."""
+
+    def test_fill_writes_series_into_epub_and_updates_hash(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(
+            db_path, "The Eye of the World", isbn="9780312850098", output=epub_path
+        )
+        provider = FakeProvider({"9780312850098": _cand("The Wheel of Time", 1.0)})
+
+        with patch("bookery.cli.commands.series_cmd._create_provider", return_value=provider):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert read_calibre_series(epub_path) == ("The Wheel of Time", 1.0)
+        record = _get_book(db_path, book_id)
+        assert record.file_hash != "hash-The Eye of the World"
+
+    def test_stale_epub_rewritten_without_provider_call(self, tmp_path: Path) -> None:
+        """A book whose catalog already has a series still gets its EPUB repaired."""
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+        provider = FakeProvider()
+
+        with patch("bookery.cli.commands.series_cmd._create_provider", return_value=provider):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert provider.isbn_calls == []
+        assert provider.title_calls == []
+        assert read_calibre_series(epub_path) == ("Already Set", 2.0)
+
+    def test_second_run_is_noop(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+        runner = CliRunner()
+
+        with patch(
+            "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
+        ):
+            runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+            before = epub_path.read_bytes()
+            second = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert second.exit_code == 0, second.output
+        assert epub_path.read_bytes() == before
+
+    def test_dry_run_does_not_touch_epub(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+
+        with patch(
+            "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
+        ):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--dry-run", "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "1 EPUB" in result.output
+        assert read_calibre_series(epub_path) == (None, None)
+
+    def test_book_without_epub_is_skipped(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(db_path, "The Eye of the World", series="Already Set")
+
+        with patch(
+            "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
+        ):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
 
 
 class TestBackfillRespectsLocks:
