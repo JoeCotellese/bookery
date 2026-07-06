@@ -58,6 +58,15 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
         console.print(
             f"[green]Pushed {report.shelves_pushed} collection shelf(s) to device[/green]"
         )
+    if report.series_pushed or report.series_pending:
+        console.print(
+            f"[green]Pushed series metadata for {report.series_pushed} book(s)[/green]"
+            + (
+                f" [dim](pending device import: {report.series_pending})[/dim]"
+                if report.series_pending
+                else ""
+            )
+        )
     if report.shelves_deleted:
         console.print(
             f"[dim]Removed {len(report.shelves_deleted)} orphaned shelf(s): "
@@ -71,6 +80,12 @@ def _print_status_summary(report) -> None:  # type: ignore[no-untyped-def]
             f"{len(report.read_status_push_failed)} book(s):[/yellow]"
         )
         for content_id, reason in report.read_status_push_failed:
+            console.print(f"  [yellow]- {content_id}: {reason}[/yellow]")
+    if report.series_push_failed:
+        console.print(
+            f"[yellow]Series push failed for {len(report.series_push_failed)} book(s):[/yellow]"
+        )
+        for content_id, reason in report.series_push_failed:
             console.print(f"  [yellow]- {content_id}: {reason}[/yellow]")
     if report.shelves_skipped:
         console.print(
