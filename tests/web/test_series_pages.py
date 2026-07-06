@@ -1,6 +1,8 @@
 # ABOUTME: Tests for the /series index and /series/<name> detail pages (#297).
 # ABOUTME: Covers listing, ordering, 404s, slash-in-name routing, and index formatting.
 
+import re
+
 from bookery.db.catalog import SeriesSummary
 from tests.web.conftest import make_book
 
@@ -45,6 +47,30 @@ class TestSeriesIndexPage:
         html = client.get("/series").get_data(as_text=True)
 
         assert "series backfill" in html
+
+
+class TestSeriesNav:
+    def test_masthead_has_series_link_with_count(self, mock_catalog, client):
+        mock_catalog.count_series.return_value = 7
+
+        html = client.get("/series").get_data(as_text=True)
+
+        match = re.search(
+            r'<a href="/series"[^>]*>\s*Series\s*<span class="nav-count">7</span>', html
+        )
+        assert match, "masthead should link to /series with the series count"
+
+    def test_series_nav_active_on_series_pages(self, mock_catalog, client):
+        html = client.get("/series").get_data(as_text=True)
+
+        assert re.search(r'<a href="/series"[^>]*aria-current="page"', html)
+        assert not re.search(r'<a href="/books"[^>]*aria-current="page"', html)
+
+    def test_books_nav_still_active_on_books_page(self, mock_catalog, client):
+        html = client.get("/books").get_data(as_text=True)
+
+        assert re.search(r'<a href="/books"[^>]*aria-current="page"', html)
+        assert not re.search(r'<a href="/series"[^>]*aria-current="page"', html)
 
 
 class TestSeriesDetailPage:

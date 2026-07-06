@@ -12,13 +12,18 @@
     <a class="skip-link" href="#main">Skip to main content</a>
     {%- set _endpoint = request.endpoint or '' -%}
     {%- set _collections_active = 'collection' in _endpoint -%}
+    {%- set _series_active = 'series' in _endpoint -%}
     {%- set _counts = nav_counts() -%}
     <header class="masthead">
         <a class="logo" href="{{ url_for('web.books') }}">Bookery</a>
         <nav class="site-nav" aria-label="Primary">
             <a href="{{ url_for('web.books') }}"
-               {% if not _collections_active %}aria-current="page"{% endif %}>
+               {% if not _collections_active and not _series_active %}aria-current="page"{% endif %}>
                 Books <span class="nav-count">{{ _counts.books }}</span>
+            </a>
+            <a href="{{ url_for('web.series_list') }}"
+               {% if _series_active %}aria-current="page"{% endif %}>
+                Series <span class="nav-count">{{ _counts.series }}</span>
             </a>
             <a href="{{ url_for('web.collections_list') }}"
                {% if _collections_active %}aria-current="page"{% endif %}>

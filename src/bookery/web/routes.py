@@ -203,6 +203,7 @@ def _inject_nav_counts() -> dict:
         catalog = current_app.config["CATALOG"]
         return {
             "books": catalog.count_books(),
+            "series": catalog.count_series(),
             "collections": catalog.count_collections(),
         }
 
