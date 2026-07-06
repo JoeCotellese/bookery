@@ -19,6 +19,8 @@ class TestEpubRoundTrip:
             language="it",
             publisher="Bompiani",
             description="Un giallo ambientato in un monastero medievale.",
+            series="Il ciclo dell'Abbazia",
+            series_index=1.0,
             subjects=["Narrativa", "Giallo storico"],
         )
         write_epub_metadata(sample_epub, updated)
@@ -29,6 +31,8 @@ class TestEpubRoundTrip:
         assert result.language == "it"
         assert result.publisher == "Bompiani"
         assert result.description == "Un giallo ambientato in un monastero medievale."
+        assert result.series == "Il ciclo dell'Abbazia"
+        assert result.series_index == 1.0
         assert result.subjects == ["Narrativa", "Giallo storico"]
 
     def test_multiple_writes_preserve_integrity(self, sample_epub: Path) -> None:
