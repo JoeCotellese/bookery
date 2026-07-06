@@ -203,6 +203,7 @@ class TestBrowseSort:
         for title, series, index in [
             ("Standalone", None, None),
             ("Wheel Two", "Wheel of Time", 2.0),
+            ("Wheel Prequel", "Wheel of Time", None),
             ("Dune One", "Dune", 1.0),
             ("Wheel One", "Wheel of Time", 1.0),
         ]:
@@ -222,6 +223,7 @@ class TestBrowseSort:
             "Dune One",
             "Wheel One",
             "Wheel Two",
+            "Wheel Prequel",
             "Standalone",
         ]
 

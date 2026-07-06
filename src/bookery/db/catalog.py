@@ -99,7 +99,7 @@ _SORT_COLUMNS: dict[str, str] = {
     "added": "date_added, id",
     # ponytail: the IS NULL lead sinks unseriesed books on asc (the default);
     # desc flips it and floats them first — acceptable until someone complains.
-    "series": "series IS NULL, series COLLATE NOCASE, series_index",
+    "series": "series IS NULL, series COLLATE NOCASE, series_index IS NULL, series_index",
 }
 _DEFAULT_ORDER = "author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
 
