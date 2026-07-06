@@ -93,3 +93,54 @@ class TestCachingHttpClient:
         client = CachingHttpClient(inner, cache, provider="openlibrary")
         with pytest.raises(KeyError):
             client.get("https://example.com/missing")
+
+
+class _RecordingPostClient:
+    def __init__(self, response: dict[str, Any]) -> None:
+        self._response = response
+        self.calls: list[tuple[str, dict[str, Any], dict[str, str] | None]] = []
+
+    def post_json(
+        self,
+        url: str,
+        json_body: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append((url, json_body, headers))
+        return self._response
+
+
+class TestCachingHttpClientPostJson:
+    def test_identical_body_served_from_cache(self, tmp_path: Path) -> None:
+        inner = _RecordingPostClient({"data": {"books": []}})
+        cache = MetadataCache(tmp_path / "c.db", ttl_seconds=60)
+        client = CachingHttpClient(inner, cache, provider="hardcover")
+
+        body = {"query": "{ books }", "variables": {"isbn": "978"}}
+        first = client.post_json("https://api.example.com/v1/graphql", body)
+        second = client.post_json("https://api.example.com/v1/graphql", body)
+
+        assert first == second == {"data": {"books": []}}
+        assert len(inner.calls) == 1
+
+    def test_different_variables_miss_cache(self, tmp_path: Path) -> None:
+        inner = _RecordingPostClient({"data": 1})
+        cache = MetadataCache(tmp_path / "c.db", ttl_seconds=60)
+        client = CachingHttpClient(inner, cache, provider="hardcover")
+
+        client.post_json("https://api.example.com/v1/graphql", {"variables": {"isbn": "1"}})
+        client.post_json("https://api.example.com/v1/graphql", {"variables": {"isbn": "2"}})
+
+        assert len(inner.calls) == 2
+
+    def test_auth_headers_not_part_of_cache_key(self, tmp_path: Path) -> None:
+        inner = _RecordingPostClient({"data": 1})
+        cache = MetadataCache(tmp_path / "c.db", ttl_seconds=60)
+        client = CachingHttpClient(inner, cache, provider="hardcover")
+
+        body = {"query": "{ x }"}
+        url = "https://api.example.com/v1/graphql"
+        client.post_json(url, body, headers={"Authorization": "Bearer a"})
+        client.post_json(url, body, headers={"Authorization": "Bearer b"})
+
+        assert len(inner.calls) == 1

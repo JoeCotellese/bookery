@@ -1,8 +1,10 @@
 # ABOUTME: HTTP client abstraction for metadata provider API calls.
 # ABOUTME: Provides rate limiting, retry with backoff, and injectable transport for testing.
 
+import json
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
@@ -28,6 +30,18 @@ class HttpClient(Protocol):
     """Protocol for HTTP GET operations against metadata APIs."""
 
     def get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class JsonPostClient(Protocol):
+    """Protocol for JSON POST operations (e.g. GraphQL metadata APIs)."""
+
+    def post_json(
+        self,
+        url: str,
+        json_body: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class BookeryHttpClient:
@@ -71,13 +85,38 @@ class BookeryHttpClient:
         Raises:
             MetadataFetchError: On non-retryable HTTP errors or exhausted retries.
         """
+        return self._execute(lambda: self._client.get(url, params=params), url)
+
+    def post_json(
+        self,
+        url: str,
+        json_body: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send a JSON POST (e.g. GraphQL) with the same rate limiting and retry as get().
+
+        Args:
+            url: The URL to request.
+            json_body: JSON-serializable request body.
+            headers: Optional extra headers (e.g. Authorization).
+
+        Returns:
+            Parsed JSON response body.
+
+        Raises:
+            MetadataFetchError: On non-retryable HTTP errors or exhausted retries.
+        """
+        return self._execute(lambda: self._client.post(url, json=json_body, headers=headers), url)
+
+    def _execute(self, send: Callable[[], httpx.Response], url: str) -> dict[str, Any]:
+        """Run a request thunk under rate limiting and the shared retry policy."""
         self._rate_limit()
 
         attempts = 1 + self._max_retries
         last_status = 0
         for attempt in range(attempts):
             try:
-                response = self._client.get(url, params=params)
+                response = send()
                 last_status = response.status_code
             except httpx.HTTPError as exc:
                 raise MetadataFetchError(f"Request failed: {url}: {exc}") from exc
@@ -142,7 +181,7 @@ class CachingHttpClient:
 
     def __init__(
         self,
-        inner: "HttpClient",
+        inner: "HttpClient | JsonPostClient",
         cache: "MetadataCache",
         *,
         provider: str,
@@ -152,6 +191,8 @@ class CachingHttpClient:
         self._provider = provider
 
     def get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        if not isinstance(self._inner, HttpClient):
+            raise TypeError("inner client does not support get()")
         parsed = urlparse(url)
         query_type = parsed.path or "/"
         key_parts = [parsed.netloc, parsed.query]
@@ -165,5 +206,26 @@ class CachingHttpClient:
             return hit
 
         response = self._inner.get(url, params=params)
+        self._cache.put(self._provider, query_type, query_key, response)
+        return response
+
+    def post_json(
+        self,
+        url: str,
+        json_body: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Cache-wrapped JSON POST. Keyed on url path + canonical body; headers excluded."""
+        if not isinstance(self._inner, JsonPostClient):
+            raise TypeError("inner client does not support post_json()")
+        parsed = urlparse(url)
+        query_type = parsed.path or "/"
+        query_key = json.dumps(json_body, sort_keys=True)
+
+        hit = self._cache.get(self._provider, query_type, query_key)
+        if hit is not None:
+            return hit
+
+        response = self._inner.post_json(url, json_body, headers=headers)
         self._cache.put(self._provider, query_type, query_key, response)
         return response
