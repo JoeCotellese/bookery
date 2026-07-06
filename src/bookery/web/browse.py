@@ -11,6 +11,7 @@ DEFAULT_PAGE_SIZE = 50
 # they're absent here. Bumping this set is a behavior change and needs the
 # template's conditional cells and the columns control updated in lock-step.
 TOGGLEABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("series", "Series"),
     ("isbn", "ISBN"),
     ("language", "Language"),
     ("publisher", "Publisher"),
@@ -51,7 +52,7 @@ def parse_columns_cookie(value: str | None) -> set[str] | None:
 # to ``DEFAULT_SORT`` silently — we never 400 the front door on a malformed
 # query string. Bumping or renaming a key here is a behavior change and needs
 # the template's header links updated in lock-step.
-ALLOWED_SORTS: frozenset[str] = frozenset({"title", "author", "added"})
+ALLOWED_SORTS: frozenset[str] = frozenset({"title", "author", "added", "series"})
 ALLOWED_DIRS: frozenset[str] = frozenset({"asc", "desc"})
 # Default ordering matches the pre-sortable behavior of the list controller —
 # books sorted by ``author_sort`` then ``title``, ascending — so unbookmarked
