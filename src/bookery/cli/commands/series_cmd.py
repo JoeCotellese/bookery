@@ -92,6 +92,22 @@ def _series_fields_and_provenance(
     return fields, provenance
 
 
+def _series_meta_matches(record: BookRecord, current: tuple[str | None, float | None]) -> bool:
+    """Compare catalog series meta against a file's, index via %g on both sides.
+
+    The file value went through %g formatting on write (6 significant digits),
+    so comparing raw floats would flag high-precision catalog indices as
+    forever-stale and rewrite them every run.
+    """
+
+    def key(value: float | None) -> str | None:
+        return None if value is None else f"{value:g}"
+
+    return current[0] == record.metadata.series and key(current[1]) == key(
+        record.metadata.series_index
+    )
+
+
 def _stale_epub_records(records: list[BookRecord]) -> list[BookRecord]:
     """Books whose library EPUB series meta doesn't match the catalog."""
     stale: list[BookRecord] = []
@@ -105,7 +121,7 @@ def _stale_epub_records(records: list[BookRecord]) -> list[BookRecord]:
             current = read_calibre_series(out)
         except (OSError, zipfile.BadZipFile, ET.ParseError):
             continue
-        if current != (record.metadata.series, record.metadata.series_index):
+        if not _series_meta_matches(record, current):
             stale.append(record)
     return stale
 
@@ -124,7 +140,7 @@ def _write_series_epub(catalog: LibraryCatalog, record: BookRecord) -> bool:
     shutil.copy2(src, tmp)
     try:
         write_epub_metadata(tmp, record.metadata)
-        if read_calibre_series(tmp) != (record.metadata.series, record.metadata.series_index):
+        if not _series_meta_matches(record, read_calibre_series(tmp)):
             tmp.unlink(missing_ok=True)
             return False
         os.replace(tmp, src)

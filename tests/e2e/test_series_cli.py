@@ -336,6 +336,34 @@ class TestBackfillWritesEpubs:
         assert second.exit_code == 0, second.output
         assert epub_path.read_bytes() == before
 
+    def test_high_precision_index_does_not_churn(self, tmp_path: Path) -> None:
+        """An index beyond %g precision must not re-flag the EPUB every run."""
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=1.123456789,
+            output=epub_path,
+        )
+        runner = CliRunner()
+
+        with patch(
+            "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
+        ):
+            first = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+            before = epub_path.read_bytes()
+            second = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert first.exit_code == 0, first.output
+        assert "failed" not in first.output
+        # The write really happened, at %g precision
+        assert read_calibre_series(epub_path) == ("Already Set", 1.12346)
+        assert second.exit_code == 0, second.output
+        assert epub_path.read_bytes() == before
+
     def test_dry_run_does_not_touch_epub(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "eye.epub"
         _make_epub(epub_path, "The Eye of the World")
