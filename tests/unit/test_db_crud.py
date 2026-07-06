@@ -170,6 +170,29 @@ class TestListBooks:
         assert results[0].metadata.series_index == 1.0
         assert results[1].metadata.series_index == 2.0
 
+    def test_list_by_series_null_index_sorts_last(self, catalog: LibraryCatalog) -> None:
+        """Books with no series_index come after positioned books, not before."""
+        catalog.add_book(
+            BookMetadata(
+                title="Unknown Position",
+                series="Cotton Malone",
+                source_path=Path("/bx.epub"),
+            ),
+            file_hash="hx",
+        )
+        catalog.add_book(
+            BookMetadata(
+                title="Book 1",
+                series="Cotton Malone",
+                series_index=1.0,
+                source_path=Path("/b1.epub"),
+            ),
+            file_hash="h1",
+        )
+
+        results = catalog.list_by_series("Cotton Malone")
+        assert [r.metadata.title for r in results] == ["Book 1", "Unknown Position"]
+
     def test_list_series_groups_and_counts(self, catalog: LibraryCatalog) -> None:
         """list_series returns (name, count, missing_index_count) sorted by name."""
         catalog.add_book(
@@ -531,3 +554,46 @@ class TestCounts:
         catalog.create_collection("Favorites")
         catalog.create_collection("To Read", query='status:"unread"')
         assert catalog.count_collections() == 2
+
+    def test_count_series_empty(self, catalog: LibraryCatalog) -> None:
+        assert catalog.count_series() == 0
+
+    def test_count_series_distinct_nonempty(self, catalog: LibraryCatalog) -> None:
+        """Counts distinct series names; NULL and empty-string series don't count."""
+        catalog.add_book(
+            BookMetadata(
+                title="D1", series="Dune", series_index=1.0, source_path=Path("/d1.epub")
+            ),
+            file_hash="d1",
+        )
+        catalog.add_book(
+            BookMetadata(
+                title="D2", series="Dune", series_index=2.0, source_path=Path("/d2.epub")
+            ),
+            file_hash="d2",
+        )
+        catalog.add_book(
+            BookMetadata(title="F1", series="Foundation", source_path=Path("/f1.epub")),
+            file_hash="f1",
+        )
+        catalog.add_book(
+            BookMetadata(title="Standalone", source_path=Path("/s1.epub")),
+            file_hash="s1",
+        )
+        assert catalog.count_series() == 2
+
+    def test_count_books_in_series(self, catalog: LibraryCatalog) -> None:
+        catalog.add_book(
+            BookMetadata(
+                title="D1", series="Dune", series_index=1.0, source_path=Path("/d1.epub")
+            ),
+            file_hash="d1",
+        )
+        catalog.add_book(
+            BookMetadata(title="D2", series="Dune", source_path=Path("/d2.epub")),
+            file_hash="d2",
+        )
+        assert catalog.count_books_in_series("Dune") == 2
+
+    def test_count_books_in_series_unknown_is_zero(self, catalog: LibraryCatalog) -> None:
+        assert catalog.count_books_in_series("Nope") == 0
