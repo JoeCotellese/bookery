@@ -170,6 +170,49 @@ class TestListBooks:
         assert results[0].metadata.series_index == 1.0
         assert results[1].metadata.series_index == 2.0
 
+    def test_list_series_groups_and_counts(self, catalog: LibraryCatalog) -> None:
+        """list_series returns (name, count, missing_index_count) sorted by name."""
+        catalog.add_book(
+            BookMetadata(
+                title="Book 1",
+                series="Wheel of Time",
+                series_index=1.0,
+                source_path=Path("/w1.epub"),
+            ),
+            file_hash="w1",
+        )
+        catalog.add_book(
+            BookMetadata(
+                title="Book 2",
+                series="Wheel of Time",
+                source_path=Path("/w2.epub"),
+            ),
+            file_hash="w2",
+        )
+        catalog.add_book(
+            BookMetadata(
+                title="Solo",
+                series="Cotton Malone",
+                series_index=4.0,
+                source_path=Path("/c1.epub"),
+            ),
+            file_hash="c1",
+        )
+        catalog.add_book(
+            BookMetadata(title="No Series", source_path=Path("/n.epub")),
+            file_hash="n1",
+        )
+
+        rows = catalog.list_series()
+
+        assert [(r.series, r.book_count, r.missing_index_count) for r in rows] == [
+            ("Cotton Malone", 1, 0),
+            ("Wheel of Time", 2, 1),
+        ]
+
+    def test_list_series_empty_catalog(self, catalog: LibraryCatalog) -> None:
+        assert catalog.list_series() == []
+
 
 class TestUpdateBook:
     """Tests for update_book and set_output_path."""

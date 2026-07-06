@@ -59,6 +59,15 @@ class AuthorCluster:
         return len({bid for form in self.forms for bid in form.book_ids})
 
 
+@dataclass(frozen=True)
+class SeriesSummary:
+    """Aggregate coverage for one series in the catalog."""
+
+    series: str
+    book_count: int
+    missing_index_count: int
+
+
 def _fts_match_expression(q: str) -> str:
     """Build a safe FTS5 MATCH expression from raw user input.
 
@@ -484,6 +493,28 @@ class LibraryCatalog:
                 self.update_book(book_id, authors=updated)
                 changed += 1
         return changed
+
+    def list_series(self) -> list["SeriesSummary"]:
+        """Return per-series coverage: name, book count, and missing-index count."""
+        cursor = self._conn.execute(
+            """
+            SELECT series,
+                   COUNT(*) AS book_count,
+                   SUM(series_index IS NULL) AS missing_index_count
+            FROM books
+            WHERE series IS NOT NULL AND series != ''
+            GROUP BY series
+            ORDER BY series
+            """
+        )
+        return [
+            SeriesSummary(
+                series=row["series"],
+                book_count=row["book_count"],
+                missing_index_count=row["missing_index_count"],
+            )
+            for row in cursor.fetchall()
+        ]
 
     def list_by_series(self, series: str) -> list[BookRecord]:
         """Return books in a given series, ordered by series_index."""
