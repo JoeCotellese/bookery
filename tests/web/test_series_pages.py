@@ -131,3 +131,50 @@ class TestSeriesDetailPage:
 
         assert response.status_code == 200
         mock_catalog.list_by_series.assert_called_once_with("Fafhrd/Mouser")
+
+
+class TestBookListSeriesColumn:
+    """#297 — toggleable, sortable Series column on /books."""
+
+    def _seed(self, mock_catalog, series: str | None = "Dune", series_index: float | None = 1.0):
+        book = make_book(1, series=series, series_index=series_index)
+        mock_catalog.browse.return_value = ([book], 1)
+
+    def test_hidden_by_default(self, mock_catalog, client):
+        self._seed(mock_catalog)
+
+        html = client.get("/books").data.decode()
+
+        assert 'class="col-series"' not in html
+
+    def test_toggled_on_renders_name_and_position(self, mock_catalog, client):
+        self._seed(mock_catalog)
+        client.set_cookie("book_columns", "series")
+
+        html = client.get("/books").data.decode()
+
+        assert 'class="col-series"' in html
+        assert "Dune #1" in html
+
+    def test_header_is_a_sort_link(self, mock_catalog, client):
+        self._seed(mock_catalog)
+        client.set_cookie("book_columns", "series")
+
+        html = client.get("/books").data.decode()
+
+        assert "sort=series" in html
+
+    def test_book_without_series_renders_empty_cell(self, mock_catalog, client):
+        self._seed(mock_catalog, series=None, series_index=None)
+        client.set_cookie("book_columns", "series")
+
+        html = client.get("/books").data.decode()
+
+        assert 'class="col-series"' in html
+
+    def test_sort_series_forwards_to_catalog_browse(self, mock_catalog, client):
+        mock_catalog.browse.return_value = ([], 0)
+
+        client.get("/books?sort=series")
+
+        assert mock_catalog.browse.call_args.kwargs["sort"] == "series"
