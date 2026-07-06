@@ -14,7 +14,10 @@
         {% endif %}
         {% if book.metadata.series %}
         <dt>Series</dt>
-        <dd>{{ book.metadata.series }}{% if book.metadata.series_index %} #{{ book.metadata.series_index }}{% endif %}</dd>
+        <dd>
+            <a href="{{ url_for('web.series_detail', series_name=book.metadata.series) }}">{{ book.metadata.series }}</a>
+            {%- if book.metadata.series_index is not none %} #{{ '%g'|format(book.metadata.series_index) }}{% if series_total %} of {{ series_total }}{% endif %}{% endif %}
+        </dd>
         {% endif %}
     </dl>
 </section>

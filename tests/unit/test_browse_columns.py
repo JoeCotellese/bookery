@@ -17,6 +17,10 @@ class TestToggleableColumns:
     def test_default_visible_is_added_and_enriched(self):
         assert frozenset({"added", "enriched"}) == DEFAULT_VISIBLE_COLUMNS
 
+    def test_series_is_toggleable_and_hidden_by_default(self):
+        assert "series" in {key for key, _ in TOGGLEABLE_COLUMNS}
+        assert "series" not in DEFAULT_VISIBLE_COLUMNS
+
 
 class TestCoerceColumns:
     def test_keeps_only_known_keys(self):

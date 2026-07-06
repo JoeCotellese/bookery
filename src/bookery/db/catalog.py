@@ -97,6 +97,9 @@ _SORT_COLUMNS: dict[str, str] = {
     "title": "title_sort COLLATE NOCASE",
     "author": "author_sort COLLATE NOCASE, title_sort COLLATE NOCASE",
     "added": "date_added, id",
+    # ponytail: the IS NULL lead sinks unseriesed books on asc (the default);
+    # desc flips it and floats them first — acceptable until someone complains.
+    "series": "series IS NULL, series COLLATE NOCASE, series_index IS NULL, series_index",
 }
 _DEFAULT_ORDER = "author_sort COLLATE NOCASE, title_sort COLLATE NOCASE"
 
@@ -416,6 +419,20 @@ class LibraryCatalog:
         row = self._conn.execute("SELECT COUNT(*) FROM collections").fetchone()
         return int(row[0]) if row else 0
 
+    def count_series(self) -> int:
+        """Number of distinct non-empty series names (for the web nav masthead)."""
+        row = self._conn.execute(
+            "SELECT COUNT(DISTINCT series) FROM books WHERE series IS NOT NULL AND series != ''"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def count_books_in_series(self, series: str) -> int:
+        """Number of books in one series — the 'of M' on the book detail page."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM books WHERE series = ?", (series,)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
     def list_all_by_author(self) -> list[BookRecord]:
         """Return all books in the catalog, ordered by author then title.
 
@@ -519,7 +536,9 @@ class LibraryCatalog:
     def list_by_series(self, series: str) -> list[BookRecord]:
         """Return books in a given series, ordered by series_index."""
         cursor = self._conn.execute(
-            "SELECT * FROM books WHERE series = ? ORDER BY series_index",
+            "SELECT * FROM books WHERE series = ? "
+            # Unknown positions go last, not first (SQLite sorts NULLs first).
+            "ORDER BY series_index IS NULL, series_index, title_sort COLLATE NOCASE",
             (series,),
         )
         return [row_to_record(row) for row in cursor.fetchall()]

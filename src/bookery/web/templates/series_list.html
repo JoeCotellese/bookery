@@ -1,0 +1,41 @@
+{# ABOUTME: /series index page — every series in the catalog with book counts. #}
+{# ABOUTME: Read-only; names link to the per-series detail page. #}
+{% extends "base.html" %}
+
+{% block title %}Series - Bookery{% endblock %}
+
+{% block content %}
+<div class="series-list">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ url_for('web.books') }}">&larr; Back to library</a>
+    </nav>
+
+    <h1>Series</h1>
+
+    {% if series %}
+    <table class="series-table">
+        <thead>
+            <tr>
+                <th>Series</th>
+                <th>Books</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in series %}
+            <tr>
+                <td><a href="{{ url_for('web.series_detail', series_name=row.series) }}">{{ row.series }}</a></td>
+                <td>
+                    {{ row.book_count }}
+                    {%- if row.missing_index_count %}
+                    <span class="series-missing-hint">({{ row.missing_index_count }} missing position{% if row.missing_index_count != 1 %}s{% endif %})</span>
+                    {%- endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No series yet. Run <code>bookery series backfill</code> to fill series metadata from providers.</p>
+    {% endif %}
+</div>
+{% endblock %}

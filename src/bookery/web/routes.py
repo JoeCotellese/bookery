@@ -203,6 +203,7 @@ def _inject_nav_counts() -> dict:
         catalog = current_app.config["CATALOG"]
         return {
             "books": catalog.count_books(),
+            "series": catalog.count_series(),
             "collections": catalog.count_collections(),
         }
 
@@ -326,6 +327,10 @@ def book_detail(book_id):
     book_status = catalog.get_book_status(book_id)
     device_read_state = catalog.get_device_read_state_for_book(book_id)
     queued_for_push = catalog.is_status_queued_for_push(book_id)
+    # "of M" for the Identity section's "Series #N of M" display.
+    series_total = (
+        catalog.count_books_in_series(book.metadata.series) if book.metadata.series else None
+    )
 
     context = dict(
         book=book,
@@ -338,6 +343,7 @@ def book_detail(book_id):
         book_status=book_status,
         device_read_state=device_read_state,
         queued_for_push=queued_for_push,
+        series_total=series_total,
     )
 
     if request.headers.get("HX-Request"):
@@ -1738,3 +1744,25 @@ def collection_rename(collection_id):
         flash(f"Failed to rename collection: {exc}", "error")
 
     return redirect(url_for("web.collection_detail", collection_id=collection_id))
+
+
+@bp.route("/series")
+def series_list():
+    """List every series in the catalog with per-series coverage."""
+    catalog = current_app.config["CATALOG"]
+    return render_template("series_list.html", series=catalog.list_series())
+
+
+@bp.route("/series/<path:series_name>")
+def series_detail(series_name):
+    """Show one series' books ordered by position.
+
+    Series have no id — the name is the key, and a series "exists" iff at
+    least one cataloged book carries it. The ``path`` converter lets names
+    containing ``/`` route correctly.
+    """
+    catalog = current_app.config["CATALOG"]
+    books = catalog.list_by_series(series_name)
+    if not books:
+        abort(404)
+    return render_template("series_detail.html", series_name=series_name, books=books)

@@ -199,6 +199,39 @@ class TestBrowseSort:
         rows, _ = catalog.browse(sort="bogus", dir="desc")
         assert len(rows) == 3
 
+    def _seed_series(self, catalog: LibraryCatalog) -> None:
+        for title, series, index in [
+            ("Standalone", None, None),
+            ("Wheel Two", "Wheel of Time", 2.0),
+            ("Wheel Prequel", "Wheel of Time", None),
+            ("Dune One", "Dune", 1.0),
+            ("Wheel One", "Wheel of Time", 1.0),
+        ]:
+            meta = BookMetadata(
+                title=title,
+                authors=["Author"],
+                series=series,
+                series_index=index,
+                source_path=Path(f"/tmp/{title}.epub"),
+            )
+            catalog.add_book(meta, file_hash=(title * 8).ljust(64, "0"))
+
+    def test_sort_by_series_asc_groups_by_series_then_index(self, catalog):
+        self._seed_series(catalog)
+        rows, _ = catalog.browse(sort="series", dir="asc")
+        assert [r.metadata.title for r in rows] == [
+            "Dune One",
+            "Wheel One",
+            "Wheel Two",
+            "Wheel Prequel",
+            "Standalone",
+        ]
+
+    def test_sort_by_series_asc_puts_unseriesed_last(self, catalog):
+        self._seed_series(catalog)
+        rows, _ = catalog.browse(sort="series", dir="asc")
+        assert rows[-1].metadata.series is None
+
 
 class TestBrowseArticleStrippedSort:
     """`browse()` sorts on the persisted article-stripped title (#192).

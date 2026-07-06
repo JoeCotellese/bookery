@@ -1,0 +1,28 @@
+{# ABOUTME: /series/<name> detail page — the series' books ordered by position. #}
+{# ABOUTME: Positions render via %g so 1.0 shows as #1 and 1.5 stays #1.5. #}
+{% extends "base.html" %}
+
+{% block title %}{{ series_name }} - Bookery{% endblock %}
+
+{% block content %}
+<div class="series-detail">
+    <nav aria-label="Breadcrumb" class="back-link">
+        <a href="{{ url_for('web.series_list') }}">&larr; Back to series</a>
+    </nav>
+
+    <h1>{{ series_name }}</h1>
+    <p class="series-count">{{ books|length }} book{% if books|length != 1 %}s{% endif %}</p>
+
+    <ol class="book-list series-books">
+        {% for book in books %}
+        <li>
+            {% if book.metadata.series_index is not none %}<span class="series-position">#{{ '%g'|format(book.metadata.series_index) }}</span>{% endif %}
+            <a href="{{ url_for('web.book_detail', book_id=book.id) }}">{{ book.metadata.title }}</a>
+            {% if book.metadata.authors %}
+            <span class="authors">by {{ book.metadata.authors|join(", ") }}</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</div>
+{% endblock %}

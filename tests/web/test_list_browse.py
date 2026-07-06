@@ -55,7 +55,7 @@ class TestBrowseQuerySortParsing:
         assert q.sort == "author"
         assert q.dir == "asc"
 
-    @pytest.mark.parametrize("key", ["title", "author", "added"])
+    @pytest.mark.parametrize("key", ["title", "author", "added", "series"])
     def test_parses_allowed_sort_keys(self, key):
         q = from_request_args({"sort": key})
         assert q.sort == key

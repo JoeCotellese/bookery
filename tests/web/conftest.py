@@ -134,6 +134,10 @@ def mock_catalog():
     catalog.is_status_queued_for_push.return_value = False
     catalog.count_books.return_value = 0
     catalog.count_collections.return_value = 0
+    catalog.count_series.return_value = 0
+    catalog.count_books_in_series.return_value = 0
+    catalog.list_series.return_value = []
+    catalog.list_by_series.return_value = []
     return catalog
 
 

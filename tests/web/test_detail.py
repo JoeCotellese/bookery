@@ -6,6 +6,48 @@ from pathlib import Path
 from tests.web.conftest import make_book
 
 
+class TestDetailSeriesDisplay:
+    """#297 — series identity renders as a link with '# N of M'."""
+
+    def test_series_links_to_series_page_with_position_of_total(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(
+            1, series="The Wheel of Time", series_index=1.0
+        )
+        mock_catalog.count_books_in_series.return_value = 14
+
+        html = client.get("/books/1").data.decode()
+
+        mock_catalog.count_books_in_series.assert_called_once_with("The Wheel of Time")
+        assert 'href="/series/The%20Wheel%20of%20Time"' in html
+        assert "#1 of 14" in html
+
+    def test_whole_number_index_drops_decimal(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, series="Dune", series_index=2.0)
+        mock_catalog.count_books_in_series.return_value = 6
+
+        html = client.get("/books/1").data.decode()
+
+        assert "#2 of 6" in html
+        assert "#2.0" not in html
+
+    def test_series_without_index_links_name_only(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1, series="Dune", series_index=None)
+        mock_catalog.count_books_in_series.return_value = 6
+
+        html = client.get("/books/1").data.decode()
+
+        assert 'href="/series/Dune"' in html
+        assert "of 6" not in html
+
+    def test_book_without_series_skips_count_query(self, mock_catalog, client):
+        mock_catalog.get_by_id.return_value = make_book(1)
+
+        html = client.get("/books/1").data.decode()
+
+        mock_catalog.count_books_in_series.assert_not_called()
+        assert "/series/" not in html
+
+
 class TestDetailSections:
     def test_header_section_present(self, mock_catalog, client):
         mock_catalog.get_by_id.return_value = make_book(
