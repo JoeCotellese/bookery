@@ -4,6 +4,7 @@
 from pathlib import Path
 
 from bookery.metadata.googlebooks import GoogleBooksProvider
+from bookery.metadata.hardcover import HardcoverProvider
 from bookery.metadata.openlibrary import OpenLibraryProvider
 from bookery.metadata.provider import MetadataProvider
 from bookery.metadata.registry import PROVIDER_FACTORIES, ProviderContext
@@ -20,7 +21,7 @@ def _ctx() -> ProviderContext:
 
 class TestProviderFactories:
     def test_builtin_keys(self) -> None:
-        assert set(PROVIDER_FACTORIES) == {"openlibrary", "googlebooks"}
+        assert set(PROVIDER_FACTORIES) == {"openlibrary", "googlebooks", "hardcover"}
 
     def test_openlibrary_factory_builds_provider(self) -> None:
         provider = PROVIDER_FACTORIES["openlibrary"](_ctx())
@@ -41,6 +42,19 @@ class TestProviderFactories:
         provider = PROVIDER_FACTORIES["googlebooks"](_ctx())
         assert isinstance(provider, GoogleBooksProvider)
         assert provider._api_key is None
+
+    def test_hardcover_factory_reads_api_key_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("HARDCOVER_API_KEY", "hc-token")
+        provider = PROVIDER_FACTORIES["hardcover"](_ctx())
+        assert isinstance(provider, HardcoverProvider)
+        assert provider._token == "hc-token"
+
+    def test_hardcover_factory_without_api_key_env(self, monkeypatch) -> None:
+        monkeypatch.delenv("HARDCOVER_API_KEY", raising=False)
+        provider = PROVIDER_FACTORIES["hardcover"](_ctx())
+        assert isinstance(provider, HardcoverProvider)
+        # Constructed but disabled: searches return no candidates.
+        assert provider.search_by_isbn("9780312850098") == []
 
 
 class TestRegistryDrivesBuildActiveProviders:

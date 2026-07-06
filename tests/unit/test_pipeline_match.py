@@ -287,3 +287,47 @@ class TestMatchOneCoverFetch:
         assert result.status == "matched"
         mock_fetch.assert_not_called()
         assert result.cover_skipped is False
+
+
+class TestMatchOneSeriesHeuristic:
+    """The series heuristic fires post-review when providers left series empty."""
+
+    def test_heuristic_fills_series_from_title_pattern(self, tmp_path: Path) -> None:
+        epub_path = _make_epub(tmp_path, title="Foo (Series #3)")
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("Foo (Series #3)", "Test Author", 0.95)
+
+        provider = MagicMock()
+        provider.search_by_isbn.return_value = []
+        provider.search_by_title_author.return_value = [candidate]
+        review = MagicMock()
+        review.review.return_value = candidate.metadata
+
+        result = match_one(epub_path, provider, review, output_dir)
+
+        assert result.status == "matched"
+        assert result.metadata is not None
+        assert result.metadata.series == "Series"
+        assert result.metadata.series_index == 3.0
+        assert result.metadata.identifiers["provenance_series"] == "heuristic"
+
+    def test_heuristic_does_not_override_provider_series(self, tmp_path: Path) -> None:
+        epub_path = _make_epub(tmp_path, title="Foo (Series #3)")
+        output_dir = tmp_path / "output"
+        candidate = _make_candidate("Foo (Series #3)", "Test Author", 0.95)
+        candidate.metadata.series = "Provider Series"
+        candidate.metadata.series_index = 1.0
+
+        provider = MagicMock()
+        provider.search_by_isbn.return_value = []
+        provider.search_by_title_author.return_value = [candidate]
+        review = MagicMock()
+        review.review.return_value = candidate.metadata
+
+        result = match_one(epub_path, provider, review, output_dir)
+
+        assert result.status == "matched"
+        assert result.metadata is not None
+        assert result.metadata.series == "Provider Series"
+        assert result.metadata.series_index == 1.0
+        assert "provenance_series" not in result.metadata.identifiers

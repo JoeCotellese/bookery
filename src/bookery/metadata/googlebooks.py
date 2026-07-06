@@ -93,7 +93,19 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
     print_type = volume_info.get("printType") or None
     maturity_rating = volume_info.get("maturityRating") or None
 
+    # seriesInfo carries the volume's position but NOT the series name (that
+    # lives behind a separate authenticated /series/get endpoint).
+    series_info = volume_info.get("seriesInfo") or {}
+    volume_series = series_info.get("volumeSeries") or []
+    series_index = _parse_series_index(series_info.get("bookDisplayNumber"))
+    if series_index is None and volume_series:
+        order_number = volume_series[0].get("orderNumber")
+        if isinstance(order_number, (int, float)):
+            series_index = float(order_number)
+
     identifiers: dict[str, str] = {}
+    if volume_series and volume_series[0].get("seriesId"):
+        identifiers["googlebooks_series"] = volume_series[0]["seriesId"]
     volume_id = item.get("id")
     if volume_id:
         identifiers["googlebooks_volume"] = volume_id
@@ -121,7 +133,16 @@ def _parse_volume(item: dict[str, Any]) -> BookMetadata:
         ratings_count=ratings_count,
         print_type=print_type,
         maturity_rating=maturity_rating,
+        series_index=series_index,
     )
+
+
+def _parse_series_index(display_number: Any) -> float | None:
+    """Parse seriesInfo.bookDisplayNumber ("2", "Book 3", garbage) to a float."""
+    if display_number is None:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", str(display_number))
+    return float(match.group()) if match else None
 
 
 def _is_book(item: dict[str, Any]) -> bool:

@@ -169,3 +169,57 @@ class TestBookeryHttpClient:
 
         client.get("https://example.com/api")
         assert slept == [0.01]
+
+
+class TestPostJson:
+    """Tests for BookeryHttpClient.post_json (GraphQL-style POST APIs)."""
+
+    def test_post_json_returns_parsed_body(self) -> None:
+        transport = FakeTransport([httpx.Response(200, json={"data": {"ok": 1}})])
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport)
+        result = client.post_json("https://example.com/graphql", {"query": "{ x }"})
+        assert result == {"data": {"ok": 1}}
+
+    def test_post_json_sends_body_and_headers(self) -> None:
+        captured: list[httpx.Request] = []
+
+        class CapturingTransport(httpx.BaseTransport):
+            def handle_request(self, request: httpx.Request) -> httpx.Response:
+                captured.append(request)
+                return httpx.Response(200, json={})
+
+        client = BookeryHttpClient(min_request_interval=0.0, transport=CapturingTransport())
+        client.post_json(
+            "https://example.com/graphql",
+            {"query": "{ x }", "variables": {"a": 1}},
+            headers={"Authorization": "Bearer tok"},
+        )
+        request = captured[0]
+        assert request.method == "POST"
+        assert request.headers["authorization"] == "Bearer tok"
+        assert b'"variables"' in request.content
+
+    def test_post_json_retries_on_429(self) -> None:
+        transport = FakeTransport(
+            [
+                httpx.Response(429, headers={"Retry-After": "0"}),
+                httpx.Response(200, json={"data": 1}),
+            ]
+        )
+        client = BookeryHttpClient(min_request_interval=0.0, retry_delay=0.0, transport=transport)
+        assert client.post_json("https://example.com/graphql", {}) == {"data": 1}
+        assert transport.call_count == 2
+
+    def test_post_json_non_retryable_raises(self) -> None:
+        transport = FakeTransport([httpx.Response(401)])
+        client = BookeryHttpClient(min_request_interval=0.0, transport=transport)
+        with pytest.raises(MetadataFetchError, match="401"):
+            client.post_json("https://example.com/graphql", {})
+
+    def test_post_json_retry_exhausted_raises(self) -> None:
+        transport = FakeTransport([httpx.Response(503)] * 4)
+        client = BookeryHttpClient(
+            min_request_interval=0.0, max_retries=3, retry_delay=0.0, transport=transport
+        )
+        with pytest.raises(MetadataFetchError, match="after 4 attempts"):
+            client.post_json("https://example.com/graphql", {})

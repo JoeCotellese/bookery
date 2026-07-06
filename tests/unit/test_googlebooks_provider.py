@@ -278,3 +278,80 @@ def test_page_count_of_zero_is_coerced_to_none() -> None:
     provider = GoogleBooksProvider(http_client=http)
     candidates = provider.search_by_isbn("9780441013593")
     assert candidates[0].metadata.page_count is None
+
+
+def _volume_with_series_info(series_info: dict[str, Any]) -> dict[str, Any]:
+    vol = _volume()
+    vol["volumeInfo"]["seriesInfo"] = series_info
+    return vol
+
+
+def test_series_info_with_volume_series_sets_index_and_series_id() -> None:
+    vol = _volume_with_series_info(
+        {
+            "bookDisplayNumber": "2",
+            "volumeSeries": [{"seriesId": "abc123", "orderNumber": 2}],
+        }
+    )
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series_index == 2.0
+    assert meta.identifiers["googlebooks_series"] == "abc123"
+    # Series NAME is not in the volume response; only the id is stashed.
+    assert meta.series is None
+
+
+def test_series_info_book_display_number_only() -> None:
+    vol = _volume_with_series_info({"bookDisplayNumber": "1"})
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series_index == 1.0
+    assert "googlebooks_series" not in meta.identifiers
+
+
+def test_series_info_order_number_fallback_when_display_number_missing() -> None:
+    vol = _volume_with_series_info({"volumeSeries": [{"seriesId": "s1", "orderNumber": 5}]})
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series_index == 5.0
+    assert meta.identifiers["googlebooks_series"] == "s1"
+
+
+def test_series_info_non_numeric_display_number_extracts_number() -> None:
+    vol = _volume_with_series_info({"bookDisplayNumber": "Book 3"})
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series_index == 3.0
+
+
+def test_series_info_garbage_display_number_yields_none() -> None:
+    vol = _volume_with_series_info({"bookDisplayNumber": "n/a", "volumeSeries": []})
+    http = FakeHttpClient({"volumes": {"items": [vol]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series_index is None
+    assert "googlebooks_series" not in meta.identifiers
+
+
+def test_no_series_info_leaves_series_fields_unset() -> None:
+    http = FakeHttpClient({"volumes": {"items": [_volume()]}})
+    provider = GoogleBooksProvider(http_client=http)
+
+    meta = provider.search_by_isbn("9780441013593")[0].metadata
+
+    assert meta.series is None
+    assert meta.series_index is None
