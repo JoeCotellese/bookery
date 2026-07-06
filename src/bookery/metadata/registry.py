@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bookery.metadata.googlebooks import GoogleBooksProvider
+from bookery.metadata.hardcover import HardcoverProvider
 from bookery.metadata.openlibrary import OpenLibraryProvider
 from bookery.metadata.provider import MetadataProvider
 
@@ -37,7 +38,15 @@ def _make_googlebooks(ctx: ProviderContext) -> MetadataProvider:
 # Registry consumed by cli/_match_helpers.build_active_providers. Keys are the
 # names accepted in [matching].providers. ponytail: plain dict, no entry-point
 # or pluggy loading — add that only when an out-of-tree provider exists.
+def _make_hardcover(ctx: ProviderContext) -> MetadataProvider:
+    return HardcoverProvider(
+        http_client=ctx.http_client_for("hardcover"),
+        token=os.environ.get("HARDCOVER_API_KEY"),
+    )
+
+
 PROVIDER_FACTORIES: dict[str, Callable[[ProviderContext], MetadataProvider]] = {
     "openlibrary": _make_openlibrary,
     "googlebooks": _make_googlebooks,
+    "hardcover": _make_hardcover,
 }
