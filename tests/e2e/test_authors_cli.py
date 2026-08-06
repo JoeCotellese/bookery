@@ -1,6 +1,7 @@
 # ABOUTME: E2E tests for the `bookery authors fix-sort` file-as backfill command.
 # ABOUTME: Seeds a real catalog + EPUBs lacking file-as and drives the CLI.
 
+import zipfile
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -28,6 +29,16 @@ def _make_epub(path: Path, title: str, authors: list[str]) -> None:
     book.add_item(epub.EpubNav())
     book.spine = ["nav", chapter]
     epub.write_epub(str(path), book)
+
+
+def _make_unreadable_epub(path: Path) -> None:
+    """Write a valid zip that is not a valid EPUB: no META-INF/container.xml.
+
+    ``ZipFile.read`` raises ``KeyError`` for a missing member, which is how a
+    truncated-then-repaired file or a mis-extensioned archive shows up.
+    """
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip")
 
 
 def _seed(db_path: Path, title: str, authors: list[str], output: Path) -> int:
@@ -115,6 +126,25 @@ class TestAuthorsFixSort:
         assert "failed:" in result.output and "Bad Book" in result.output
         # The healthy book was still fixed despite the other's failure.
         assert read_creator_file_as(good) == [("Brandon Sanderson", "Sanderson, Brandon")]
+
+    def test_unreadable_epub_is_reported_and_batch_continues(self, tmp_path: Path) -> None:
+        """A zip missing container.xml raises KeyError; it must not abort the scan."""
+        broken = tmp_path / "broken.epub"
+        _make_unreadable_epub(broken)
+        good = tmp_path / "good.epub"
+        _make_epub(good, "Good Book", ["Sanderson, Brandon"])
+        db_path = tmp_path / "lib.db"
+        _seed(db_path, "Broken Book", ["Burrough, Bryan"], broken)
+        _seed(db_path, "Good Book", ["Sanderson, Brandon"], good)
+
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"])
+
+        assert result.exit_code == 0, result.output
+        assert "Broken Book" in result.output
+        assert "unreadable" in result.output
+        # The healthy book was still fixed despite the other being skipped.
+        assert read_creator_file_as(good) == [("Sanderson, Brandon", "Sanderson, Brandon")]
+        assert "Updated file-as for 1 book(s)." in result.output
 
     def test_coauthors_left_intact(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "barbarians.epub"

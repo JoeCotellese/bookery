@@ -1,6 +1,8 @@
 # ABOUTME: End-to-end tests for the `bookery series` CLI group.
 # ABOUTME: Covers `series ls` coverage listing and `series backfill` provider/heuristic fills.
 
+import zipfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,7 +13,12 @@ from bookery.cli import cli
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.mapping import BookRecord
-from bookery.formats.epub import read_calibre_series
+from bookery.formats.epub import (
+    EpubReadError,
+    read_calibre_series,
+    read_epub_metadata,
+    write_epub_metadata,
+)
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.types import BookMetadata
 
@@ -99,6 +106,16 @@ def _make_epub(path: Path, title: str) -> None:
     book.add_item(epub.EpubNav())
     book.spine = ["nav", chapter]
     epub.write_epub(str(path), book)
+
+
+def _make_unreadable_epub(path: Path) -> None:
+    """Write a valid zip that is not a valid EPUB: no META-INF/container.xml.
+
+    ``ZipFile.read`` raises ``KeyError`` for a missing member, which is how a
+    truncated-then-repaired file or a mis-extensioned archive shows up.
+    """
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip")
 
 
 def _get_book(db_path: Path, book_id: int) -> BookRecord:
@@ -313,7 +330,13 @@ class TestBackfillWritesEpubs:
         assert provider.title_calls == []
         assert read_calibre_series(epub_path) == ("Already Set", 2.0)
 
-    def test_second_run_is_noop(self, tmp_path: Path) -> None:
+    def test_second_run_rewrites_nothing(self, tmp_path: Path) -> None:
+        """The staleness gate must stop the second run from touching the file at all.
+
+        Byte equality can't prove this — ``write_epub_metadata`` is deterministic
+        on repeat writes, so a rewritten file is byte-identical to a skipped one.
+        The rewrite count is the only observable difference.
+        """
         epub_path = tmp_path / "eye.epub"
         _make_epub(epub_path, "The Eye of the World")
         db_path = tmp_path / "test.db"
@@ -329,12 +352,17 @@ class TestBackfillWritesEpubs:
         with patch(
             "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
         ):
-            runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
-            before = epub_path.read_bytes()
+            first = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
             second = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
 
+        assert first.exit_code == 0, first.output
+        assert "Updated series metadata in 1 EPUB file(s)." in first.output
+        # The first run really pushed the series into the file.
+        assert read_calibre_series(epub_path) == ("Already Set", 2.0)
+
         assert second.exit_code == 0, second.output
-        assert epub_path.read_bytes() == before
+        assert "Updated series metadata in 0 EPUB file(s)." in second.output
+        assert read_calibre_series(epub_path) == ("Already Set", 2.0)
 
     def test_high_precision_index_does_not_churn(self, tmp_path: Path) -> None:
         """An index beyond %g precision must not re-flag the EPUB every run."""
@@ -354,15 +382,132 @@ class TestBackfillWritesEpubs:
             "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
         ):
             first = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
-            before = epub_path.read_bytes()
             second = runner.invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
 
         assert first.exit_code == 0, first.output
         assert "failed" not in first.output
         # The write really happened, at %g precision
+        assert "Updated series metadata in 1 EPUB file(s)." in first.output
         assert read_calibre_series(epub_path) == ("Already Set", 1.12346)
+        # The catalog still holds full precision, so a naive float compare would
+        # call the file stale forever and rewrite it on every run.
         assert second.exit_code == 0, second.output
-        assert epub_path.read_bytes() == before
+        assert "Updated series metadata in 0 EPUB file(s)." in second.output
+
+
+class TestBackfillEpubWriteFailures:
+    """The atomic-write safety net: bad files are skipped, bad writes keep the original."""
+
+    def test_unreadable_epub_is_reported_and_batch_continues(self, tmp_path: Path) -> None:
+        """A zip missing container.xml raises KeyError; it must not abort the run."""
+        broken_path = tmp_path / "broken.epub"
+        _make_unreadable_epub(broken_path)
+        good_path = tmp_path / "good.epub"
+        _make_epub(good_path, "Good Book")
+        db_path = tmp_path / "test.db"
+        _add_book(db_path, "Broken Book", series="Broken Series", output=broken_path)
+        _add_book(db_path, "Good Book", series="Good Series", output=good_path)
+
+        with patch(
+            "bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()
+        ):
+            result = CliRunner().invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "Broken Book" in result.output
+        assert "unreadable" in result.output
+        # The healthy book was still written despite the other being skipped.
+        assert read_calibre_series(good_path) == ("Good Series", None)
+        assert "Updated series metadata in 1 EPUB file(s)." in result.output
+
+    def test_verify_failure_keeps_original_and_reports(self, tmp_path: Path) -> None:
+        """A write that drops the title must fail verify, even though series is right."""
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+
+        def lossy_write(path: Path, metadata: BookMetadata) -> None:
+            # Series lands correctly; the title is clobbered. A series-only
+            # verify would wave this through and swap in a damaged file.
+            write_epub_metadata(path, replace(metadata, title="Clobbered Title"))
+
+        with (
+            patch("bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()),
+            patch("bookery.cli.commands.series_cmd.write_epub_metadata", lossy_write),
+        ):
+            result = CliRunner().invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "verify failed" in result.output
+        assert "original kept" in result.output
+        assert "1 failed" in result.output
+        # The original is untouched: no series written, title intact.
+        assert read_calibre_series(epub_path) == (None, None)
+        assert read_epub_metadata(epub_path).title == "The Eye of the World"
+        assert not list(tmp_path.glob("*.fixtmp"))
+
+    def test_write_error_cleans_up_temp_and_keeps_original(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+
+        def exploding_write(path: Path, metadata: BookMetadata) -> None:
+            raise EpubReadError("boom")
+
+        with (
+            patch("bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()),
+            patch("bookery.cli.commands.series_cmd.write_epub_metadata", exploding_write),
+        ):
+            result = CliRunner().invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "EPUB write failed" in result.output
+        assert "1 failed" in result.output
+        assert read_calibre_series(epub_path) == (None, None)
+        # No orphaned temp file left behind in the library.
+        assert not list(tmp_path.glob("*.fixtmp"))
+
+    def test_hash_failure_after_swap_is_not_a_failed_write(self, tmp_path: Path) -> None:
+        """The swap already succeeded, so a hashing error must not be counted as failed."""
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        _add_book(
+            db_path,
+            "The Eye of the World",
+            series="Already Set",
+            series_index=2.0,
+            output=epub_path,
+        )
+
+        def unhashable(path: Path) -> str:
+            raise OSError("hash device fell over")
+
+        with (
+            patch("bookery.cli.commands.series_cmd._create_provider", return_value=FakeProvider()),
+            patch("bookery.cli.commands.series_cmd.compute_file_hash", unhashable),
+        ):
+            result = CliRunner().invoke(cli, ["series", "backfill", "--all", "--db", str(db_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "Updated series metadata in 1 EPUB file(s)." in result.output
+        assert "failed" not in result.output
+        # The write landed even though the hash could not be recomputed.
+        assert read_calibre_series(epub_path) == ("Already Set", 2.0)
 
     def test_dry_run_does_not_touch_epub(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "eye.epub"

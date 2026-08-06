@@ -14,6 +14,7 @@ from rich.table import Table
 
 from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import db_option, resolve_db_path, threshold_option
+from bookery.core.pipeline import _verify_write
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.hashing import compute_file_hash
@@ -23,6 +24,12 @@ from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.series_heuristic import HEURISTIC_SOURCE, infer_series_from_title
 
 logger = logging.getLogger(__name__)
+
+# ``ZipFile.read`` raises KeyError for a member that isn't in the archive, so a
+# file that is a valid zip but has no META-INF/container.xml — or whose
+# container names an OPF that isn't there — surfaces as KeyError, not OSError.
+_EPUB_SCAN_ERRORS = (OSError, zipfile.BadZipFile, ET.ParseError, KeyError)
+_EPUB_WRITE_ERRORS = (*_EPUB_SCAN_ERRORS, EpubReadError)
 
 
 def _create_provider(*, use_cache: bool = True):
@@ -108,9 +115,18 @@ def _series_meta_matches(record: BookRecord, current: tuple[str | None, float | 
     )
 
 
-def _stale_epub_records(records: list[BookRecord]) -> list[BookRecord]:
-    """Books whose library EPUB series meta doesn't match the catalog."""
+def _stale_epub_records(
+    records: list[BookRecord],
+) -> tuple[list[BookRecord], list[tuple[BookRecord, Exception]]]:
+    """Split books into stale-EPUB ones and ones whose EPUB could not be read.
+
+    Stale means the library EPUB's series meta doesn't match the catalog. The
+    unreadable list is returned rather than swallowed so the caller can name
+    each skipped book — a silently skipped book never gets repaired and never
+    tells anyone why.
+    """
     stale: list[BookRecord] = []
+    unreadable: list[tuple[BookRecord, Exception]] = []
     for record in records:
         if not record.metadata.series:
             continue
@@ -119,20 +135,24 @@ def _stale_epub_records(records: list[BookRecord]) -> list[BookRecord]:
             continue
         try:
             current = read_calibre_series(out)
-        except (OSError, zipfile.BadZipFile, ET.ParseError):
+        except _EPUB_SCAN_ERRORS as exc:
+            unreadable.append((record, exc))
             continue
         if not _series_meta_matches(record, current):
             stale.append(record)
-    return stale
+    return stale, unreadable
 
 
-def _write_series_epub(catalog: LibraryCatalog, record: BookRecord) -> bool:
-    """Rewrite one library EPUB atomically; return False if read-back verify fails.
+def _write_series_epub(catalog: LibraryCatalog, record: BookRecord) -> list[str]:
+    """Rewrite one library EPUB atomically; return the fields that failed verify.
 
-    Same pattern as `authors fix-sort`: write to a sibling temp file, verify
-    the series round-trip, then ``os.replace`` swaps it in. A failed verify
-    leaves the original untouched. The new file_hash is persisted so ``verify``
-    doesn't later flag the rewritten copy as changed.
+    Same pattern as `authors fix-sort`: write to a sibling temp file, verify,
+    then ``os.replace`` swaps it in. An empty list means the swap happened.
+    A failed verify leaves the original untouched.
+
+    Verification covers every field ``write_epub_metadata`` touches, not just
+    series: the write re-serializes the whole OPF/NCX through ebooklib, so a
+    series-only check could wave through a file that lost its title.
     """
     src = record.output_path
     assert src is not None  # guaranteed by _stale_epub_records
@@ -140,15 +160,23 @@ def _write_series_epub(catalog: LibraryCatalog, record: BookRecord) -> bool:
     shutil.copy2(src, tmp)
     try:
         write_epub_metadata(tmp, record.metadata)
-        if not _series_meta_matches(record, read_calibre_series(tmp)):
+        failed = [v.field for v in _verify_write(tmp, record.metadata) if not v.passed]
+        if failed:
             tmp.unlink(missing_ok=True)
-            return False
+            return failed
         os.replace(tmp, src)
-    except (OSError, EpubReadError):
+    except _EPUB_WRITE_ERRORS:
         tmp.unlink(missing_ok=True)
         raise
-    catalog.update_book(record.id, file_hash=compute_file_hash(src))
-    return True
+
+    # The swap already succeeded, so a hashing failure is not a failed write.
+    # Report it and leave the stale hash for `verify` to flag rather than
+    # telling the user the rewrite failed when the file is in place.
+    try:
+        catalog.update_book(record.id, file_hash=compute_file_hash(src))
+    except OSError as exc:
+        logger.warning("series backfill: could not rehash %s after write: %s", src, exc)
+    return []
 
 
 @click.group()
@@ -293,33 +321,42 @@ def series_backfill(
         # Push series into the library EPUB files so Kobo can group them (#298).
         # Re-select so books filled above are seen with their new series; in a
         # dry run the catalog is untouched, so this covers already-set books.
-        stale = _stale_epub_records(_select_books(catalog, book_id, backfill_all, tag_name))
-        if stale and dry_run:
+        stale, unreadable = _stale_epub_records(
+            _select_books(catalog, book_id, backfill_all, tag_name)
+        )
+        for record, exc in unreadable:
             console.print(
-                f"[dim]dry-run:[/dim] {len(stale)} EPUB file(s) would be rewritten "
-                "with series metadata."
+                f"  [yellow]{record.id} {record.metadata.title}: "
+                f"unreadable EPUB, skipped: {exc}[/yellow]"
             )
-        elif stale:
+        if dry_run:
+            if stale:
+                console.print(
+                    f"[dim]dry-run:[/dim] {len(stale)} EPUB file(s) would be rewritten "
+                    "with series metadata."
+                )
+        else:
             rewritten = 0
             failed_writes = 0
             for record in stale:
                 try:
-                    ok = _write_series_epub(catalog, record)
-                except (OSError, EpubReadError) as exc:
+                    failed_fields = _write_series_epub(catalog, record)
+                except _EPUB_WRITE_ERRORS as exc:
                     console.print(
                         f"  [red]{record.id} {record.metadata.title}: "
                         f"EPUB write failed: {exc}[/red]"
                     )
                     failed_writes += 1
                     continue
-                if ok:
-                    rewritten += 1
-                else:
+                if failed_fields:
                     failed_writes += 1
                     console.print(
-                        f"  [red]{record.id} {record.metadata.title}: "
-                        "verify failed; original kept[/red]"
+                        f"  [red]{record.id} {record.metadata.title}: verify failed "
+                        f"({', '.join(failed_fields)}); original kept[/red]"
                     )
+                else:
+                    rewritten += 1
+            # Printed even at zero so a run that rewrote nothing says so.
             msg = f"Updated series metadata in [green]{rewritten}[/green] EPUB file(s)."
             if failed_writes:
                 msg += f" [red]{failed_writes} failed.[/red]"
