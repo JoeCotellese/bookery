@@ -22,8 +22,24 @@ logger = logging.getLogger(__name__)
 # write ___SyncTime / ___UserID / Synced / etc., the build of the UPDATE
 # statement happens here and only here, so the allow-list is single-source.
 _ALLOWED_COLUMNS = frozenset(
-    {"ReadStatus", "___PercentRead", "DateLastRead", "Series", "SeriesNumber", "SeriesID"}
+    {
+        "ReadStatus",
+        "___PercentRead",
+        "DateLastRead",
+        "Series",
+        "SeriesNumber",
+        "SeriesID",
+        "SeriesNumberFloat",
+    }
 )
+
+# Firmware 4.45 stores the series position twice: TEXT ``SeriesNumber`` and
+# REAL ``SeriesNumberFloat``. Calibre's KoboTouch driver writes both, and a
+# row with a text index but a 0.0 float is what the store's own books never
+# look like. Older firmware has no such column, so the writer probes for it —
+# a blind UPDATE against a device that lacks it raises, and per the batch
+# semantics below that would roll back every other book in the push.
+_SERIES_FLOAT_COLUMN = "SeriesNumberFloat"
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,9 +217,10 @@ class SeriesUpdate:
     """One row's worth of series intent for ``content_id``.
 
     ``series_number`` is Kobo's TEXT column (e.g. ``"2"`` / ``"2.5"``), or
-    ``None`` when the catalog has no position. ``SeriesID`` is derived from the
-    series name inside the writer — Calibre's sideload convention, which is
-    what nickel groups on for firmware 4.25+.
+    ``None`` when the catalog has no position; the device's REAL
+    ``SeriesNumberFloat`` twin is parsed back out of it inside the writer.
+    ``SeriesID`` is derived from the series name inside the writer — Calibre's
+    sideload convention, which is what nickel groups on for firmware 4.25+.
     """
 
     content_id: str
@@ -228,15 +245,34 @@ class SeriesPushReport:
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
+def _content_columns(conn: sqlite3.Connection) -> set[str]:
+    """Column names on the device's ``content`` table (empty set if it's absent)."""
+    return {str(row[1]) for row in conn.execute("PRAGMA table_info(content)")}
+
+
+def _series_number_float(series_number: str | None) -> float | None:
+    """Numeric twin of the TEXT ``SeriesNumber``.
+
+    Derived from the text instead of carried separately on ``SeriesUpdate`` so
+    the two columns can never disagree: the text is already the catalog float
+    rendered with ``%g``, and parsing it back yields the same number.
+    """
+    return None if series_number is None else float(series_number)
+
+
 def push_series(*, db_path: Path, updates: list[SeriesUpdate]) -> SeriesPushReport:
     """Write series metadata into KoboReader.sqlite in a single transaction.
 
     Firmware 4.45 (verified on-device, #298) does not parse series from
     sideloaded kepub OPFs — neither calibre:series nor EPUB3
     belongs-to-collection — so, like Calibre's Kobo driver, bookery writes
-    ``content.Series`` / ``SeriesNumber`` / ``SeriesID`` directly. Each row is
-    read first: identical values are skipped (no device-DB churn on re-sync),
-    missing rows count as pending. Any ``sqlite3.Error`` rolls back the batch.
+    ``content.Series`` / ``SeriesNumber`` / ``SeriesID`` directly, plus
+    ``SeriesNumberFloat`` on firmware that has the column. Each row is read
+    first across that same column set: identical values are skipped (no
+    device-DB churn on re-sync), missing rows count as pending. Because the
+    float participates in the comparison, rows left behind with a correct text
+    index and a 0.0 float heal on the next sync. Any ``sqlite3.Error`` rolls
+    back the batch.
     """
     report = SeriesPushReport()
     if not updates:
@@ -244,27 +280,36 @@ def push_series(*, db_path: Path, updates: list[SeriesUpdate]) -> SeriesPushRepo
 
     conn = open_kobo_db_rw(db_path)
     try:
+        # Probe once per batch, before the transaction opens.
+        columns = ["Series", "SeriesNumber", "SeriesID"]
+        writes_float = _SERIES_FLOAT_COLUMN in _content_columns(conn)
+        if writes_float:
+            columns.append(_SERIES_FLOAT_COLUMN)
+        # Sanity check the allow-list invariant — column names are literals
+        # above so this is a tripwire for future edits, not a runtime guard.
+        for col in columns:
+            assert col in _ALLOWED_COLUMNS, f"Writer tried to touch disallowed column {col!r}"
+        select_clause = ", ".join(columns)
+        set_clause = ", ".join(f"{col} = ?" for col in columns)
+
         conn.execute("BEGIN")
         try:
             for upd in updates:
                 row = conn.execute(
-                    "SELECT Series, SeriesNumber, SeriesID FROM content WHERE ContentID = ?",
+                    f"SELECT {select_clause} FROM content WHERE ContentID = ?",
                     (upd.content_id,),
                 ).fetchone()
                 if row is None:
                     report.pending_count += 1
                     continue
-                target = (upd.series, upd.series_number, upd.series)
+                target: tuple[object, ...] = (upd.series, upd.series_number, upd.series)
+                if writes_float:
+                    target = (*target, _series_number_float(upd.series_number))
                 if tuple(row) == target:
                     report.unchanged_count += 1
                     continue
-                for col in ("Series", "SeriesNumber", "SeriesID"):
-                    assert col in _ALLOWED_COLUMNS, (
-                        f"Writer tried to touch disallowed column {col!r}"
-                    )
                 conn.execute(
-                    "UPDATE content SET Series = ?, SeriesNumber = ?, SeriesID = ?"
-                    " WHERE ContentID = ?",
+                    f"UPDATE content SET {set_clause} WHERE ContentID = ?",
                     (*target, upd.content_id),
                 )
                 report.pushed_count += 1

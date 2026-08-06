@@ -119,7 +119,8 @@ def sync() -> None:
     "no_status_push",
     is_flag=True,
     default=False,
-    help="Skip writing read-status back to the device — pulls and copies still run.",
+    help="Skip every device-DB write: read-status, collection shelves, and series "
+    "grouping. Pulls and copies still run.",
 )
 @click.option(
     "--kepub/--no-kepub",
