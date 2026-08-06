@@ -24,7 +24,7 @@ welcome.
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
 - **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
 - **PDF-to-EPUB conversion** — `bookery add` detects text-based PDFs, extracts their structure with pdfplumber + a local LLM (LM Studio), and produces a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
-- **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed.
+- **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed. Books with series metadata group by series on device: sync writes `Series`/`SeriesNumber` into the Kobo database directly (the same mechanism Calibre's device driver uses — current firmware ignores series metadata inside sideloaded EPUBs). Newly copied books group on the sync after the device has indexed them.
 - **Collections** — group books into named lists, either static (hand-picked) or rule-based (membership derived live from a query like `genre:"Science Fiction"` or `series:Dune`, so it stays current as the library grows). See `bookery collections`.
 - **Collection shelves on device** — the same `bookery sync kobo` mirrors each collection to a Kobo shelf (`Shelf`/`ShelfContent`). Bookery owns only shelves whose `InternalName` is `bookery-<collection_id>`; a user-created shelf that shares a name is skipped, never overwritten. Unchanged shelves are skipped on re-sync (membership hash), and a shelf is removed once its collection is deleted. `bookery collections show <id> --sync-status` reports per-device shelf state.
 - **Multi-provider metadata matching** — Open Library and Google Books in a consensus merger that prefers values agreed on by ≥2 providers and falls back to a priority order otherwise. ISBN-10/13 lookups are normalized and provider responses are cached.
@@ -173,7 +173,7 @@ bookery info 42
 | `match <path> -o <dir>` | Match metadata for loose EPUB files (not yet in the catalog) and write corrected copies |
 | `rematch [book_id]` | Re-run matching on cataloged books and update the database |
 | `series ls` | List series in the catalog with book counts and missing-position gaps |
-| `series backfill [book_id\|--all\|--tag]` | Fill missing series/series_index from providers, falling back to title-pattern heuristics (`--dry-run` to preview) |
+| `series backfill [book_id\|--all\|--tag]` | Fill missing series/series_index from providers (title-pattern heuristics as fallback) and rewrite library EPUBs whose series meta is stale (`--dry-run` to preview) |
 
 ### Conversion
 

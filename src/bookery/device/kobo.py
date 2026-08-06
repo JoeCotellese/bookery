@@ -24,8 +24,10 @@ from bookery.device.kobo_reader import pull_read_state, read_kobo_serial
 from bookery.device.kobo_writer import (
     CollectionShelfUpdate,
     ReadStatusUpdate,
+    SeriesUpdate,
     delete_orphan_shelves,
     push_read_status,
+    push_series,
     write_collection_shelves,
 )
 
@@ -133,6 +135,14 @@ class SyncReport:
     shelf_push_failed: list[tuple[str, str]] = field(default_factory=list)
     shelves_skipped: list[tuple[str, str]] = field(default_factory=list)
     shelves_deleted: list[str] = field(default_factory=list)
+    # #298: series push stats. Firmware doesn't parse series from sideloaded
+    # kepub OPFs, so sync writes content.Series directly. ``series_pending`` is
+    # books whose device row doesn't exist yet (firmware indexes on the next
+    # disconnect, so they land on the following sync).
+    series_pushed: int = 0
+    series_unchanged: int = 0
+    series_pending: int = 0
+    series_push_failed: list[tuple[str, str]] = field(default_factory=list)
     backup_path: Path | None = None
 
 
@@ -519,6 +529,83 @@ def _push_read_state(
     report.read_status_push_failed = list(push.failed)
 
 
+def _build_series_updates(
+    records: list[BookRecord],
+    *,
+    target: Path,
+    books_subdir: str,
+    kepub: bool,
+) -> list[SeriesUpdate]:
+    """Series intents for every catalog book with a series and a device path.
+
+    ContentIDs are computed the same way the copy phase computes destinations,
+    so the push covers books synced this run *and* on any earlier run, without
+    needing device_files rows.
+    """
+    updates: list[SeriesUpdate] = []
+    for record in records:
+        meta = record.metadata
+        if not meta.series:
+            continue
+        source = record.output_path
+        if source is None or source.suffix.lower() != ".epub":
+            continue
+        dest = _compute_device_dest(target, books_subdir, record, kepub=kepub)
+        number = None if meta.series_index is None else f"{meta.series_index:g}"
+        updates.append(
+            SeriesUpdate(
+                content_id=f"file://{_to_device_path(dest, target)}",
+                series=meta.series,
+                series_number=number,
+            )
+        )
+    return updates
+
+
+def _push_series_metadata(
+    *,
+    records: list[BookRecord],
+    target: Path,
+    books_subdir: str,
+    kepub: bool,
+    serial: str,
+    backup_root: Path | None,
+    report: SyncReport,
+) -> None:
+    """Write catalog series into the device DB (firmware ignores OPF series).
+
+    Best-effort like the other push phases: failures land in the report, never
+    abort the sync. Takes the DB backup if no earlier push phase already has.
+    """
+    updates = _build_series_updates(records, target=target, books_subdir=books_subdir, kepub=kepub)
+    if not updates:
+        return
+
+    db_path = target / ".kobo" / "KoboReader.sqlite"
+    if not db_path.exists():
+        logger.warning("KoboReader.sqlite not found at %s; skipping series push", db_path)
+        return
+
+    if backup_root is not None and report.backup_path is None:
+        report.backup_path = backup_kobo_db(
+            source_db=db_path,
+            backup_root=backup_root,
+            device_serial=serial,
+            now=_dt.datetime.now(_dt.UTC),
+        )
+
+    try:
+        push = push_series(db_path=db_path, updates=updates)
+    except Exception as exc:
+        logger.warning("Series push failed: %s", exc)
+        report.series_push_failed = [(upd.content_id, str(exc)) for upd in updates]
+        return
+    report.series_pushed = push.pushed_count
+    report.series_unchanged = push.unchanged_count
+    report.series_pending = push.pending_count
+    report.series_push_failed = list(push.failed)
+
+
 def sync_library_to_kobo(
     *,
     catalog: _CatalogProto,
@@ -661,6 +748,15 @@ def sync_library_to_kobo(
             catalog=catalog,
             device_id=device_id,
             target=target,
+            report=report,
+        )
+        _push_series_metadata(
+            records=records,
+            target=target,
+            books_subdir=books_subdir,
+            kepub=kepub,
+            serial=serial,
+            backup_root=backup_root,
             report=report,
         )
 

@@ -101,6 +101,11 @@ max_tokens = 262144
 # book to the mounted Kobo. The library itself stays canonical EPUB; kepub
 # is generated on demand at sync time and cached in {data_dir}/kepub_cache.db
 # so unchanged books are skipped on re-sync.
+#
+# Books with catalog series metadata group by series on device: the sync
+# writes Series/SeriesNumber into KoboReader.sqlite directly (firmware
+# ignores series meta inside sideloaded EPUB files; verified on 4.45).
+# Disable all device-DB writes with `--no-status-push`.
 
 [sync.kobo]
 # Subdirectory under the mount root where books are placed. Default is

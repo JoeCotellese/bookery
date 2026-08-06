@@ -29,6 +29,12 @@ from bookery.metadata.author_names import canonical_author, classify
 
 console = Console()
 
+# ``ZipFile.read`` raises KeyError for a member that isn't in the archive, so a
+# file that is a valid zip but has no META-INF/container.xml — or whose
+# container names an OPF that isn't there — surfaces as KeyError, not OSError.
+_EPUB_SCAN_ERRORS = (OSError, zipfile.BadZipFile, ET.ParseError, KeyError)
+_EPUB_WRITE_ERRORS = (*_EPUB_SCAN_ERRORS, EpubReadError)
+
 
 @dataclass
 class _Candidate:
@@ -39,9 +45,18 @@ class _Candidate:
     expected: list[tuple[str, str]]
 
 
-def _find_candidates(catalog: LibraryCatalog) -> list[_Candidate]:
-    """Return books whose library EPUB lacks the correct per-author file-as."""
+def _find_candidates(
+    catalog: LibraryCatalog,
+) -> tuple[list[_Candidate], list[tuple[BookRecord, Exception]]]:
+    """Split books into fix candidates and ones whose EPUB could not be read.
+
+    A candidate is a book whose library EPUB lacks the correct per-author
+    file-as. The unreadable list is returned rather than swallowed so the
+    caller can name each skipped book — a silently skipped book never gets
+    repaired and never tells anyone why.
+    """
     candidates: list[_Candidate] = []
+    unreadable: list[tuple[BookRecord, Exception]] = []
     for record in catalog.list_all():
         out = record.output_path
         if out is None or out.suffix.lower() != ".epub" or not out.exists():
@@ -51,11 +66,12 @@ def _find_candidates(catalog: LibraryCatalog) -> list[_Candidate]:
         expected = creator_file_as_pairs(record.metadata)
         try:
             current = read_creator_file_as(out)
-        except (OSError, zipfile.BadZipFile, ET.ParseError):
+        except _EPUB_SCAN_ERRORS as exc:
+            unreadable.append((record, exc))
             continue
         if current != expected:
             candidates.append(_Candidate(record, current, expected))
-    return candidates
+    return candidates, unreadable
 
 
 def _apply_fix(catalog: LibraryCatalog, candidate: _Candidate) -> bool:
@@ -76,7 +92,7 @@ def _apply_fix(catalog: LibraryCatalog, candidate: _Candidate) -> bool:
             tmp.unlink(missing_ok=True)
             return False
         os.replace(tmp, src)
-    except (OSError, EpubReadError):
+    except _EPUB_WRITE_ERRORS:
         tmp.unlink(missing_ok=True)
         raise
     catalog.update_book(candidate.record.id, file_hash=compute_file_hash(src))
@@ -127,7 +143,11 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
     conn = open_library(resolve_db_path(db_path))
     try:
         catalog = LibraryCatalog(conn)
-        candidates = _find_candidates(catalog)
+        candidates, unreadable = _find_candidates(catalog)
+        for record, exc in unreadable:
+            console.print(
+                f"[yellow]skipped (unreadable EPUB):[/yellow] {record.metadata.title}: {exc}"
+            )
 
         if not candidates:
             console.print("[green]All author file-as sort keys are already correct.[/green]")
@@ -145,7 +165,7 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
         for cand in candidates:
             try:
                 applied = _apply_fix(catalog, cand)
-            except (OSError, EpubReadError) as exc:
+            except _EPUB_WRITE_ERRORS as exc:
                 # One unreadable file shouldn't abort the whole backfill; each
                 # fix is atomic, so already-processed books stay valid.
                 console.print(f"[red]failed:[/red] {cand.record.metadata.title}: {exc}")

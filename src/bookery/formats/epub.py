@@ -61,6 +61,35 @@ def _get_subjects(book: epub.EpubBook) -> list[str]:
     return [str(entry[0]).strip() for entry in subjects if entry[0]]
 
 
+def _get_calibre_meta(book: epub.EpubBook, name: str) -> str | None:
+    """Return the content attr of an OPF ``<meta name="calibre:{name}">`` tag.
+
+    ebooklib files these OPF2-style meta tags under the "meta" key of the OPF
+    namespace with the value in the tag's ``content`` attribute.
+    """
+    for ns_entries in book.metadata.values():
+        for _value, attrs in ns_entries.get("meta", []):
+            if isinstance(attrs, dict) and attrs.get("name") == f"calibre:{name}":
+                content = attrs.get("content")
+                if content:
+                    return str(content)
+    return None
+
+
+def _parse_series_index(raw: str) -> float | None:
+    """Parse a calibre:series_index content value; non-numeric reads as None."""
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _get_series_index(book: epub.EpubBook) -> float | None:
+    """Read calibre:series_index from parsed OPF meta."""
+    raw = _get_calibre_meta(book, "series_index")
+    return None if raw is None else _parse_series_index(raw)
+
+
 def _get_identifiers(book: epub.EpubBook) -> dict[str, str]:
     """Extract all identifiers (ISBN, UUID, etc.) from an EpubBook."""
     identifiers = {}
@@ -210,6 +239,8 @@ def read_epub_metadata(path: Path) -> BookMetadata:
         publisher=_get_metadata_value(book, "DC", "publisher"),
         isbn=isbn,
         description=_strip_description(_get_metadata_value(book, "DC", "description")),
+        series=_get_calibre_meta(book, "series"),
+        series_index=_get_series_index(book),
         subjects=_get_subjects(book),
         identifiers=identifiers,
         cover_image=cover_image,
@@ -251,7 +282,17 @@ def _scrub_none_metadata(book: epub.EpubBook) -> None:
     for ns in book.metadata:
         for name in list(book.metadata[ns]):
             entries = book.metadata[ns][name]
-            cleaned = [(v, a) for v, a in entries if v is not None]
+            cleaned = []
+            for v, a in entries:
+                if v is not None:
+                    cleaned.append((v, a))
+                elif name == "meta" and isinstance(a, dict) and a:
+                    # Attribute-only tags like <meta name="calibre:series"
+                    # content="..."/> read back as (None, attrs). Keep them with
+                    # an empty value — they serialize fine (ebooklib only sets
+                    # el.text for truthy values) and dropping them silently
+                    # stripped calibre series meta on every rewrite (#298).
+                    cleaned.append(("", a))
             if len(cleaned) < len(entries):
                 logger.debug(
                     "Scrubbed %d None metadata entries from %s/%s",
@@ -318,6 +359,21 @@ def creator_file_as_pairs(metadata: BookMetadata) -> list[tuple[str, str]]:
     return pairs
 
 
+def _clear_opf_meta(book: epub.EpubBook, name: str) -> None:
+    """Drop OPF ``<meta name="...">`` entries so re-writes don't accumulate them."""
+    for ns_entries in book.metadata.values():
+        meta = ns_entries.get("meta")
+        if not meta:
+            continue
+        kept = [
+            (value, attrs)
+            for value, attrs in meta
+            if not (isinstance(attrs, dict) and attrs.get("name") == name)
+        ]
+        if len(kept) != len(meta):
+            ns_entries["meta"] = kept
+
+
 def _clear_creator_file_as(book: epub.EpubBook) -> None:
     """Drop existing ``file-as`` refines meta so re-writes don't accumulate them.
 
@@ -376,6 +432,35 @@ def read_creator_file_as(path: Path) -> list[tuple[str, str | None]]:
             file_as = refines.get(creator.get("id", ""))
         pairs.append((name, file_as))
     return pairs
+
+
+def read_calibre_series(path: Path) -> tuple[str | None, float | None]:
+    """Return ``(series, series_index)`` from an EPUB's calibre-style OPF meta.
+
+    Cheap zipfile/ElementTree scan for candidate checks — avoids a full
+    ebooklib parse (including cover extraction) per book. Non-numeric
+    indices read as None, matching ``read_epub_metadata``.
+    """
+    with zipfile.ZipFile(path) as zf:
+        container = ET.fromstring(zf.read(_CONTAINER))
+        rootfile = container.find(".//{*}rootfile")
+        opf_path = rootfile.get("full-path") if rootfile is not None else None
+        if not opf_path:
+            return (None, None)
+        opf = ET.fromstring(zf.read(opf_path))
+
+    series: str | None = None
+    index: float | None = None
+    for meta in opf.iter(f"{{{_OPF_NS}}}meta"):
+        content = meta.get("content")
+        if not content:
+            continue
+        name = meta.get("name")
+        if name == "calibre:series" and series is None:
+            series = content
+        elif name == "calibre:series_index" and index is None:
+            index = _parse_series_index(content)
+    return (series, index)
 
 
 _COVER_EXTENSION_FOR_CONTENT_TYPE: dict[str, str] = {
@@ -480,6 +565,20 @@ def write_epub_metadata(path: Path, metadata: BookMetadata) -> None:
         _clear_dc_metadata(book, "subject")
         for subject in metadata.subjects:
             book.add_metadata("DC", "subject", subject)
+
+    # Kobo firmware >=4.20 groups sideloaded kepubs by series via these
+    # calibre-style OPF meta tags (#298). None preserves any existing meta.
+    if metadata.series is not None:
+        _clear_opf_meta(book, "calibre:series")
+        _clear_opf_meta(book, "calibre:series_index")
+        book.add_metadata(None, "meta", "", {"name": "calibre:series", "content": metadata.series})
+        if metadata.series_index is not None:
+            book.add_metadata(
+                None,
+                "meta",
+                "",
+                {"name": "calibre:series_index", "content": f"{metadata.series_index:g}"},
+            )
 
     if metadata.cover_image:
         _write_cover_image(book, metadata.cover_image)

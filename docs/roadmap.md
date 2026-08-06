@@ -57,6 +57,7 @@
 - [x] Sync caching keyed on source hash + kepubify version (`kepub_cache.db`)
 - [x] Additive sync (existing device files never deleted)
 - [x] Tested against real Kobo hardware
+- [x] Series grouping on device — calibre:series in the OPF + content.Series push at sync (firmware ignores OPF-only series for sideloads)
 - [ ] `bookery device ls` — list books on device (not yet implemented)
 - [ ] `bookery device rm <query>` — remove from device (not yet implemented)
 
