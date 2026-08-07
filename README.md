@@ -175,6 +175,17 @@ bookery info 42
 | `series ls` | List series in the catalog with book counts and missing-position gaps |
 | `series backfill [book_id\|--all\|--tag]` | Fill missing series/series_index from providers (title-pattern heuristics as fallback) and rewrite library EPUBs whose series meta is stale (`--dry-run` to preview) |
 
+A provider's series is only taken from a candidate whose title actually
+corresponds to the book being backfilled. A match confidence is computed across
+title, author, ISBN and language, so a book whose own title carries little
+searchable signal (`Book 17 - Remnant`) could clear the threshold against an
+entirely unrelated book and inherit *its* series. Books matched by ISBN skip
+this check — the ISBN already settles identity. When a series is declined, the
+run says which candidate was rejected and why rather than reporting a bare "no
+series found". A series position that merely repeats a `Book N` prefix from the
+book's own title is dropped as well: a missing position is better than a wrong
+one.
+
 ### Conversion
 
 | Command | Description |
