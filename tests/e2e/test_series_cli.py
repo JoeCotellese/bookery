@@ -546,6 +546,57 @@ class TestBackfillEpubWriteFailures:
         assert result.exit_code == 0, result.output
 
 
+class TestBackfillTitleCorrespondence:
+    """A candidate about a different book donates nothing, to catalog or EPUB (#303)."""
+
+    def test_unrelated_candidate_never_reaches_the_epub_file(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "remnant.epub"
+        local_title = "Book 17 - Force Heretic I - Remnant"
+        _make_epub(epub_path, local_title)
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(db_path, local_title, output=epub_path)
+        # High confidence, real series, completely different book.
+        candidate = replace(
+            _cand("Expeditionary Force", 17.0),
+            metadata=BookMetadata(
+                title="Expeditionary Force: Match Game",
+                authors=["Craig Alanson"],
+                series="Expeditionary Force",
+                series_index=17.0,
+            ),
+        )
+        provider = FakeProvider({local_title: candidate})
+
+        with patch("bookery.cli.commands.series_cmd._create_provider", return_value=provider):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
+        record = _get_book(db_path, book_id)
+        assert record.metadata.series is None
+        assert record.metadata.series_index is None
+        assert read_calibre_series(epub_path) == (None, None)
+        assert "does not correspond" in result.output
+
+    def test_corresponding_candidate_still_writes_through_to_the_epub(
+        self, tmp_path: Path
+    ) -> None:
+        epub_path = tmp_path / "eye.epub"
+        _make_epub(epub_path, "The Eye of the World")
+        db_path = tmp_path / "test.db"
+        book_id = _add_book(db_path, "The Eye of the World", output=epub_path)
+        provider = FakeProvider({"The Eye of the World": _cand("The Wheel of Time", 1.0)})
+
+        with patch("bookery.cli.commands.series_cmd._create_provider", return_value=provider):
+            result = CliRunner().invoke(
+                cli, ["series", "backfill", str(book_id), "--db", str(db_path)]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert read_calibre_series(epub_path) == ("The Wheel of Time", 1.0)
+
+
 class TestBackfillRespectsLocks:
     def test_locked_series_is_preserved(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"

@@ -6,6 +6,7 @@ import os
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
@@ -22,6 +23,7 @@ from bookery.db.mapping import BookRecord
 from bookery.formats.epub import EpubReadError, read_calibre_series, write_epub_metadata
 from bookery.metadata.candidate import MetadataCandidate
 from bookery.metadata.series_heuristic import HEURISTIC_SOURCE, infer_series_from_title
+from bookery.metadata.title_correspondence import leading_book_number, titles_correspond
 
 logger = logging.getLogger(__name__)
 
@@ -61,38 +63,98 @@ def _select_books(
     return []
 
 
+@dataclass(frozen=True)
+class _SeriesLookup:
+    """Outcome of looking for a candidate whose series we're willing to trust.
+
+    ``identity_confirmed`` records that the candidate came back from an ISBN
+    lookup, which settles identity outright. Title/author matches only earn
+    trust by clearing the correspondence check, and that distinction decides
+    whether the candidate's series position is trustworthy too.
+    """
+
+    candidate: MetadataCandidate | None
+    identity_confirmed: bool = False
+    rejection: str | None = None
+
+
 def _find_series_candidate(
     provider,
     record: BookRecord,
     threshold: float,
-) -> MetadataCandidate | None:
+) -> _SeriesLookup:
     """Look up the book (ISBN first, then title/author) and return a usable candidate.
 
-    Usable means: confidence at or above threshold AND carries a series name.
+    Usable means: confidence at or above threshold, carries a series name, and
+    — on the title/author path — has a title that actually corresponds to the
+    book we're backfilling. A confidence score is computed for the match as a
+    whole and says nothing about the series field specifically: a title with
+    little matchable signal ("Book 17 - Remnant") can return a
+    threshold-clearing candidate for a different book entirely, whose series
+    and position then get written verbatim (#303).
     """
     meta = record.metadata
     candidates: list[MetadataCandidate] = []
+    by_isbn = False
     if meta.isbn:
         candidates = provider.search_by_isbn(meta.isbn)
+        by_isbn = bool(candidates)
     if not candidates:
         author = meta.authors[0] if meta.authors else None
         candidates = provider.search_by_title_author(meta.title, author)
 
+    rejection: str | None = None
     for candidate in candidates:
-        if candidate.confidence >= threshold and candidate.metadata.series:
-            return candidate
-    return None
+        if candidate.confidence < threshold or not candidate.metadata.series:
+            continue
+        if by_isbn:
+            return _SeriesLookup(candidate=candidate, identity_confirmed=True)
+        verdict = titles_correspond(meta.title or "", candidate.metadata.title or "")
+        if verdict.corresponds:
+            return _SeriesLookup(candidate=candidate)
+        # Keep the first rejection: candidates arrive best-first, so it's the
+        # one the user would otherwise have seen written to the catalog.
+        if rejection is None:
+            rejection = verdict.reason
+        logger.debug(
+            "series backfill: rejected series %r for book %s: %s",
+            candidate.metadata.series,
+            record.id,
+            verdict.reason,
+        )
+    return _SeriesLookup(candidate=None, rejection=rejection)
 
 
 def _series_fields_and_provenance(
     candidate: MetadataCandidate,
+    book_title: str | None,
+    *,
+    identity_confirmed: bool,
 ) -> tuple[dict, dict[str, str]]:
-    """Extract only series/series_index plus their per-field provenance."""
+    """Extract only series/series_index plus their per-field provenance.
+
+    A position that merely echoes a "Book N" prefix in our own title is dropped
+    unless identity came from an ISBN: the provider returned that book *because*
+    the query said "Book N", so the agreement is an artifact of the search, not
+    evidence about where this book sits. A missing index beats a wrong one.
+    """
     meta = candidate.metadata
     fields: dict = {"series": meta.series}
     provenance = {"series": meta.identifiers.get("provenance_series", candidate.source)}
-    if meta.series_index is not None:
-        fields["series_index"] = meta.series_index
+    index = meta.series_index
+    if (
+        index is not None
+        and not identity_confirmed
+        and leading_book_number(book_title or "") == index
+    ):
+        logger.debug(
+            "series backfill: dropped series index %g echoing the 'Book N' prefix in %r",
+            index,
+            book_title,
+        )
+        index = None
+    if index is not None:
+        fields["series_index"] = index
         provenance["series_index"] = meta.identifiers.get(
             "provenance_series_index", candidate.source
         )
@@ -271,14 +333,22 @@ def series_backfill(
             assert provider is not None  # targets non-empty ⇒ provider was created
             title = record.metadata.title
             fields: dict
-            candidate = _find_series_candidate(provider, record, threshold)
-            if candidate is not None:
-                fields, provenance = _series_fields_and_provenance(candidate)
+            lookup = _find_series_candidate(provider, record, threshold)
+            if lookup.candidate is not None:
+                fields, provenance = _series_fields_and_provenance(
+                    lookup.candidate,
+                    title,
+                    identity_confirmed=lookup.identity_confirmed,
+                )
                 source = provenance["series"]
             else:
                 guess = infer_series_from_title(title or "")
                 if guess is None:
-                    console.print(f"  [dim]{record.id} {title}: no series found[/dim]")
+                    # Name the rejected candidate rather than just "no series
+                    # found" — otherwise a book that had a series available and
+                    # declined it looks identical to one nobody knew about.
+                    why = f": {lookup.rejection}" if lookup.rejection else ""
+                    console.print(f"  [dim]{record.id} {title}: no series found{why}[/dim]")
                     missed += 1
                     continue
                 fields = {"series": guess.series}
