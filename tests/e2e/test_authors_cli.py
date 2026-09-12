@@ -2,15 +2,21 @@
 # ABOUTME: Seeds a real catalog + EPUBs lacking file-as and drives the CLI.
 
 import zipfile
+from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 from ebooklib import epub
 
 from bookery.cli import cli
+from bookery.core.verifier import verify_library
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
-from bookery.formats.epub import read_creator_file_as
+from bookery.db.hashing import compute_file_hash
+from bookery.formats.epub import read_creator_file_as, write_epub_metadata
 from bookery.metadata import BookMetadata
 
 
@@ -54,6 +60,66 @@ def _seed(db_path: Path, title: str, authors: list[str], output: Path) -> int:
 
 
 class TestAuthorsFixSort:
+    def test_lossy_write_keeps_original_and_names_failed_fields(self, tmp_path: Path) -> None:
+        epub_path = tmp_path / "book.epub"
+        _make_epub(epub_path, "Original Title", ["Brandon Sanderson"])
+        original = epub_path.read_bytes()
+        db_path = tmp_path / "lib.db"
+        book_id = _seed(db_path, "Original Title", ["Brandon Sanderson"], epub_path)
+        with closing(open_library(db_path)) as conn:
+            LibraryCatalog(conn).update_book(book_id, publisher="Original Publisher")
+
+        def lossy_write(path: Path, metadata: BookMetadata) -> None:
+            # Authors and file-as are correct, but other metadata is corrupted.
+            write_epub_metadata(path, replace(metadata, title="Wrong", publisher="Wrong"))
+
+        with patch("bookery.cli.commands.authors_cmd.write_epub_metadata", lossy_write):
+            result = CliRunner().invoke(
+                cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "verify failed: title, publisher" in result.output
+        assert "Updated file-as for 0 book(s)." in result.output
+        assert epub_path.read_bytes() == original
+        assert not list(tmp_path.glob("*.fixtmp"))
+
+    def test_hash_failure_warns_but_counts_success(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        epub_path = tmp_path / "book.epub"
+        _make_epub(epub_path, "Original Title", ["Brandon Sanderson"])
+        db_path = tmp_path / "lib.db"
+        book_id = _seed(db_path, "Original Title", ["Brandon Sanderson"], epub_path)
+        original_hash = compute_file_hash(epub_path)
+        with closing(open_library(db_path)) as conn:
+            LibraryCatalog(conn).update_book(book_id, file_hash=original_hash)
+
+        with patch(
+            "bookery.cli.commands.authors_cmd.compute_file_hash",
+            side_effect=OSError("hash device fell over"),
+        ):
+            result = CliRunner().invoke(
+                cli, ["--db", str(db_path), "authors", "fix-sort", "--apply"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Updated file-as for 1 book(s)." in result.output
+        assert "failed:" not in result.output
+        assert read_creator_file_as(epub_path) == [("Brandon Sanderson", "Sanderson, Brandon")]
+        assert "could not rehash" in caplog.text
+        assert "file_hash is stale" in caplog.text
+        assert "verify --check-hash" in caplog.text
+        with closing(open_library(db_path)) as conn:
+            catalog = LibraryCatalog(conn)
+            record = catalog.get_by_id(book_id)
+            assert record is not None and record.file_hash == original_hash
+            # The warning explicitly accounts for this later integrity mismatch.
+            assert [r.id for r in verify_library(catalog, check_hash=True).hash_mismatch] == [
+                book_id
+            ]
+        assert not list(tmp_path.glob("*.fixtmp"))
+
     def test_dry_run_lists_candidate_and_writes_nothing(self, tmp_path: Path) -> None:
         epub_path = tmp_path / "way_of_kings.epub"
         _make_epub(epub_path, "The Way of Kings", ["Sanderson, Brandon"])

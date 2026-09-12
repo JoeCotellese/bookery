@@ -162,6 +162,13 @@ Bookery follows the [beets](https://beets.io/) model — a music library manager
 - `--write` flag to persist changes back to the EPUB file
 - Batch tag operations: `bookery tag add <tag> <query>`, `bookery tag rm <tag> <query>`
 
+For `bookery authors fix-sort --apply`, library copies are written to a temporary
+file and verified before replacement. Verification covers title, authors,
+language, publisher, description, subjects, series, and series index when set
+in the catalog. Failed fields are named and the original file is kept. A hash
+error after successful replacement logs an explicit stale-hash warning (including
+the possible `verify --check-hash` mismatch) without counting the write as failed.
+
 #### US-3.2: Tag books
 
 > As a user, I want to tag books with custom labels so I can organize and filter.
