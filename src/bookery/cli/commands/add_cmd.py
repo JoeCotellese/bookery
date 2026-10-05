@@ -6,8 +6,9 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
-from bookery.cli._dispatch import UnknownFormatError, detect_source_format
+from bookery.cli._dispatch import UnknownFormatError, detect_source_format, find_kindle_files
 from bookery.cli._match_helpers import (
     build_match_fn,
     build_progress_fn,
@@ -42,11 +43,6 @@ def _is_inside(path: Path, root: Path) -> bool:
 def _find_epubs(directory: Path) -> list[Path]:
     """Recursively find all .epub files in a directory."""
     return sorted(directory.rglob("*.epub"))
-
-
-def _find_mobis(directory: Path) -> list[Path]:
-    """Recursively find all .mobi files in a directory."""
-    return sorted(directory.rglob("*.mobi"))
 
 
 def _find_pdfs(directory: Path) -> list[Path]:
@@ -90,7 +86,7 @@ def _convert_mobis(
     epub_files: list[Path],
     output_dir: Path | None,
 ) -> list[Path]:
-    """Convert MOBI files to EPUB and extend the epub_files list.
+    """Convert Kindle files (MOBI/AZW/AZW3) to EPUB and extend the epub_files list.
 
     Lazy-imports convert_one so directory adds don't pay for converter
     dependencies unless --convert is supplied.
@@ -103,7 +99,7 @@ def _convert_mobis(
     skipped = 0
     failed = 0
 
-    console.print(f"Converting [bold]{total}[/bold] MOBI file(s)…\n")
+    console.print(f"Converting [bold]{total}[/bold] Kindle file(s)…\n")
 
     for i, mobi_path in enumerate(mobi_files, 1):
         console.print(
@@ -137,7 +133,7 @@ def _convert_mobis(
         parts.append(f"[red]{failed} failed[/red]")
     console.print(f"\nConversion: {', '.join(parts)}")
     console.print(
-        f"Converted [bold]{converted + skipped}[/bold] of [bold]{total}[/bold] MOBI file(s)\n",
+        f"Converted [bold]{converted + skipped}[/bold] of [bold]{total}[/bold] Kindle file(s)\n",
     )
     return epub_files
 
@@ -228,6 +224,22 @@ def _add_file(
                 console.print(f"[red]error:[/red] {exc}")
                 conn.close()
                 raise click.exceptions.Exit(exc.exit_code) from exc
+        elif source_format == "mobi":
+            if do_move:
+                console.print(
+                    "[yellow]warning:[/yellow] --move ignored for Kindle input — "
+                    "source file is preserved."
+                )
+                do_move = False
+            from bookery.core.converter import convert_one
+
+            temp_ctx = tempfile.TemporaryDirectory(prefix="bookery-kindle-")
+            converted = convert_one(file, Path(temp_ctx.name))
+            if not converted.success or converted.epub_path is None:
+                console.print(f"[red]error:[/red] {escape(converted.error or file.name)}")
+                conn.close()
+                raise click.exceptions.Exit(1)
+            epub_to_import = converted.epub_path
         else:
             epub_to_import = file
             idempotent = _is_inside(file, library_root)
@@ -278,7 +290,7 @@ def _add_directory(
     pdf_tempdir_ctx: tempfile.TemporaryDirectory[str] | None = None
 
     if do_convert:
-        mobi_files = _find_mobis(directory)
+        mobi_files = find_kindle_files(directory)
         if mobi_files:
             mobi_files, dedup_skipped = filter_redundant_mobis(
                 mobi_files,
@@ -286,7 +298,7 @@ def _add_directory(
             )
             if dedup_skipped:
                 console.print(
-                    f"Skipped {len(dedup_skipped)} MOBI file(s) — EPUB exists in directory\n",
+                    f"Skipped {len(dedup_skipped)} Kindle file(s) — EPUB exists in directory\n",
                 )
         if mobi_files:
             epub_files = _convert_mobis(mobi_files, epub_files, output_dir)
@@ -306,7 +318,7 @@ def _add_directory(
     if not epub_files:
         if do_convert:
             console.print(
-                f"[yellow]No EPUB or MOBI files found in {directory}[/yellow]",
+                f"[yellow]No EPUB or Kindle files found in {directory}[/yellow]",
             )
         else:
             console.print(
@@ -393,7 +405,8 @@ def _add_directory(
     "do_convert",
     default=False,
     help=(
-        "Convert MOBI files to EPUB before cataloging. Only meaningful when PATH is a directory."
+        "Convert Kindle files (MOBI/AZW/AZW3) to EPUB before cataloging. "
+        "Only meaningful when PATH is a directory."
     ),
 )
 @click.option(
