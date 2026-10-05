@@ -6,7 +6,7 @@ Bookery takes the "metadata-first" approach that made beets great for music and 
 
 ## Status
 
-**Active development** — daily-driver usable. EPUB metadata extraction, MOBI/PDF-to-EPUB conversion, multi-provider matching (Open Library + Google Books) with consensus merging, a SQLite catalog with per-field provenance, non-destructive write-back, Kobo device sync, a local web UI for browsing/editing, and Obsidian vault-export are all working. Plugin architecture is the main item still on the roadmap.
+**Active development** — daily-driver usable. EPUB metadata extraction, Kindle (MOBI/AZW/AZW3) and PDF-to-EPUB conversion, multi-provider matching (Open Library + Google Books) with consensus merging, a SQLite catalog with per-field provenance, non-destructive write-back, Kobo device sync, a local web UI for browsing/editing, and Obsidian vault-export are all working. Plugin architecture is the main item still on the roadmap.
 
 See [docs/roadmap.md](docs/roadmap.md) for the full plan.
 
@@ -22,7 +22,7 @@ welcome.
 ## Features
 
 - **EPUB metadata extraction** — reads title, author, ISBN, language, publisher, description, cover, and identifiers from any EPUB
-- **MOBI-to-EPUB conversion** — converts MOBI/KF8 files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC)
+- **Kindle-to-EPUB conversion** — converts DRM-free MOBI, AZW, and AZW3 (KF8) files to EPUB, preserving metadata, images, cover art, and chapter structure (via NCX TOC). `add`, `convert`, and `info` all accept these suffixes in any case. DRM-protected files are rejected with a message naming the file.
 - **PDF-to-EPUB conversion** — `bookery add` detects text-based PDFs, extracts their structure with pdfplumber + a local LLM (LM Studio), and produces a reflowable EPUB. Scanned PDFs are refused (OCR not yet supported).
 - **Kobo sync** — `bookery sync kobo` walks the catalog, converts each EPUB to `.kepub.epub` via `kepubify`, and copies the result to a mounted Kobo. The library itself stays format-canonical (EPUB only); kepub is generated on demand at sync time and cached so re-syncs are free when nothing has changed. Books with series metadata group by series on device: sync writes `Series`/`SeriesNumber` into the Kobo database directly (the same mechanism Calibre's device driver uses — current firmware ignores series metadata inside sideloaded EPUBs). Newly copied books group on the sync after the device has indexed them.
 - **Collections** — group books into named lists, either static (hand-picked) or rule-based (membership derived live from a query like `genre:"Science Fiction"` or `series:Dune`, so it stays current as the library grows). See `bookery collections`.
@@ -117,7 +117,7 @@ bookery info ~/Books/some-book.epub
 # Scan a directory and report format coverage
 bookery inventory ~/Books/
 
-# Convert MOBI files to EPUB
+# Convert Kindle files (.mobi, .azw, .azw3) to EPUB
 bookery convert ~/Books/ -o ~/Books-epub/
 
 # Match EPUBs against Open Library and write corrected copies
@@ -190,14 +190,14 @@ one.
 
 | Command | Description |
 |---------|-------------|
-| `convert <path> -o <dir>` | Convert MOBI files to EPUB format (supports `--match` to chain into matching) |
+| `convert <path> -o <dir>` | Convert Kindle files (MOBI/AZW/AZW3, DRM-free) to EPUB format (supports `--match` to chain into matching). Exits 1 if any file fails. |
 | `vault-export --vault <path> -o <file>` | Export an Obsidian vault to a single EPUB with clickable TOC, resolved wiki-links, and an optional tag index. Requires [pandoc](https://pandoc.org). |
 
 ### Library Catalog
 
 | Command | Description |
 |---------|-------------|
-| `add <path>` | Add a single EPUB/PDF or a directory of EPUBs to the library (copies into `library_root`, catalogs). Files default to `--match`; directories default to `--no-match`. Supports `--move`, `--convert`, `--force-duplicates`, `-o/--output-dir`. `import` is a deprecated alias. |
+| `add <path>` | Add a single EPUB/PDF/Kindle file (MOBI, AZW, AZW3) or a directory of EPUBs to the library (copies into `library_root`, catalogs). Files default to `--match`; directories default to `--no-match`. Supports `--move` (ignored for PDF and Kindle input), `--convert` (also picks up Kindle files in a directory), `--force-duplicates`, `-o/--output-dir`. `import` is a deprecated alias. |
 | `remove <id>...` | Delete one or more books from the catalog and disk (`-y` skips prompt; `--keep-file` keeps the file) |
 | `prune` | Remove catalog rows whose underlying files are missing |
 | `ls` | List all books in the catalog (filter with `--series` or `--tag`) |
