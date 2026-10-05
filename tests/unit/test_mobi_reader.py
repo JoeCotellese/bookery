@@ -1,12 +1,14 @@
 # ABOUTME: Unit tests for MOBI extraction and HTML-to-EPUB assembly.
 # ABOUTME: Tests extract_mobi() and assemble_epub_from_html() with mocked mobi library.
 
+import struct
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from bookery.formats.mobi import (
+    DrmProtectedError,
     MobiExtractResult,
     MobiReadError,
     extract_mobi,
@@ -241,6 +243,23 @@ class TestExtractMobiErrors:
             mock_extract.side_effect = Exception("corrupt file")
             with pytest.raises(MobiReadError, match="corrupt file"):
                 extract_mobi(mobi_file)
+
+    def test_encrypted_book_raises_drm_error(self, tmp_path: Path) -> None:
+        """A Kindle file whose MOBI header marks it encrypted raises DrmProtectedError."""
+        fixture = Path(__file__).parent.parent / "fixtures" / "kindle" / "alice.azw3"
+        data = bytearray(fixture.read_bytes())
+        record0 = struct.unpack_from(">I", data, 78)[0]
+        struct.pack_into(">H", data, record0 + 0x0C, 2)
+        locked = tmp_path / "locked.azw3"
+        locked.write_bytes(data)
+
+        with pytest.raises(DrmProtectedError) as excinfo:
+            extract_mobi(locked)
+
+        assert str(excinfo.value) == (
+            "locked.azw3 is DRM-protected; bookery only reads DRM-free files"
+        )
+        assert isinstance(excinfo.value, MobiReadError)
 
 
 VALID_NCX = """\

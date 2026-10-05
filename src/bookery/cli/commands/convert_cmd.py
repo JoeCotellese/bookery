@@ -1,11 +1,12 @@
-# ABOUTME: The `bookery convert` command for MOBI-to-EPUB conversion.
-# ABOUTME: Converts MOBI files to EPUB so they can flow through the existing pipeline.
+# ABOUTME: The `bookery convert` command for Kindle-to-EPUB conversion.
+# ABOUTME: Converts MOBI/AZW/AZW3 files to EPUB so they can flow through the existing pipeline.
 
 import logging
 from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -15,6 +16,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from bookery.cli._dispatch import KINDLE_SUFFIXES, find_kindle_files
 from bookery.cli._match_helpers import build_metadata_provider
 from bookery.cli.options import auto_accept_option, threshold_option
 from bookery.cli.review import ReviewSession
@@ -31,12 +33,12 @@ def _create_provider():
 
 
 def _find_mobis(path: Path) -> list[Path]:
-    """Find MOBI files at the given path (single file or directory)."""
+    """Find Kindle files (MOBI/AZW/AZW3) at the given path (single file or directory)."""
     if path.is_file():
-        if path.suffix.lower() == ".mobi":
+        if path.suffix.lower() in KINDLE_SUFFIXES:
             return [path]
         return []
-    return sorted(path.rglob("*.mobi"))
+    return find_kindle_files(path)
 
 
 def _make_progress(console: Console) -> Progress:
@@ -82,7 +84,7 @@ def convert(
     auto_accept: bool,
     threshold: float,
 ) -> None:
-    """Convert MOBI files to EPUB format (single file or directory)."""
+    """Convert Kindle files (MOBI/AZW/AZW3) to EPUB format (single file or directory)."""
     console = Console()
 
     if output_dir is None:
@@ -90,7 +92,7 @@ def convert(
 
     mobis = _find_mobis(path)
     if not mobis:
-        console.print("[yellow]No MOBI files found.[/yellow]")
+        console.print("[yellow]No Kindle files found.[/yellow]")
         return
 
     # Set up match pipeline if requested
@@ -109,6 +111,7 @@ def convert(
     converted = 0
     skipped = 0
     errors = 0
+    failures: list[str] = []
     matched_count = 0
 
     progress = _make_progress(console)
@@ -132,6 +135,7 @@ def convert(
                     matched_count += 1
         elif not result.success:
             errors += 1
+            failures.append(result.error or f"{mobi_path.name}: conversion failed")
 
         progress.advance(task_id)
 
@@ -148,4 +152,10 @@ def convert(
     if errors:
         parts.append(f"[red]{errors} error{'s' if errors != 1 else ''}[/red]")
 
+    for error in failures:
+        console.print(f"[red]failed:[/red] {escape(error)}")
+
     console.print(f"\nDone: {', '.join(parts)}")
+
+    if errors:
+        raise click.exceptions.Exit(1)
