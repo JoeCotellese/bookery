@@ -85,7 +85,7 @@ class TestConvertCliSingleFile:
         result = runner.invoke(cli, ["convert", str(not_mobi)])
 
         assert result.exit_code == 0
-        assert "No MOBI files found" in result.output
+        assert "No Kindle files found" in result.output
 
 
 class TestConvertCliBatch:
@@ -209,7 +209,7 @@ class TestConvertCliErrors:
                 ],
             )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "1 error" in result.output
 
     def test_summary_counts(self, tmp_path: Path) -> None:
@@ -242,9 +242,10 @@ class TestConvertCliErrors:
                 ],
             )
 
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 1, result.output
         assert "1 converted" in result.output
         assert "1 error" in result.output
+        assert "failed: corrupt file" in result.output
 
 
 def _mock_extract_to_html_with_opf(tmp_path: Path):

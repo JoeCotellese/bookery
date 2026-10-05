@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ebooklib import epub
 from mobi import extract as mobi_extract
+from mobi.kindleunpack import unpackException
 
 from bookery.metadata.types import BookMetadata
 from bookery.util.text import strip_html
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 class MobiReadError(Exception):
     """Raised when a MOBI file cannot be read or extracted."""
+
+
+class DrmProtectedError(MobiReadError):
+    """Raised when a Kindle file is DRM-encrypted and cannot be unpacked."""
 
 
 @dataclass
@@ -262,6 +267,12 @@ def extract_mobi(path: Path) -> MobiExtractResult:
         noise = captured.getvalue().strip()
         if noise:
             logger.debug("mobi extract output for %s: %s", path.name, noise)
+    except unpackException as exc:
+        if "encrypted" in str(exc):
+            raise DrmProtectedError(
+                f"{path.name} is DRM-protected; bookery only reads DRM-free files"
+            ) from exc
+        raise MobiReadError(f"Failed to extract MOBI: {path}: {exc}") from exc
     except Exception as exc:
         raise MobiReadError(f"Failed to extract MOBI: {path}: {exc}") from exc
 

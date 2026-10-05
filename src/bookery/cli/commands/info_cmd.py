@@ -1,23 +1,27 @@
 # ABOUTME: The `bookery info` command for displaying detailed book metadata.
-# ABOUTME: Dispatches on argument shape: cataloged ID -> DB record; path -> loose EPUB on disk.
+# ABOUTME: Dispatches on argument shape: cataloged ID -> DB record; path -> loose EPUB/Kindle file.
 
+import shutil
 from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.table import Table
 
+from bookery.cli._dispatch import KINDLE_SUFFIXES
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.status import status_name
 from bookery.formats.epub import EpubReadError, read_epub_metadata
+from bookery.formats.mobi import MobiReadError, extract_mobi, parse_opf_metadata
+from bookery.metadata.types import BookMetadata
 
 console = Console()  # TODO: move Console() inside command for testability
 
 # Suffixes that unambiguously identify a path argument. If the user passes one
 # of these, we never try the catalog-ID path — the intent is clearly a file.
-_PATH_SUFFIXES = frozenset({".epub", ".mobi", ".pdf"})
+_PATH_SUFFIXES = frozenset({".epub", ".pdf"}) | KINDLE_SUFFIXES
 
 
 _SETTABLE_FIELDS = {
@@ -79,11 +83,28 @@ def _looks_like_path(arg: str) -> bool:
     return suffix in _PATH_SUFFIXES
 
 
-def _show_loose_epub(path: Path) -> None:
-    """Render extracted metadata for an EPUB file that isn't in the catalog."""
+def _read_kindle_metadata(path: Path) -> BookMetadata:
+    """Extract a Kindle file to a tempdir and read its metadata from the EPUB or OPF."""
+    extracted = extract_mobi(path)
     try:
-        meta = read_epub_metadata(path)
-    except EpubReadError as exc:
+        if extracted.epub_path is not None:
+            return read_epub_metadata(extracted.epub_path)
+        meta = parse_opf_metadata(extracted.opf_path)
+        if meta is None:
+            raise MobiReadError(f"No metadata found in {path.name}")
+        return meta
+    finally:
+        shutil.rmtree(extracted.tempdir, ignore_errors=True)
+
+
+def _show_loose_file(path: Path) -> None:
+    """Render extracted metadata for an EPUB or Kindle file that isn't in the catalog."""
+    try:
+        if path.suffix.lower() in KINDLE_SUFFIXES:
+            meta = _read_kindle_metadata(path)
+        else:
+            meta = read_epub_metadata(path)
+    except (EpubReadError, MobiReadError) as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise SystemExit(1) from exc
 
@@ -148,7 +169,7 @@ def info(
 ) -> None:
     """Show metadata for a cataloged book by ID, or for a loose EPUB on disk.
 
-    TARGET is either a book ID from the catalog or a path to an EPUB file.
+    TARGET is either a book ID from the catalog or a path to an EPUB or Kindle file.
     When given a numeric ID, dispatches to the catalog and supports
     ``--set field=value`` (recorded as ``user`` in the provenance table) and
     ``--lock field`` (protects a value from being clobbered by ``rematch``).
@@ -175,7 +196,7 @@ def info(
                 "--set/--lock/--unlock/--provenance only apply to cataloged "
                 "books (numeric ID), not to loose files.",
             )
-        _show_loose_epub(path)
+        _show_loose_file(path)
         return
 
     # Numeric arg → try ID first, fall back to path only if a file exists.
@@ -207,7 +228,7 @@ def info(
                     "--set/--lock/--unlock/--provenance only apply to "
                     "cataloged books (numeric ID), not to loose files.",
                 )
-            _show_loose_epub(fallback)
+            _show_loose_file(fallback)
             return
         console.print(
             f"[red]Not found:[/red] no book with ID {book_id} in the catalog, "
@@ -224,7 +245,7 @@ def info(
                 "--set/--lock/--unlock/--provenance only apply to cataloged "
                 "books (numeric ID), not to loose files.",
             )
-        _show_loose_epub(fallback)
+        _show_loose_file(fallback)
         return
     console.print(
         f"[red]Not found:[/red] {target!r} is neither a catalog ID "

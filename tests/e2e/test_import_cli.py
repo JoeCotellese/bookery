@@ -293,7 +293,7 @@ class TestImportCommand:
         )
 
         assert result.exit_code == 0, result.output
-        assert "Skipped 1 MOBI" in result.output
+        assert "Skipped 1 Kindle" in result.output
         assert "EPUB exists" in result.output
         # The EPUB should still be cataloged
         conn = open_library(db_path)
