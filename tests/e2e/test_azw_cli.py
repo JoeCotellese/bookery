@@ -33,6 +33,17 @@ def _drm_copy(dest: Path) -> Path:
     return dest
 
 
+def _distinct_copy(dest: Path) -> Path:
+    """Copy the fixture with its embedded book UUID altered, so the converted EPUB is a
+    different file. Two byte-identical copies would be skipped by hash dedup on add."""
+    uuid = b"690d15c3-3f15-4f93-9331-6fb59939375b"
+    data = FIXTURE.read_bytes()
+    assert uuid in data
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data.replace(uuid, uuid[:-1] + b"c"))
+    return dest
+
+
 def _write_epub(dest: Path) -> None:
     book = epub.EpubBook()
     book.set_identifier("alice-epub")
@@ -68,7 +79,7 @@ def test_ac1_convert_kindle_file_writes_epub(tmp_path: Path, suffix: str) -> Non
 def test_ac2_add_directory_converts_kindle_files(tmp_path: Path) -> None:
     """AC2: add <dir> --convert discovers .azw and .AZW3 recursively and reports Kindle counts."""
     _copy(tmp_path / "src" / "a" / "alice.azw")
-    _copy(tmp_path / "src" / "b" / "alice.AZW3")
+    _distinct_copy(tmp_path / "src" / "b" / "alice.AZW3")
 
     result = CliRunner().invoke(
         cli,
