@@ -43,8 +43,13 @@ Requires Python 3.12+.
 
 ### Install it (to use bookery)
 
+Bookery is published on PyPI as `bookery-cli` (the `bookery` name was taken).
+The command it installs is still `bookery`.
+
 ```bash
-uv tool install git+https://github.com/joecotellese/bookery.git
+uv tool install bookery-cli
+# or
+pipx install bookery-cli
 ```
 
 `uv tool install` puts `bookery` in its own isolated environment and drops a
@@ -52,7 +57,14 @@ uv tool install git+https://github.com/joecotellese/bookery.git
 or activate. Just run `bookery` from anywhere. If the command isn't found after
 install, run `uv tool update-shell` once and restart your shell.
 
-Upgrade later with `uv tool upgrade bookery`; remove with `uv tool uninstall bookery`.
+Upgrade later with `uv tool upgrade bookery-cli`; remove with `uv tool uninstall bookery-cli`.
+If you installed from GitHub before the PyPI release, run `uv tool uninstall bookery` first.
+
+To run unreleased code from `main`, install straight from GitHub:
+
+```bash
+uv tool install git+https://github.com/joecotellese/bookery.git
+```
 
 ### Develop it (to hack on bookery)
 

@@ -1,13 +1,20 @@
 [project]
-name = "bookery"
+name = "bookery-cli"
 version = "2026.8.1"
-description = "CLI-first ebook library manager inspired by beets"
+description = "CLI-first ebook library manager with Kobo sync, inspired by beets and Calibre"
 readme = "README.md"
 authors = [
     { name = "Joe Cotellese", email = "bookery@cotellese.me" }
 ]
 license = "MIT"
 requires-python = ">=3.12"
+keywords = ["ebook", "epub", "kobo", "calibre", "library", "metadata"]
+classifiers = [
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "click>=8.1",
     "ebooklib>=0.18",
@@ -24,12 +31,20 @@ dependencies = [
     "wordninja>=2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/JoeCotellese/bookery"
+Repository = "https://github.com/JoeCotellese/bookery"
+Issues = "https://github.com/JoeCotellese/bookery/issues"
+
 [project.scripts]
 bookery = "bookery.cli:cli"
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "bookery"
 
 [dependency-groups]
 dev = [

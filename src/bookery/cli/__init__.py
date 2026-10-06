@@ -33,7 +33,7 @@ from bookery.cli.deprecation import deprecated_command_alias
 
 
 @click.group()
-@click.version_option(package_name="bookery")
+@click.version_option(package_name="bookery-cli")
 @click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
 @click.option(
     "--db",
