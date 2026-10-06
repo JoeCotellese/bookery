@@ -58,6 +58,7 @@ or activate. Just run `bookery` from anywhere. If the command isn't found after
 install, run `uv tool update-shell` once and restart your shell.
 
 Upgrade later with `uv tool upgrade bookery-cli`; remove with `uv tool uninstall bookery-cli`.
+If you installed from GitHub before the PyPI release, run `uv tool uninstall bookery` first.
 
 To run unreleased code from `main`, install straight from GitHub:
 
