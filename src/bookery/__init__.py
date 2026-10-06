@@ -3,4 +3,4 @@
 
 from importlib.metadata import version
 
-__version__ = version("bookery")
+__version__ = version("bookery-cli")
