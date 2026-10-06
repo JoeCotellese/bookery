@@ -237,6 +237,12 @@ This project uses Claude Code for development. If you use Claude Code or another
 4. Push your branch and open a PR against `main`
 4. PRs should include a summary of changes and a test plan
 
+## Releasing
+
+Bookery publishes to PyPI as `bookery-cli`. Bump `version` in `pyproject.toml`, merge, then push a CalVer tag (e.g. `git tag 2026.9.1 && git push origin 2026.9.1`). `.github/workflows/publish.yml` builds, smoke-tests the wheel, and uploads it.
+
+Publishing uses PyPI Trusted Publishing, so no API token is stored. The one-time setup is a PyPI publisher for `bookery-cli` with owner `JoeCotellese`, repo `bookery`, workflow `publish.yml`, and a GitHub environment named `pypi`.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
