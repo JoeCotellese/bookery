@@ -1,0 +1,29 @@
+# ABOUTME: Publishes bookery-cli to PyPI when a CalVer tag (e.g. 2026.8.1) is pushed.
+# ABOUTME: Builds with uv, smoke-tests the wheel, uploads via Trusted Publishing (no secrets).
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+      - run: uv build
+      - name: Smoke-test the built wheel
+        run: |
+          uv run --isolated --no-project --with dist/*.whl bookery --version
+          uv run --isolated --no-project --with dist/*.whl python -c "import importlib.resources as r; w = r.files('bookery.web'); assert w.joinpath('templates').is_dir() and w.joinpath('static').is_dir()"
+      - run: uv publish
