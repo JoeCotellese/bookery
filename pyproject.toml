@@ -1,6 +1,6 @@
 [project]
 name = "bookery-cli"
-version = "2026.8.1"
+version = "2026.10.1"
 description = "CLI-first ebook library manager with Kobo sync, inspired by beets and Calibre"
 readme = "README.md"
 authors = [
