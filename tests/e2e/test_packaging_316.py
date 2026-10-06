@@ -73,7 +73,9 @@ def test_ac4_pyproject_metadata() -> None:
     assert {"Homepage", "Repository", "Issues"} <= set(project["urls"])
     assert {"ebook", "epub", "kobo", "calibre"} <= set(project["keywords"])
     classifiers = project["classifiers"]
-    assert any(c.startswith("License ::") for c in classifiers)
+    # PEP 639: PyPI rejects uploads carrying both License-Expression and a License classifier
+    assert project["license"] == "MIT"
+    assert not any(c.startswith("License ::") for c in classifiers)
     assert "Programming Language :: Python :: 3.12" in classifiers
     assert "Environment :: Console" in classifiers
     assert "Environment :: Web Environment" in classifiers
