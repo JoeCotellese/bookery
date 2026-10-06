@@ -1,6 +1,7 @@
 # ABOUTME: The `bookery authors` command group, incl. `fix-sort` file-as backfill.
 # ABOUTME: Rewrites library EPUBs so devices sort authors by surname (issue #262).
 
+import logging
 import os
 import shutil
 import xml.etree.ElementTree as ET
@@ -14,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from bookery.cli.options import db_option, resolve_db_path
+from bookery.core.pipeline import _verify_write
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.hashing import compute_file_hash
@@ -22,12 +24,12 @@ from bookery.formats.epub import (
     EpubReadError,
     creator_file_as_pairs,
     read_creator_file_as,
-    read_epub_metadata,
     write_epub_metadata,
 )
 from bookery.metadata.author_names import canonical_author, classify
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 # ``ZipFile.read`` raises KeyError for a member that isn't in the archive, so a
 # file that is a valid zip but has no META-INF/container.xml — or whose
@@ -74,13 +76,12 @@ def _find_candidates(
     return candidates, unreadable
 
 
-def _apply_fix(catalog: LibraryCatalog, candidate: _Candidate) -> bool:
-    """Rewrite one library EPUB atomically; return False if read-back verify fails.
+def _apply_fix(catalog: LibraryCatalog, candidate: _Candidate) -> list[str]:
+    """Rewrite one library EPUB atomically; return the fields that failed verify.
 
-    Writes to a sibling temp file, verifies the authors round-trip, then
+    Writes to a sibling temp file, verifies metadata round-trips, then
     ``os.replace`` swaps it in (atomic on the same filesystem). A failed verify
-    leaves the original untouched. The new file_hash is persisted so ``verify``
-    doesn't later flag the rewritten copy as changed.
+    leaves the original untouched. An empty list means the swap happened.
     """
     src = candidate.record.output_path
     assert src is not None  # guaranteed by _find_candidates
@@ -88,15 +89,25 @@ def _apply_fix(catalog: LibraryCatalog, candidate: _Candidate) -> bool:
     shutil.copy2(src, tmp)
     try:
         write_epub_metadata(tmp, candidate.record.metadata)
-        if read_epub_metadata(tmp).authors != candidate.record.metadata.authors:
+        failed = [v.field for v in _verify_write(tmp, candidate.record.metadata) if not v.passed]
+        if failed:
             tmp.unlink(missing_ok=True)
-            return False
+            return failed
         os.replace(tmp, src)
     except _EPUB_WRITE_ERRORS:
         tmp.unlink(missing_ok=True)
         raise
-    catalog.update_book(candidate.record.id, file_hash=compute_file_hash(src))
-    return True
+    # The swap already succeeded; a hashing error must not count as a failed write.
+    try:
+        catalog.update_book(candidate.record.id, file_hash=compute_file_hash(src))
+    except OSError as exc:
+        logger.warning(
+            "authors fix-sort: could not rehash %s after write: %s; "
+            "file_hash is stale, so verify --check-hash may report a modified file",
+            src,
+            exc,
+        )
+    return []
 
 
 def _render_table(candidates: list[_Candidate]) -> Table:
@@ -164,17 +175,18 @@ def fix_sort(db_path: Path | None, apply_changes: bool) -> None:
         fixed = 0
         for cand in candidates:
             try:
-                applied = _apply_fix(catalog, cand)
+                failed_fields = _apply_fix(catalog, cand)
             except _EPUB_WRITE_ERRORS as exc:
                 # One unreadable file shouldn't abort the whole backfill; each
                 # fix is atomic, so already-processed books stay valid.
                 console.print(f"[red]failed:[/red] {cand.record.metadata.title}: {exc}")
                 continue
-            if applied:
+            if not failed_fields:
                 fixed += 1
             else:
                 console.print(
-                    f"[yellow]skipped (verify failed):[/yellow] {cand.record.metadata.title}"
+                    f"[yellow]skipped (verify failed: {', '.join(failed_fields)}):[/yellow] "
+                    f"{cand.record.metadata.title} — original kept"
                 )
         console.print(f"[green]Updated file-as for {fixed} book(s).[/green]")
     finally:

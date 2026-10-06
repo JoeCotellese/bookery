@@ -363,6 +363,12 @@ an author under their given name (e.g. "Brandon" instead of "Sanderson"),
 the library copies are missing that key — run `bookery authors fix-sort`
 to backfill a surname-first `file-as`, then re-sync.
 
+With `--apply`, fix-sort verifies the rewritten metadata before replacing each
+library copy. A mismatch names the failed fields and keeps the original file.
+If hashing fails after replacement, the book still counts as updated; a warning
+explains that its stored hash is stale and `verify --check-hash` may report it
+as modified.
+
 Some devices (Kobo) ignore `file-as` and sort by the raw `dc:creator`
 text instead, so a name stored as `Cussler, Clive` files under "C". Fix
 the catalog with `bookery authors normalize` (reorders `Surname, Given`
