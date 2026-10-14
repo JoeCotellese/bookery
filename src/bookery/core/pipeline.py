@@ -8,7 +8,12 @@ from pathlib import Path
 from bookery.core.coverfetch import fetch_cover_image
 from bookery.core.filecopy import copy_file
 from bookery.core.pathformat import build_output_path, record_processed, resolve_collision
-from bookery.formats.epub import EpubReadError, read_epub_metadata, write_epub_metadata
+from bookery.formats.epub import (
+    EpubReadError,
+    normalize_for_write,
+    read_epub_metadata,
+    write_epub_metadata,
+)
 from bookery.metadata.normalizer import NormalizationResult, normalize_metadata
 from bookery.metadata.provider import MetadataProvider
 from bookery.metadata.series_heuristic import apply_series_heuristic
@@ -185,6 +190,10 @@ def apply_metadata_safely(
     # Embed the supplied cover (if any) in the same write as the text fields.
     if cover_image is not None:
         metadata = replace(metadata, cover_image=cover_image)
+
+    # Normalize text fields the way the read path does, so verification compares
+    # the value written against an identical read-back (#320).
+    metadata = normalize_for_write(metadata)
 
     # Write metadata to the copy
     try:
