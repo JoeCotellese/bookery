@@ -5,7 +5,7 @@
 3. Branch: fix/320-verify-whitespace-normalization
 4. Commit: dbb035e
 5. Domain: python (acceptance channel is the named pytest tests; no UI)
-6. Status: PASS-with-caveats
+6. Status: FAIL. Blocking: DoD part 1 (unit suite green) fails on #321 at default terminal width. All 5 #320 criteria pass.
 
 ## Unit suite
 
