@@ -5,6 +5,7 @@ import contextlib
 import logging
 import xml.etree.ElementTree as ET
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import ebooklib
@@ -43,6 +44,30 @@ def _strip_description(value: str | None) -> str | None:
         return None
     stripped = strip_html(value)
     return stripped or None
+
+
+def _strip_or_none(value: str | None) -> str | None:
+    """Strip surrounding whitespace, returning None when nothing is left."""
+    if value is None:
+        return None
+    return value.strip() or None
+
+
+def normalize_for_write(metadata: BookMetadata) -> BookMetadata:
+    """Return a copy of metadata normalized the way read_epub_metadata reads it.
+
+    The read path strips HTML and collapses whitespace in the description and
+    strips surrounding whitespace from title, publisher, and language. Applying
+    the same transforms before a write means the value written, the value
+    verified against, and the value read back are the same string.
+    """
+    return replace(
+        metadata,
+        title=metadata.title.strip(),
+        description=_strip_description(metadata.description),
+        publisher=_strip_or_none(metadata.publisher),
+        language=_strip_or_none(metadata.language),
+    )
 
 
 def _get_authors(book: epub.EpubBook) -> list[str]:

@@ -9,6 +9,7 @@ from ebooklib import epub
 
 from bookery.formats.epub import (
     EpubReadError,
+    normalize_for_write,
     read_calibre_series,
     read_creator_file_as,
     read_epub_metadata,
@@ -480,3 +481,33 @@ class TestWriteEpubCover:
         meta = read_epub_metadata(sample_epub)
         assert meta.title == "Readable"
         assert meta.cover_image == _JPEG_COVER
+
+
+class TestNormalizeForWrite:
+    """normalize_for_write applies the read path's normalization before a write."""
+
+    def test_description_is_stripped_of_html_and_inline_whitespace(self) -> None:
+        metadata = BookMetadata(title="T", description="<p>a  &amp;  b</p>")
+        assert normalize_for_write(metadata).description == "a & b"
+
+    def test_markup_only_description_becomes_none(self) -> None:
+        metadata = BookMetadata(title="T", description="<p> </p>")
+        assert normalize_for_write(metadata).description is None
+
+    def test_none_fields_stay_none(self) -> None:
+        normalized = normalize_for_write(BookMetadata(title="T"))
+        assert normalized.description is None
+        assert normalized.publisher is None
+        assert normalized.language is None
+
+    def test_whitespace_only_publisher_and_language_become_none(self) -> None:
+        metadata = BookMetadata(title="T", publisher="  ", language=" ")
+        normalized = normalize_for_write(metadata)
+        assert normalized.publisher is None
+        assert normalized.language is None
+
+    def test_input_metadata_is_not_mutated(self) -> None:
+        metadata = BookMetadata(title=" T ", description="a  b")
+        normalize_for_write(metadata)
+        assert metadata.title == " T "
+        assert metadata.description == "a  b"
