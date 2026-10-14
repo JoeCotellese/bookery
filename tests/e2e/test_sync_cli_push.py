@@ -313,31 +313,6 @@ def test_series_push_reports_books_awaiting_device_import(tmp_path: Path) -> Non
     assert "pending device import: 1" in result.output
 
 
-def test_series_push_failure_is_listed_per_book(tmp_path: Path) -> None:
-    """A device DB the writer can't use is reported, and the sync still succeeds."""
-    db_path = tmp_path / "lib.db"
-    library = tmp_path / "library"
-    _seed_series_catalog(db_path, library)
-    target = _make_kobo_root(tmp_path)
-    (target / ".kobo" / "KoboReader.sqlite").write_bytes(b"not a sqlite file at all")
-
-    result = _run_cli(
-        "sync",
-        "kobo",
-        "--target",
-        str(target),
-        "--db",
-        str(db_path),
-        "--data-dir",
-        str(tmp_path / "data"),
-    )
-
-    assert result.exit_code == 0, result.output
-    assert "Series push failed for 1 book(s):" in result.output
-    assert "The Great Hunt.kepub.epub" in result.output
-    assert "Pushed series metadata" not in result.output
-
-
 def test_no_status_push_flag_skips_the_series_write(tmp_path: Path) -> None:
     """--no-status-push turns off series grouping too, as its help text says."""
     db_path = tmp_path / "lib.db"

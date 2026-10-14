@@ -18,6 +18,7 @@ CLI-first ebook library manager. EPUB-focused, metadata-first, non-destructive.
 - TDD: write failing test first, then minimal code to pass
 - Never modify original EPUB file contents — work on copies in the library
 - When you change user-facing surface (CLI commands, flags, config keys, output format), update `README.md` and `docs/` in the same PR
+- Do not write automated tests for Kobo device sync. Joe tests device sync manually on the device. When a Kobo sync change has acceptance criteria, tag them `[manual]`, not `[test: ...]`
 
 ## Package Layout
 

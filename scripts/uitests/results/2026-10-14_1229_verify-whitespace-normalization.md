@@ -5,7 +5,7 @@
 3. Branch: fix/320-verify-whitespace-normalization
 4. Commit: dbb035e
 5. Domain: python (acceptance channel is the named pytest tests; no UI)
-6. Status: FAIL. Blocking: DoD part 1 (unit suite green) fails on #321 at default terminal width. All 5 #320 criteria pass.
+6. Status: PASS. (Earlier run: FAIL on the #321 test. Joe chose to delete that test and verify Kobo sync manually.)
 
 ## Unit suite
 
@@ -14,6 +14,7 @@
    It fails identically with this branch's changes stashed. Rich wraps a long path, which
    breaks a substring assertion. Filed as #321.
 8. COLUMNS=300: 2774 passed, 0 failed.
+8a. After deleting that test at Joe's direction (Kobo device sync is tested manually): 2773 passed, 0 failed at default width.
 9. One DeprecationWarning (imghdr, from the third-party mobi package) appears on every run,
    before and after this change.
 
