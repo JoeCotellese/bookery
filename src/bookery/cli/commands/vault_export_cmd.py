@@ -22,7 +22,7 @@ from bookery.cli._match_helpers import build_progress_fn
 from bookery.cli.deprecation import deprecated_option
 from bookery.cli.options import db_option, resolve_db_path
 from bookery.core.config import get_library_root, load_config
-from bookery.core.importer import import_books
+from bookery.core.importer import ImportResult, import_books
 from bookery.core.vault.assemble import assemble_vault
 from bookery.core.vault.epub import (
     EpubMetadata,
@@ -36,8 +36,30 @@ from bookery.core.vault.walker import walk_vault
 from bookery.db.catalog import LibraryCatalog
 from bookery.db.connection import open_library
 from bookery.db.hashing import compute_file_hash
+from bookery.db.mapping import BookRecord
 
 console = Console()
+
+
+def _find_in_place_row(
+    catalog: LibraryCatalog, title: str, author: str, output_path: Path
+) -> BookRecord | None:
+    """Return the catalog row this export just overwrote on disk, if any.
+
+    A re-export to the same library path rewrites that row's file in place;
+    `import_books` would skip it as a title+author duplicate and leave the
+    row's hash stale. Match only the exact rendered title (a changed version
+    label is a new snapshot and goes through import plus prior-snapshot
+    cleanup) and the same author, at the same resolved path.
+    """
+    for record in catalog.list_all():
+        if record.output_path is None:
+            continue
+        if record.metadata.title != title or record.metadata.author != author:
+            continue
+        if Path(record.output_path).resolve() == output_path:
+            return record
+    return None
 
 
 @click.command("vault-export")
@@ -267,14 +289,27 @@ def vault_export(
         conn = open_library(resolve_db_path(db_path))
         try:
             catalog = LibraryCatalog(conn)
-            result = import_books(
-                [output_path],
-                catalog,
-                library_root=library_root,
-                match_fn=None,
-                move=False,
-                on_progress=build_progress_fn(console),
-            )
+            rendered_title = f"{title} — {version_label}" if version_label else title
+            in_place = _find_in_place_row(catalog, rendered_title, author, output_path)
+            if in_place is not None:
+                # The export overwrote this row's file in place. Refresh its
+                # hash (update_book also bumps date_modified) instead of
+                # importing, which would skip it as a duplicate.
+                catalog.update_book(in_place.id, file_hash=compute_file_hash(output_path))
+                console.print(
+                    f"  [green]✓[/green] {rendered_title} — {author} — "
+                    f"[dim]updated (#{in_place.id})[/dim]"
+                )
+                result = ImportResult()
+            else:
+                result = import_books(
+                    [output_path],
+                    catalog,
+                    library_root=library_root,
+                    match_fn=None,
+                    move=False,
+                    on_progress=build_progress_fn(console),
+                )
             # A vault export is a point-in-time snapshot — only one version
             # should exist in the catalog at a time. After a successful
             # import, drop any prior row that looks like an older snapshot of
